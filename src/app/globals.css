@@ -102,3 +102,62 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 .logo-bloom { animation: logo-bloom 3s ease-in-out infinite; mix-blend-mode: screen; }
 .logo-core { animation: logo-core 3s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .logo-bloom, .logo-core { animation: none; opacity: 0.85; } }
+
+/* ───────── Neon sky-blue accents ─────────
+   Every sky-blue accent gets a slow left→right neon light sweep plus a slow glow pulse.
+   Only sky-blue accent utilities are targeted (exact class tokens, so hover:/focus: variants are untouched). */
+@keyframes accent-sweep { from { background-position: 100% 0, 0 0; } to { background-position: 0% 0, 0 0; } }
+@keyframes accent-glow {
+  0%, 100% { filter: drop-shadow(0 0 1px rgba(56, 189, 248, 0.55)); }
+  50% { filter: brightness(1.35) drop-shadow(0 0 3px rgba(186, 230, 253, 0.95)) drop-shadow(0 0 9px rgba(56, 189, 248, 0.85)); }
+}
+@keyframes accent-box-pulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(56, 189, 248, 0.3); }
+  50% { box-shadow: 0 0 10px rgba(125, 211, 252, 0.85), 0 0 26px rgba(56, 189, 248, 0.55), 0 0 44px rgba(11, 184, 255, 0.3); }
+}
+@keyframes accent-ring-pulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(56, 189, 248, 0); }
+  50% { box-shadow: 0 0 10px rgba(56, 189, 248, 0.6), inset 0 0 6px rgba(56, 189, 248, 0.25); }
+}
+
+/* Sky-blue text & icons: glow pulse */
+.text-accent, .text-accent-2 { animation: accent-glow 3.2s ease-in-out infinite; }
+/* Plain sky-blue text (no icon inside, no own background): a bright neon band also sweeps across the letters */
+.text-accent:not(svg):not(:has(svg)):not([class*="bg-"]), .text-accent-2:not(svg):not(:has(svg)):not([class*="bg-"]) {
+  background-image: linear-gradient(100deg, var(--accent-2) 0%, var(--accent-2) 38%, #f2fbff 50%, var(--accent-2) 62%, var(--accent-2) 100%);
+  background-size: 260% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: accent-sweep 4.8s linear infinite, accent-glow 3.2s ease-in-out infinite;
+}
+
+/* Sky-blue fills (primary buttons, active pills, your chat bubbles): moving sheen + neon pulse */
+.bg-grad {
+  background-image: linear-gradient(100deg, transparent 36%, rgba(255, 255, 255, 0.55) 50%, transparent 64%), var(--grad);
+  background-size: 260% 100%, 100% 100%;
+  animation: accent-sweep 4.8s linear infinite, accent-box-pulse 3.2s ease-in-out infinite;
+}
+.bg-accent {
+  background-image: linear-gradient(100deg, transparent 36%, rgba(255, 255, 255, 0.5) 50%, transparent 64%);
+  background-size: 260% 100%;
+  animation: accent-sweep 4.8s linear infinite, accent-box-pulse 3.2s ease-in-out infinite;
+}
+/* Soft sky tint (active menu item, accent badges): gentle sweep */
+.bg-accent-soft {
+  background-image: linear-gradient(100deg, transparent 34%, rgba(125, 211, 252, 0.28) 50%, transparent 66%);
+  background-size: 260% 100%;
+  animation: accent-sweep 4.8s linear infinite;
+}
+/* Sky-blue gradient text: sweep through the gradient */
+.text-grad {
+  background-image: linear-gradient(100deg, transparent 38%, rgba(255, 255, 255, 0.9) 50%, transparent 62%), var(--grad);
+  background-size: 260% 100%, 100% 100%;
+  animation: accent-sweep 4.8s linear infinite, accent-glow 3.2s ease-in-out infinite;
+}
+/* Sky-blue outlines (selected cards, chips, focus-free borders): neon ring pulse */
+[class^="border-accent"], [class*=" border-accent"] { animation: accent-ring-pulse 3.2s ease-in-out infinite; }
+/* Keep the combined effects when an element is both a fill and an outline */
+.bg-grad[class*=" border-accent"], .bg-accent[class*=" border-accent"] { animation: accent-sweep 4.8s linear infinite, accent-box-pulse 3.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .text-accent, .text-accent-2, .bg-grad, .bg-accent, .bg-accent-soft, .text-grad, [class^="border-accent"], [class*=" border-accent"] { animation: none !important; }
+}

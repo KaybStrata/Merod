@@ -10,6 +10,8 @@ const CATEGORY: Record<string, string> = {
   market_data: "Market data", blockchain_infra: "Blockchain infrastructure", wallet: "Wallets", crypto_execution: "On-chain swaps", crypto_exchange: "Crypto exchange", ai: "AI", stock_execution: "Brokerage",
 };
 
+const TRADING = new Set(["stock_execution", "crypto_execution", "crypto_exchange"]);
+
 /** "Bring your own key": users paste their own API keys; encrypted per user and used only for their own requests. */
 export function UserApiKeys({ categories, providers, sections, title = "My API keys", intro, onChange }: { categories?: string[]; providers?: string[]; sections?: string[]; title?: string; intro?: ReactNode; onChange?: () => void } = {}) {
   const { data: raw, loading, refresh } = useApi<{ providers: any[]; keys: any[] }>("/api/me/keys");
@@ -69,7 +71,7 @@ function ProviderKeys({ p, keys, onChange }: { p: any; keys: any[]; onChange: ()
           {p.directory?.coverage && <span className="block truncate text-[11px] text-faint">{p.directory.coverage}</span>}
         </span>
         {p.directory?.access && <Badge className="hidden sm:inline-flex" title="Access type from the Merod API directory">{p.directory.access}</Badge>}
-        {p.routing === false && <Badge tone="warn" title={`Merod saves and checks your ${p.name} keys, but placing orders through ${p.name} isn't built yet.`}>keys only</Badge>}
+        {p.routing === false && TRADING.has(p.category) && <Badge tone="warn" title={`Merod saves and checks your ${p.name} keys, but placing orders through ${p.name} isn't built yet.`}>keys only</Badge>}
         {keys.length > 0 && <Badge tone={anyConnected ? "up" : keys.some((k) => k.status === "error") ? "down" : "accent"}>{anyConnected ? "Connected" : keys.some((k) => k.status === "error") ? "Error" : "Saved · untested"}</Badge>}
       </button>
       {open && (
@@ -111,7 +113,7 @@ function ProviderKeys({ p, keys, onChange }: { p: any; keys: any[]; onChange: ()
               {result?.message ?? envKeys[0]?.last_error}
             </p>
           )}
-          {p.routing === false && (
+          {p.routing === false && TRADING.has(p.category) && (
             <p className="text-[11px] text-faint">Orders can&apos;t be sent through {p.name} from Merod yet. Your keys are stored safely and ready for when that connection is built.</p>
           )}
           {p.userKeys === "personal_account" && p.routing !== false && (result?.ok || status === "connected") && (
