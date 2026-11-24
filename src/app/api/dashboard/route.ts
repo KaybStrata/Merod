@@ -33,9 +33,9 @@ export const GET = route(async () => {
     q(`SELECT sp.id, sp.kind, sp.body, sp.tags, sp.created_at, pr.handle, pr.display_name, pr.avatar_color,
               (SELECT verification FROM tagged_trades tt WHERE tt.post_id=sp.id LIMIT 1) AS verification
          FROM social_posts sp JOIN user_profiles pr ON pr.user_id=sp.user_id WHERE sp.visibility='public' ORDER BY sp.created_at DESC LIMIT 4`),
-    q(`SELECT a.id, a.symbol, a.name, a.last_price, a.change_24h, a.price_source, wi.target_price,
+    q(`SELECT DISTINCT ON (a.id) a.id, a.symbol, a.name, a.last_price, a.change_24h, a.price_source, a.logo_url, wi.target_price, wi.added_at,
               (SELECT array_agg(close ORDER BY ts) FROM (SELECT close, ts FROM price_bars b WHERE b.asset_id=a.id AND b.timeframe='1h' ORDER BY ts DESC LIMIT 24) s) AS spark
-         FROM watchlist_items wi JOIN watchlists w ON w.id=wi.watchlist_id JOIN assets a ON a.id=wi.asset_id WHERE w.user_id=$1 ORDER BY wi.added_at DESC LIMIT 8`, [u.id]),
+         FROM watchlist_items wi JOIN watchlists w ON w.id=wi.watchlist_id JOIN assets a ON a.id=wi.asset_id WHERE w.user_id=$1 ORDER BY a.id, wi.added_at DESC LIMIT 12`, [u.id]).then((r: any[]) => r.sort((x, y) => +new Date(y.added_at) - +new Date(x.added_at))),
     one<{ n: number }>("SELECT count(*)::int AS n FROM orders WHERE user_id=$1 AND status='pending_approval'", [u.id]),
   ]);
   return ok({

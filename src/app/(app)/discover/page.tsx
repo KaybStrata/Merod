@@ -15,7 +15,8 @@ function DiscoverInner() {
   const router = useRouter();
   const sp = useSearchParams();
   const toast = useToast();
-  const [tab, setTab] = useState<Tab>((sp.get("tab") as Tab) ?? "trending");
+  const tabParam = sp.get("tab") ?? "";
+  const [tab, setTab] = useState<Tab>(tabParam in SORT ? (tabParam as Tab) : "trending");
   const [term, setTerm] = useState(sp.get("q") ?? "");
   const [debounced, setDebounced] = useState(term);
   const [cls, setCls] = useState<"" | "stocks" | "crypto">("");
@@ -24,7 +25,7 @@ function DiscoverInner() {
   const [maxCap, setMaxCap] = useState("");
   const [minLiq, setMinLiq] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-  const [listModal, setListModal] = useState(false);
+  const [listModal, setListModal] = useState(tabParam === "watchlist");
   useEffect(() => { const t = setTimeout(() => setDebounced(term), 200); return () => clearTimeout(t); }, [term]);
 
   const qs = useMemo(() => {
