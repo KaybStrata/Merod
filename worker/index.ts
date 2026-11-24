@@ -11,6 +11,7 @@ import { Redis } from "ioredis";
 import { Queue, Worker } from "bullmq";
 import { pool, q, one } from "@/server/db";
 import { tickSimulated, refreshLivePrices, discoverLaunches, syncBrokerCatalog } from "@/server/market/prices";
+import { runAutoTrading } from "@/server/auto/engine";
 import { ensureRealData, backfillRealHistory, simulationOn } from "@/server/market/real-data";
 import { processPaperTriggers, reconcileLiveOrders, notify } from "@/server/engine/engine";
 import { tickDueBots, backtest } from "@/server/bots/runner";
@@ -144,6 +145,7 @@ ensureRealData().then((r) => r && console.log(`✔ real data only: removed ${r.b
 const timers = [
   every("teach_merod", 8000, () => processQueuedMaterials(3)),
   every("copy_trading", 5000, () => processCopyTrading()),
+  every("auto_trading", 20_000, () => runAutoTrading()),
   every("modo_learning", 600_000, () => modoLearn()),
   every("simulated_feed", 3000, async () => { const f = await getFlags(); if (f.paper_trading && f.simulated_prices) await tickSimulated(); }),
   every("real_history", 90_000, async () => { if (!(await simulationOn())) await backfillRealHistory(3); }),

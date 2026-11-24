@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Sparkles, RefreshCw, Newspaper, Users, TrendingUp, Brain, AlertTriangle, Lightbulb, Loader2 } from "lucide-react";
-import { useApi } from "@/lib/api";
+import Link from "next/link";
+import { Cpu, Sparkles, RefreshCw, Newspaper, Users, TrendingUp, Brain, AlertTriangle, Lightbulb, Loader2 } from "lucide-react";
+import { api, useApi } from "@/lib/api";
 import { useShell } from "./context";
 import { Badge, cx } from "@/components/ui";
 import { ago } from "@/lib/format";
@@ -16,7 +17,7 @@ const pctTxt = (x: number | null) => (x == null ? "pending" : `${x >= 0 ? "+" : 
  * Thinks when opened and every 2 minutes while visible. Ideas are suggestions; "Preview" goes through the normal checks.
  */
 export function ModoPanel({ active }: { active: boolean }) {
-  const { openPrompt } = useShell();
+  const { openPrompt, user } = useShell();
   const { data, refresh } = useApi<any>(active ? "/api/modo" : null, { refreshMs: 60_000 });
   const [steps, setSteps] = useState<Step[]>([]);
   const [thinking, setThinking] = useState(false);
@@ -78,6 +79,8 @@ export function ModoPanel({ active }: { active: boolean }) {
           {thinking && <div className="flex items-center gap-1.5 text-[11px] text-faint"><Loader2 className="size-3 animate-spin" /> working…</div>}
         </div>
       </section>
+
+      {user.role === "super_admin" && <AutoTradesSection active={active} />}
 
       {/* News facts: real headlines, quoted exactly, with source and link */}
       <section>
@@ -147,5 +150,40 @@ export function ModoPanel({ active }: { active: boolean }) {
       </section>
       <p className="text-[9px] leading-snug text-faint">Modo's ideas are suggestions, not financial advice, and can be wrong. Nothing is traded unless you confirm it.</p>
     </div>
+  );
+}
+
+/** Owner only: the auto-trading switch and Modo's before / during / after explanation of each auto trade. */
+function AutoTradesSection({ active }: { active: boolean }) {
+  const { data, refresh } = useApi<any>(active ? "/api/auto" : null, { refreshMs: 15_000 });
+  const [busy, setBusy] = useState(false);
+  const on = !!data?.settings?.enabled;
+  async function flip() {
+    setBusy(true);
+    try { await api("/api/auto", { method: "PATCH", json: { enabled: !on } }); await refresh(); } finally { setBusy(false); }
+  }
+  const trades: any[] = (data?.trades ?? []).slice(0, 3);
+  return (
+    <section className="rounded-xl border border-line bg-panel p-2.5">
+      <div className="mb-1.5 flex items-center justify-between">
+        <Link href="/auto" className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-faint hover:text-text"><Cpu className="size-3" /> Auto trading</Link>
+        <button onClick={flip} disabled={!data || busy} aria-label="Auto trading switch" className={cx("relative h-5 w-9 rounded-full transition-colors disabled:opacity-50", on ? "bg-up" : "bg-panel-2")}>
+          <span className={cx("absolute top-0.5 size-4 rounded-full bg-white transition-all", on ? "left-[18px]" : "left-0.5")} />
+        </button>
+      </div>
+      {trades.length === 0 ? <p className="text-[11px] text-faint">{on ? "Watching for trades where the data points agree." : "Off. Turn it on to let Merod trade from the data (theoretical trades first)."}</p> : (
+        <ul className="space-y-1.5">
+          {trades.map((t) => (
+            <li key={t.id} className="text-[11px] leading-snug">
+              <div className="flex items-center justify-between"><span className="font-semibold text-text">BUY {t.symbol} <span className="font-normal text-faint">· {t.mode === "real" ? "real" : "theoretical"}</span></span>
+                <span className={t.status === "closed" ? (Number(t.return_pct) > 0 ? "text-up" : "text-down") : "text-faint"}>{t.status === "closed" ? `${Number(t.return_pct) >= 0 ? "+" : ""}${Number(t.return_pct).toFixed(2)}%` : t.status}</span></div>
+              <p className="text-muted"><b className="text-faint">Before:</b> {String(t.explain_before).split("\n")[0]}</p>
+              {t.explain_during && <p className="text-muted"><b className="text-faint">During:</b> {t.explain_during}</p>}
+              {t.explain_after && <p className="text-muted"><b className="text-faint">After:</b> {t.explain_after}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

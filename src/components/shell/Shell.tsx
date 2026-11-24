@@ -66,7 +66,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const isAdmin = user.role === "admin" || user.role === "super_admin";
   const owner = user.role === "super_admin";
   const main = NAV.flatMap((n) => n.href === "/bots" && owner
-    ? [n, { href: "/mimic", label: "Mimic Trading", icon: Repeat, also: ["/copy"] }]
+    ? [n, { href: "/mimic", label: "Mimic Trading", icon: Repeat, also: ["/copy", "/auto"] }]
     : [n]);
   const nav = [...main,
     ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
@@ -95,6 +95,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           </Link>
           {n.href === "/discover" && <Suspense fallback={null}><DiscoverSubLinks /></Suspense>}
           {n.href === "/admin" && <AdminSubLinks pathname={pathname} superAdmin={user.role === "super_admin"} />}
+          {n.href === "/mimic" && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/auto", label: "Auto trading", icon: Cpu }]} />}
           </Fragment>
         );
       })}
@@ -229,10 +230,14 @@ function DiscoverSubLinks() {
 
 /** Integrations and Fees under Admin in the menu. */
 function AdminSubLinks({ pathname, superAdmin }: { pathname: string; superAdmin: boolean }) {
-  const items = [
+  return <SubLinks pathname={pathname} items={[
     { href: "/admin/integrations", label: "Integrations", icon: Plug },
     ...(superAdmin ? [{ href: "/admin/fees", label: "Fees", icon: Percent }] : []),
-  ];
+  ]} />;
+}
+
+/** Indented sub-links under a menu section. */
+function SubLinks({ pathname, items }: { pathname: string; items: { href: string; label: string; icon: any }[] }) {
   return (
     <div className="mb-1 ml-6 flex flex-col gap-0.5 border-l border-line pl-2">
       {items.map((i) => {

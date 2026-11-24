@@ -1,5 +1,6 @@
 "use client";
 import { Repeat } from "lucide-react";
+import { MimicTabs } from "@/components/MimicTabs";
 import { useShell } from "@/components/shell/context";
 import { CopyBotsPanel } from "@/components/CopyBots";
 import { Card, Empty } from "@/components/ui";
@@ -10,6 +11,7 @@ export default function MimicTradingPage() {
   if (user.role !== "super_admin") return <Empty icon={<Repeat className="size-6" />} title="Mimic trading is for the platform owner">Ask the owner if you'd like access.</Empty>;
   return (
     <div className="space-y-4">
+      <MimicTabs />
       <div>
         <h1 className="flex items-center gap-2 text-xl font-semibold"><Repeat className="size-6 text-accent-2" /> Mimic Trading</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">Mimic bots repeat every trade a trader or public wallet makes, at the same dollar size (capped by your daily limit), and sell when they sell. You can also start one from the prompt box, e.g. “mimic trade the top ROI earner for Solana meme coins this week”.</p>
