@@ -1,11 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { Bot, Zap, Pause, Play, PanelRightClose, PanelRightOpen, Plus, OctagonX, Loader2 } from "lucide-react";
+import { Bot, Zap, Pause, Play, PanelRightClose, PanelRightOpen, Plus, OctagonX, Loader2, Activity } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { ShortcutBar } from "@/components/ShortcutBar";
-import { StatusPill, cx, useToast } from "@/components/ui";
-import { usd, tone } from "@/lib/format";
+import { PaperBadge, StatusPill, cx, useToast } from "@/components/ui";
+import { ago, price, qty, usd, tone } from "@/lib/format";
 import { useRealtime, useShell } from "./context";
 
 /** Right-hand control bar: one-click shortcut buttons and the user's bots, on every screen (xl and wider). */
@@ -14,7 +14,14 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
   const bots = useApi<any>(open ? "/api/bots" : null, { refreshMs: connected ? 30000 : 10000 });
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
-  useRealtime((e) => { if (open && (e.type === "bot_status" || e.type === "fill")) bots.refresh(); });
+  // Live bot feed: every decision/trade a bot makes streams in; stats refresh (throttled) on each one.
+  const [feed, setFeed] = useState<{ k: string; bot: string; level: string; msg: string; ts: number }[]>([]);
+  const lastRefresh = useRef(0);
+  useRealtime((e) => {
+    if (!open) return;
+    if (e.type === "bot_log") setFeed((f) => [{ k: `${e.payload.ts}${Math.random()}`, bot: e.payload.botName, level: e.payload.level, msg: e.payload.message, ts: e.payload.ts ?? Date.now() }, ...f].slice(0, 25));
+    if (["bot_status", "fill", "bot_log"].includes(e.type) && Date.now() - lastRefresh.current > 2000) { lastRefresh.current = Date.now(); bots.refresh(); }
+  });
 
   async function act(id: string, action: "pause" | "resume" | "start") {
     setBusy(id);
@@ -30,6 +37,8 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
 
   const list: any[] = bots.data?.bots ?? [];
   const running = list.filter((b) => b.status === "running").length;
+  const totals = list.reduce((t, b) => ({ pnl: t.pnl + Number(b.pnl_usd || 0), trades: t.trades + (b.trades_today || 0), wins: t.wins + (b.wins || 0), losses: t.losses + (b.losses || 0), volume: t.volume + Number(b.volume_24h || 0) }), { pnl: 0, trades: 0, wins: 0, losses: 0, volume: 0 });
+  const decided = totals.wins + totals.losses;
   return (
     <>
     {!open && (
@@ -58,6 +67,20 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
             <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted"><Bot className="size-3.5 text-accent-2" /> Bots {list.length > 0 && <span className="font-normal normal-case text-faint">· {running} running</span>}</h3>
             <Link href="/bots" className="flex items-center gap-0.5 text-[11px] text-accent-2"><Plus className="size-3" /> New</Link>
           </div>
+          {list.length > 0 && (
+            <div className="mb-2 rounded-xl border border-line bg-panel p-2.5">
+              <div className="mb-1.5 flex items-center justify-between text-[10px] uppercase tracking-wide text-faint">
+                <span className="flex items-center gap-1"><Activity className="size-3 text-accent-2" /> Live trading stats</span>
+                <span className={cx("flex items-center gap-1 normal-case", connected ? "text-up" : "")}><span className={cx("size-1.5 rounded-full", connected ? "bg-up pulse-dot" : "bg-faint")} />{connected ? "live" : "polling"}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
+                <div><div className="text-faint">Total P&L</div><div className={cx("num text-sm font-semibold", tone(totals.pnl))}>{usd(totals.pnl, { sign: true })}</div></div>
+                <div><div className="text-faint">Win rate</div><div className="num text-sm font-semibold">{decided ? `${Math.round((totals.wins / decided) * 100)}%` : "—"}<span className="ml-1 text-[10px] font-normal text-faint">{totals.wins}W/{totals.losses}L</span></div></div>
+                <div><div className="text-faint">Trades today</div><div className="num font-medium">{totals.trades}</div></div>
+                <div><div className="text-faint">Volume 24h</div><div className="num font-medium">{usd(totals.volume, { compact: true })}</div></div>
+              </div>
+            </div>
+          )}
           {bots.loading && !bots.data ? <div className="text-xs text-faint">Loading bots…</div>
             : list.length === 0 ? (
               <div className="rounded-xl border border-dashed border-line p-3 text-xs text-muted">No bots yet. <Link href="/bots" className="text-accent-2">Create one</Link> or type a strategy in the prompt box.</div>
@@ -79,9 +102,18 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
                       <span className="truncate text-faint">{(b.symbols ?? []).join(", ") || b.strategy_name}</span>
-                      <span className={cx("num shrink-0", tone(b.pnl_usd))}>{usd(b.pnl_usd, { sign: true })}</span>
+                      <span className={cx("num shrink-0 font-medium", tone(b.pnl_usd))}>{usd(b.pnl_usd, { sign: true })}</span>
                     </div>
-                    <div className="mt-1.5"><StatusPill status={b.status} /></div>
+                    <div className="mt-1.5 grid grid-cols-3 gap-1 text-[10px]">
+                      <div className="rounded-md bg-panel-2 px-1.5 py-1"><div className="text-faint">Trades</div><div className="num text-text">{b.trades_today}/{b.max_trades_per_day}</div></div>
+                      <div className="rounded-md bg-panel-2 px-1.5 py-1"><div className="text-faint">Win</div><div className="num text-text">{(b.wins || 0) + (b.losses || 0) ? `${Math.round(((b.wins || 0) / ((b.wins || 0) + (b.losses || 0))) * 100)}%` : "—"}</div></div>
+                      <div className="rounded-md bg-panel-2 px-1.5 py-1"><div className="text-faint">Spent</div><div className="num text-text">{usd(b.spent_today_usd, { compact: true })}</div></div>
+                    </div>
+                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-panel-2" title="Trades used today"><div className="h-full rounded-full bg-grad" style={{ width: `${Math.min(100, (b.trades_today / Math.max(1, b.max_trades_per_day)) * 100)}%` }} /></div>
+                    {b.last_fill && (
+                      <div className="mt-1 truncate text-[10px] text-muted">Last: <span className={b.last_fill.side === "buy" ? "text-up" : "text-down"}>{b.last_fill.side.toUpperCase()}</span> {qty(b.last_fill.filled_quantity)} {b.last_fill.symbol} @ {price(b.last_fill.avg_fill_price)} · {ago(b.last_fill.updated_at)}</div>
+                    )}
+                    <div className="mt-1.5 flex items-center gap-1.5"><StatusPill status={b.status} /><PaperBadge paper={b.is_paper} /></div>
                   </li>
                 ))}
               </ul>
@@ -92,6 +124,24 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
             </button>
           )}
         </section>
+
+        {list.length > 0 && (
+          <section>
+            <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted"><Activity className="size-3.5 text-accent-2" /> Bot activity</h3>
+            {feed.length === 0 ? (
+              <div className="text-[11px] text-faint">{(list.find((b) => b.last_log)?.last_log?.message) ? <>Latest: {list.find((b) => b.last_log).last_log.message}</> : "Waiting for your bots' next move…"}</div>
+            ) : (
+              <ul className="space-y-1">
+                {feed.map((f) => (
+                  <li key={f.k} className="fade-up text-[11px] leading-snug">
+                    <span className={cx("font-medium", f.level === "error" ? "text-down" : ["trigger", "result"].includes(f.level) ? "text-accent-2" : "text-text")}>{f.bot}</span>
+                    <span className="text-muted"> · {f.msg}</span> <span className="text-faint">{ago(f.ts)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
       </div>
     </aside>
     </>
