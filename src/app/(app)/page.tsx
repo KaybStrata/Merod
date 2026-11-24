@@ -8,6 +8,7 @@ import { useRealtime, useShell } from "@/components/shell/context";
 import { Card, Badge, Pills, Sparkline, Skeleton, Empty, ChangeText, AssetIcon, StatusPill, SourceBadge, PaperBadge, cx } from "@/components/ui";
 import { usd, price, pct, qty, ago, compact, tone } from "@/lib/format";
 import { ShortcutBar } from "@/components/ShortcutBar";
+import { ProgressPanel } from "@/components/ProgressPanel";
 import { LiveSuggestions } from "@/components/LiveSuggestions";
 
 const ValueChart = dynamic(() => import("@/components/terminal/charts").then((m) => m.ValueChart), { ssr: false, loading: () => <Skeleton className="h-[180px]" /> });
@@ -37,6 +38,8 @@ export default function Dashboard() {
           </Link>
         )}
       </div>
+
+      <ProgressPanel compact />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <Card className="xl:col-span-8" pad={false}>

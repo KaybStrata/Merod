@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254">
+  <style>
+    @keyframes p { 0%,100% { opacity: .9 } 50% { opacity: 1 } }
+    .m { animation: p 3.2s ease-in-out infinite }
+  </style>
+  <defs>
+    <filter id="g" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="22" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1254" height="1254" rx="260" fill="#000"/>
+  <g class="m" transform="translate(627 627) scale(1.25) translate(-627 -630)">
+    <path filter="url(#g)" d="M352 745 L352 530 C352 480 390 440 437 440 C460 440 478 448 494 462 L610 573 C620 583 634 583 644 573 L760 462 C776 448 795 440 817 440 C864 440 902 480 902 530 L902 740 C902 785 862 820 807 820 C770 820 750 812 735 801 L562 650 C545 635 525 625 500 625 C478 625 464 645 464 670 L464 745 C464 785 440 812 412 812 C380 812 352 785 352 745 Z" fill="none" stroke="#0bb8ff" stroke-width="72" stroke-linejoin="round" stroke-linecap="round"/>
+  </g>
+</svg>

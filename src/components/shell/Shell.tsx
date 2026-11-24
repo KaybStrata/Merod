@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Home, Compass, CandlestickChart, Sparkles, Zap, Bot, Users, PieChart, Wallet, Settings, Shield, Bell, Search, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2,
+  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -15,6 +15,7 @@ import { api, useApi } from "@/lib/api";
 
 const NAV = [
   { href: "/", label: "Home", icon: Home },
+  { href: "/progress", label: "Progress", icon: Gauge },
   { href: "/discover", label: "Discover", icon: Compass },
   { href: "/terminal", label: "Trade", icon: CandlestickChart },
   { href: "/ai", label: "AI Trade", icon: Sparkles },
@@ -28,6 +29,7 @@ const NAV = [
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
   { href: "/wallet", label: "Wallet & Funding", icon: Wallet },
   { href: "/broker-keys", label: "Broker Keys", icon: KeyRound },
+  { href: "/ai-keys", label: "AI Keys", icon: Cpu },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

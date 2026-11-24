@@ -95,3 +95,13 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 .fade-up { animation: fade-up .25s ease-out both; }
 @keyframes pulse-dot { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+/* Logo: slow, endless sky-blue glow pulse (≈3.2s per breath). */
+@keyframes logo-pulse {
+  0%, 100% { filter: drop-shadow(0 0 1px rgba(11, 184, 255, 0.55)) drop-shadow(0 0 3px rgba(11, 184, 255, 0.35)); opacity: 0.88; }
+  50% { filter: drop-shadow(0 0 4px rgba(125, 211, 252, 1)) drop-shadow(0 0 12px rgba(11, 184, 255, 0.95)) drop-shadow(0 0 26px rgba(11, 184, 255, 0.7)); opacity: 1; }
+}
+.logo-pulse { animation: logo-pulse 3.2s ease-in-out infinite; will-change: filter; }
+@media (prefers-reduced-motion: reduce) {
+  .logo-pulse { animation: none; filter: drop-shadow(0 0 4px rgba(11, 184, 255, 0.9)) drop-shadow(0 0 12px rgba(11, 184, 255, 0.6)); }
+}

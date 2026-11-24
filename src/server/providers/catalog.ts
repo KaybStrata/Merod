@@ -319,7 +319,7 @@ export const PROVIDERS: ProviderDefinition[] = [
 
   // ───────────── Phase 4: AI ─────────────
   {
-    id: "anthropic", name: "Anthropic Claude", category: "ai", phase: 4, userKeys: "service",
+    id: "anthropic", name: "Claude (Anthropic) — Opus, Sonnet, Haiku", category: "ai", phase: 4, userKeys: "service",
     description: "Claude models for prompt interpretation, research, strategy and bot configuration (structured outputs).",
     docsUrl: "https://platform.claude.com/docs", signupUrl: "https://platform.claude.com/",
     authMethod: "api_key", supportsWebhooks: false, supportsOAuth: false,
@@ -337,7 +337,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     }),
   },
   {
-    id: "openai", name: "OpenAI", category: "ai", phase: 4, userKeys: "service",
+    id: "openai", name: "ChatGPT (OpenAI)", category: "ai", phase: 4, userKeys: "service",
     description: "OpenAI models for prompt interpretation, research and strategy creation (structured outputs).",
     docsUrl: "https://platform.openai.com/docs", signupUrl: "https://platform.openai.com/",
     authMethod: "bearer", supportsWebhooks: false, supportsOAuth: false,

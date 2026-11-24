@@ -11,9 +11,9 @@ const CATEGORY: Record<string, string> = {
 };
 
 /** "Bring your own key": users paste their own API keys; encrypted per user and used only for their own requests. */
-export function UserApiKeys({ categories, title = "My API keys" }: { categories?: string[]; title?: string } = {}) {
+export function UserApiKeys({ categories, providers, title = "My API keys", onChange }: { categories?: string[]; providers?: string[]; title?: string; onChange?: () => void } = {}) {
   const { data: raw, loading, refresh } = useApi<{ providers: any[]; keys: any[] }>("/api/me/keys");
-  const data = raw && categories ? { ...raw, providers: raw.providers.filter((p) => categories.includes(p.category)) } : raw;
+  const data = raw && (categories || providers) ? { ...raw, providers: raw.providers.filter((p) => (!categories || categories.includes(p.category)) && (!providers || providers.includes(p.id))) } : raw;
   return (
     <Card title={title} icon={<KeyRound className="size-4 text-accent-2" />}>
       <p className="mb-4 flex gap-2 rounded-xl border border-line bg-bg-2/60 px-3 py-2.5 text-xs text-muted">
@@ -22,7 +22,7 @@ export function UserApiKeys({ categories, title = "My API keys" }: { categories?
       </p>
       {loading && !data ? <Skeleton className="h-40" /> : !data?.providers.length ? <Empty title="No providers accept personal keys yet" /> : (
         <div className="space-y-2">
-          {data.providers.map((p) => <ProviderKeys key={p.id} p={p} keys={data.keys.filter((k) => k.provider_id === p.id)} onChange={refresh} />)}
+          {data.providers.map((p) => <ProviderKeys key={p.id} p={p} keys={data.keys.filter((k) => k.provider_id === p.id)} onChange={() => { refresh(); onChange?.(); }} />)}
         </div>
       )}
     </Card>

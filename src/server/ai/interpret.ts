@@ -36,17 +36,17 @@ async function interpret(userId: string, input: PromptInput, screenSymbol: strin
   const { provider, model } = await userAI(userId, input);
   let usedProvider: string = "merod", usedModel = "deterministic", fallbackReason: string | null = null;
   let instruction: Instruction;
-  if (provider !== "merod" && (await aiAvailable(provider))) {
+  if (provider !== "merod" && (await aiAvailable(provider, userId))) {
     try {
       const holdings = (await q<{ symbol: string }>("SELECT DISTINCT a.symbol FROM positions p JOIN assets a ON a.id=p.asset_id WHERE p.user_id=$1 AND p.quantity>0", [userId])).map((r) => r.symbol);
-      instruction = await llmInterpret(provider, model, input.text, { screenAsset: screenSymbol, holdings });
+      instruction = await llmInterpret(provider, model, input.text, { screenAsset: screenSymbol, holdings }, userId);
       usedProvider = provider; usedModel = model;
     } catch (e: any) {
       fallbackReason = `${provider} unavailable (${e.message}); used Merod rule parser`;
       instruction = parsePrompt(input.text);
     }
   } else {
-    if (provider !== "merod") fallbackReason = `${provider === "anthropic" ? "Claude" : "OpenAI"} is not connected — using Merod's rule parser`;
+    if (provider !== "merod") fallbackReason = `${provider === "anthropic" ? "Claude" : "OpenAI"} is not connected — add your key under AI Keys; using Merod's rule parser`;
     instruction = parsePrompt(input.text);
   }
   return { instruction, usedProvider, usedModel, fallbackReason };
@@ -233,8 +233,8 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const asset = leg ? await legAsset(leg, input.screenAssetId).then((r) => r.asset) : screen ? await resolveAsset({ assetId: screen.id }) : null;
       const data = asset ? `symbol=${asset.symbol} venue=${asset.venue} price=${asset.last_price} change_24h_pct=${asset.change_24h} market_cap=${asset.market_cap} volume_24h=${asset.volume_24h} liquidity_usd=${asset.liquidity_usd} price_source=${asset.price_source}` : "none";
       const { provider, model } = await userAI(userId, input);
-      if (provider !== "merod" && (await aiAvailable(provider))) {
-        try { const t = await llmResearch(provider, model, query, data); usedProvider = provider; usedModel = model; return reply(t, { type: "research", text: t }, "info"); }
+      if (provider !== "merod" && (await aiAvailable(provider, userId))) {
+        try { const t = await llmResearch(provider, model, query, data, userId); usedProvider = provider; usedModel = model; return reply(t, { type: "research", text: t }, "info"); }
         catch (e: any) { fallbackReason = `Research model failed: ${e.message}`; }
       }
       const t = asset
