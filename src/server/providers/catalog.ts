@@ -365,6 +365,8 @@ export const PROVIDERS: ProviderDefinition[] = [
     credentials: [
       { name: "ALPACA_API_KEY", label: "API key ID", secret: true, required: true },
       { name: "ALPACA_API_SECRET", label: "API secret key", secret: true, required: true },
+      { name: "ALPACA_CLIENT_ID", label: "OAuth app client ID (optional: for connecting users' own Alpaca accounts)", secret: false, required: false },
+      { name: "ALPACA_CLIENT_SECRET", label: "OAuth app client secret (optional)", secret: true, required: false },
     ],
     settings: [{ key: "base_url", label: "Base URL (ALPACA_BASE_URL)", defaults: { sandbox: "https://paper-api.alpaca.markets", production: "https://api.alpaca.markets" } }],
     assetClasses: ["stock", "etf"], networks: ["XNYS", "XNAS", "ARCX", "BATS"], capabilities: ["quote", "execute", "positions", "asset_catalog", "paper"],
@@ -403,7 +405,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     }),
   },
   {
-    id: "snaptrade", name: "SnapTrade", category: "stock_execution", phase: 5,
+    id: "snaptrade", name: "SnapTrade", category: "stock_execution", phase: 5, userKeys: "service",
     description: "Connect users' existing brokerage accounts; sync balances/holdings and trade where the brokerage supports it.",
     docsUrl: "https://docs.snaptrade.com/", signupUrl: "https://dashboard.snaptrade.com/",
     authMethod: "hmac_sdk", supportsWebhooks: true, supportsOAuth: true,
@@ -432,6 +434,7 @@ export const PROVIDERS: ProviderDefinition[] = [
     authMethod: "session_gateway", supportsWebhooks: false, supportsOAuth: true,
     credentials: [
       { name: "IBKR_OAUTH_CONSUMER_KEY", label: "OAuth consumer key (third-party, after IBKR approval)", secret: true, required: false },
+      { name: "IBKR_CLIENT_ID", label: "Client ID (IBKR third-party vendor access)", secret: false, required: false },
     ],
     settings: [{ key: "gateway_url", label: "Client Portal Gateway URL (IBKR_GATEWAY_URL)", defaults: { sandbox: "https://localhost:5000" }, help: "Run the IBKR Client Portal Gateway and log in with a paper account." }],
     assetClasses: ["stock", "etf", "option", "future", "forex"], networks: ["global"], capabilities: ["quote", "execute", "positions"],

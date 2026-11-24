@@ -1,12 +1,13 @@
 "use client";
 import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
-import { KeyRound, ShieldCheck, Wallet, ArrowRight, Building2, Globe2, Bitcoin, Link2, Layers, Plug, Sparkles, Cpu } from "lucide-react";
+import { KeyRound, ShieldCheck, Wallet, ArrowRight, Building2, Globe2, Bitcoin, Link2, Layers, Plug, Sparkles, Cpu, Users } from "lucide-react";
 import { UserApiKeys } from "@/components/UserApiKeys";
 import { Card } from "@/components/ui";
 
 const SECTIONS = [
   { id: "services", title: "AI & data services (Claude, ChatGPT, Birdeye, Helius…)", icon: Sparkles, note: "Claude and ChatGPT read your prompts. Birdeye shows which wallets are trading (World trades → Who's trading). Helius lets copy bots follow Solana wallets. Pick your AI model on the AI keys tab." },
+  { id: "external", title: "Traders outside Merod (for Discover & Mimic)", icon: Users, note: "Sources for following and mimicking traders who aren't on Merod: eToro public traders, SnapTrade-connected lead traders, Collective2 strategies, Quiver disclosed trades and Kinfo verified performance. Alpaca and Interactive Brokers keys are under Stock brokers." },
   { id: "stocks", title: "Stock brokers", icon: Building2, note: "US brokerages. Start with paper/sandbox keys where offered." },
   { id: "global", title: "Global & connected brokers", icon: Globe2, note: "Regional brokers (India, Canada, Europe, Asia). Local eligibility rules apply." },
   { id: "exchanges", title: "Crypto exchanges", icon: Bitcoin, note: "Your own exchange account. Give keys trade permission only, never withdrawals." },
@@ -50,7 +51,7 @@ export default function BrokerKeysPage() {
             </ul>
           </Card>
           <Card title="Platform connections" icon={<Plug className="size-4 text-accent-2" />}>
-            <p className="text-xs text-muted"><b className="text-text">Alpaca Broker API</b>, <b className="text-text">SnapTrade</b> and <b className="text-text">Privy</b> connect at the platform level. The site admin sets them up in Admin → Integrations, not here. <b className="text-text">DEX Screener</b> needs no key.</p>
+            <p className="text-xs text-muted"><b className="text-text">Alpaca Broker API</b> and <b className="text-text">Privy</b> connect at the platform level. The site admin sets them up in Admin → Integrations, not here. <b className="text-text">DEX Screener</b> needs no key.</p>
           </Card>
           <Card title="Safety">
             <ul className="space-y-1.5 text-xs text-muted">

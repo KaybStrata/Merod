@@ -417,10 +417,55 @@ export const DIRECTORY_PROVIDERS: ProviderDefinition[] = [
       return { ok: true, message: `TRON reachable (block ${j.block_header?.raw_data?.number})` };
     }),
   }),
+  /* ───────────── External traders & signals (Merod Seven Stock Trading API guide) ───────────── */
+  def({
+    id: "etoro", name: "eToro (public trader discovery)", category: "market_data", userKeys: "service", authMethod: "api_key", phase: 6,
+    description: "Search eToro's public traders, rankings and profile stats for Discover and Mimic. Portfolio changes are inferred from snapshots, never treated as confirmed fills.",
+    docsUrl: "https://builders.etoro.com/reference", signupUrl: "https://builders.etoro.com/",
+    credentials: [
+      { name: "ETORO_API_KEY", label: "Application (API) key", secret: true, required: true, help: "eToro → Settings → Trading → API Key Management. Read permissions are enough." },
+      { name: "ETORO_USER_KEY", label: "User key", secret: true, required: true },
+    ],
+    capabilities: ["discover", "snapshots"], assetClasses: ["stock", "etf", "crypto"], environments: ["production"],
+    commercialRequirements: "Confirm with eToro that external display, redistribution and automated copying are permitted before going live.",
+    test: unverified("Merod will check these against eToro's API once the eToro trader feed is switched on."),
+  }),
+  def({
+    id: "collective2", name: "Collective2 (strategy marketplace)", category: "market_data", userKeys: "service", authMethod: "api_key", phase: 6,
+    description: "Searchable external stock strategies and performance. A strategy signal is not necessarily a broker-confirmed fill.",
+    docsUrl: "https://api-docs.collective2.com/", signupUrl: "https://collective2.com/build-with-c2.html",
+    credentials: [{ name: "COLLECTIVE2_API_KEY", label: "API key", secret: true, required: true }],
+    capabilities: ["discover", "signals"], assetClasses: ["stock", "etf"], environments: ["production"],
+    commercialRequirements: "A Merod-branded integration needs Collective2's platform/partner edition; subscriptions and autotrade run on Collective2's own pages.",
+    test: unverified("Merod will check this against Collective2's API once the strategy feed is switched on."),
+  }),
+  def({
+    id: "quiver", name: "Quiver Quantitative (disclosed trades)", category: "market_data", userKeys: "service", authMethod: "api_key", phase: 6,
+    description: "Congressional stock trades, insider filings and institutional 13F holdings. These are delayed public disclosures, not live fills.",
+    docsUrl: "https://api.quiverquant.com/", signupUrl: "https://api.quiverquant.com/",
+    credentials: [{ name: "QUIVER_API_KEY", label: "API key (token)", secret: true, required: true }],
+    capabilities: ["disclosures"], assetClasses: ["stock", "etf"], environments: ["production"],
+    commercialRequirements: "Your Quiver plan must cover the datasets you use and commercial display.",
+    test: (ctx) => timed(async () => {
+      const { QUIVER_API_KEY } = await need(ctx, "QUIVER_API_KEY");
+      const j = await readJson(await ctx.fetch("https://api.quiverquant.com/beta/live/congresstrading", { headers: { Authorization: `Token ${QUIVER_API_KEY}`, Accept: "application/json" } }), "quiver");
+      if (!Array.isArray(j)) throw new Error("Unexpected response from Quiver (check that your plan includes congressional trades)");
+      return { ok: true, message: `Quiver connected: ${j.length} recent congressional trades available` };
+    }),
+  }),
+  def({
+    id: "kinfo", name: "Kinfo (broker-verified performance)", category: "market_data", userKeys: "service", authMethod: "oauth", phase: 6,
+    description: "Broker-verified performance for consenting Kinfo account holders via Kinfo's official MCP server. Kinfo's external top-trader data isn't public yet, so this stays off until Kinfo supports it.",
+    docsUrl: "https://kinfo.com/mcp", signupUrl: "https://kinfo.com/",
+    credentials: [{ name: "KINFO_MCP_URL", label: "Kinfo MCP server address", secret: false, required: true, help: "Normally https://mcp.kinfo.com. Kinfo signs you in with your own account; there's no API key." }],
+    capabilities: ["analytics"], assetClasses: ["stock", "etf"], environments: ["production"],
+    commercialRequirements: "Kinfo hasn't released a commercial external-trader API yet.",
+    test: unverified("Kinfo uses its own sign-in (no API key), and external trader data isn't available from Kinfo yet."),
+  }),
 ];
 
 /** Directory metadata for every provider in the PDF (incl. ones already in the main catalog), keyed by provider id. */
-export const DIRECTORY_INFO: Record<string, { section: "services" | "stocks" | "global" | "exchanges" | "onchain" | "chains"; coverage: string; access: string }> = {
+export const DIRECTORY_INFO: Record<string, { section: "services" | "stocks" | "global" | "exchanges" | "onchain" | "chains" | "external"; coverage: string; access: string }> = {
   anthropic: { section: "services", coverage: "Claude (Opus, Sonnet, Haiku): reads your prompts", access: "KEY" },
   openai: { section: "services", coverage: "ChatGPT models: reads your prompts", access: "KEY" },
   helius: { section: "services", coverage: "Solana blockchain connectivity", access: "KEY" },
@@ -441,7 +486,11 @@ export const DIRECTORY_INFO: Record<string, { section: "services" | "stocks" | "
   zerodha: { section: "global", coverage: "Indian equities and other instruments", access: "PERSONAL / KEY" },
   upstox: { section: "global", coverage: "Indian equities; eligible US stock access", access: "PERSONAL" },
   dhan: { section: "global", coverage: "Indian equities and other instruments", access: "PERSONAL" },
-  snaptrade: { section: "global", coverage: "Connected broker accounts; selected execution venues", access: "SANDBOX / REQUEST" },
+  snaptrade: { section: "external", coverage: "Lead traders' existing brokerages (consented, broker-reported trades)", access: "COMMERCIAL / CONSENT" },
+  etoro: { section: "external", coverage: "Public eToro traders, rankings and stats", access: "KEY / DATA RIGHTS" },
+  collective2: { section: "external", coverage: "External stock strategies and signals", access: "KEY / PARTNER" },
+  quiver: { section: "external", coverage: "Congress, insider and 13F disclosures (delayed)", access: "KEY / PLAN" },
+  kinfo: { section: "external", coverage: "Broker-verified performance (external data coming soon)", access: "MCP / NOT YET AVAILABLE" },
   questrade: { section: "global", coverage: "Canadian and US equities (data-only personal API)", access: "REQUEST" },
   coinbase_advanced: { section: "exchanges", coverage: "Listed spot cryptocurrencies", access: "PERSONAL" },
   kraken: { section: "exchanges", coverage: "Listed spot cryptocurrencies", access: "PERSONAL" },

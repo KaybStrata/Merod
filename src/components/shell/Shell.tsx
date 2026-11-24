@@ -66,11 +66,10 @@ function Frame({ children }: { children: React.ReactNode }) {
   const isAdmin = user.role === "admin" || user.role === "super_admin";
   const owner = user.role === "super_admin";
   const main = NAV.flatMap((n) => n.href === "/bots" && owner
-    ? [n, { href: "/mimic", label: "Mimic Trading", icon: Repeat }, { href: "/copy", label: "Copy Trading", icon: Copy }]
+    ? [n, { href: "/mimic", label: "Mimic Trading", icon: Repeat, also: ["/copy"] }]
     : [n]);
   const nav = [...main,
-    ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }, { href: "/admin/integrations", label: "Integrations", icon: Plug }] : []),
-    ...(user.role === "super_admin" ? [{ href: "/admin/fees", label: "Fees (Super admin)", icon: Percent }] : []),
+    ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
   ] as { href: string; label: string; icon: any; also?: string[] }[];
 
   const sidebar = (
@@ -84,7 +83,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3">
       {nav.map((n) => {
-        const active = n.href === "/" ? pathname === "/" : pathname === n.href || (pathname.startsWith(n.href + "/") && !(n.href === "/admin" && pathname.startsWith("/admin/integrations")))
+        const active = n.href === "/" ? pathname === "/" : pathname === n.href || (pathname.startsWith(n.href + "/") && !(n.href === "/admin" && (pathname.startsWith("/admin/integrations") || pathname.startsWith("/admin/fees"))))
           || !!n.also?.some((x) => pathname === x || pathname.startsWith(x + "/"));
         return (
           <Fragment key={n.href}>
@@ -95,6 +94,7 @@ function Frame({ children }: { children: React.ReactNode }) {
             <span className="leading-tight">{n.label}</span>
           </Link>
           {n.href === "/discover" && <Suspense fallback={null}><DiscoverSubLinks /></Suspense>}
+          {n.href === "/admin" && <AdminSubLinks pathname={pathname} superAdmin={user.role === "super_admin"} />}
           </Fragment>
         );
       })}
@@ -222,6 +222,28 @@ function DiscoverSubLinks() {
           <i.icon className={cx("size-3.5", cls === i.cls && "text-accent-2")} />{i.label}
         </Link>
       ))}
+    </div>
+  );
+}
+
+
+/** Integrations and Fees under Admin in the menu. */
+function AdminSubLinks({ pathname, superAdmin }: { pathname: string; superAdmin: boolean }) {
+  const items = [
+    { href: "/admin/integrations", label: "Integrations", icon: Plug },
+    ...(superAdmin ? [{ href: "/admin/fees", label: "Fees", icon: Percent }] : []),
+  ];
+  return (
+    <div className="mb-1 ml-6 flex flex-col gap-0.5 border-l border-line pl-2">
+      {items.map((i) => {
+        const on = pathname === i.href || pathname.startsWith(i.href + "/");
+        return (
+          <Link key={i.href} href={i.href}
+            className={cx("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors", on ? "bg-accent-soft text-text" : "text-muted hover:bg-panel-2 hover:text-text")}>
+            <i.icon className={cx("size-3.5", on && "text-accent-2")} />{i.label}
+          </Link>
+        );
+      })}
     </div>
   );
 }
