@@ -29,3 +29,23 @@ test("Modo thinks in visible steps, turns agreeing signals into an idea, then gr
   assert.ok(st.stats.graded >= 1);
   await q("UPDATE assets SET change_24h=0 WHERE symbol='DOGE'"); await freshPrices();
 });
+
+test("Modo's news facts quote real headlines and rank the ones about your holdings first", async () => {
+  const { newsFacts } = await import("@/server/modo/engine");
+  const { newUser: nu, freshPrices: fp, ctx: c } = await import("./helpers");
+  const { place: pl } = await import("@/server/engine/engine");
+  const me = await nu(); await fp();
+  await pl({ asset: { symbol: "ETH" }, side: "buy", orderType: "market", notionalUsd: 50, timeInForce: "gtc" }, c(me));
+  const now = new Date().toISOString();
+  const items = [
+    { title: "Fed holds rates steady", url: "https://news.example/fed", source: "Wire", publishedAt: now, summary: "Rates unchanged.", symbols: [] },
+    { title: "Ethereum ETF inflows surge to a record", url: "https://news.example/eth", source: "Wire", publishedAt: now, summary: "Inflows rose.", symbols: ["ETH"] },
+    { title: "Old story", url: "https://news.example/old", source: "Wire", publishedAt: new Date(Date.now() - 10 * 86_400_000).toISOString(), summary: "", symbols: ["BTC"] },
+  ];
+  const facts = await newsFacts(me, 5, items);
+  assert.equal(facts[0].title, "Ethereum ETF inflows surge to a record");
+  assert.equal(facts[0].why, "You hold ETH");
+  assert.equal(facts[0].tone, "positive");
+  assert.equal(facts[0].url, "https://news.example/eth");
+  assert.ok(!facts.some((f) => f.title === "Old story"), "stale headlines are dropped");
+});

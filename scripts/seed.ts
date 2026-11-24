@@ -27,26 +27,28 @@ for (const s of STRATEGIES) {
 }
 console.log(`✔ ${STRATEGIES.length} bot strategies`);
 
+// Real data only unless simulated prices are explicitly on (testing): no made-up prices, history or demo tokens.
+const simulate = (await one<{ enabled: boolean }>("SELECT enabled FROM feature_flags WHERE key='simulated_prices'"))?.enabled === true;
 let created = 0;
 for (const a of SEED_ASSETS) {
   const row = await one<{ id: string; inserted: boolean }>(
     `INSERT INTO assets (asset_class, symbol, name, venue, identifier, decimals, coingecko_id, categories, tradability, last_price, change_24h, market_cap, volume_24h, price_source, price_updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,0,$11,$12,'simulated',now())
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,${simulate ? "0" : "NULL"},$11,$12,${simulate ? "'simulated',now()" : "NULL,NULL"})
      ON CONFLICT (venue, identifier) DO UPDATE SET name=EXCLUDED.name, categories=EXCLUDED.categories, coingecko_id=EXCLUDED.coingecko_id, decimals=EXCLUDED.decimals
      RETURNING id, (xmax = 0) AS inserted`,
     [a.asset_class, a.symbol, a.name, a.venue, a.identifier, a.decimals ?? null, a.coingecko_id ?? null, a.categories ?? [], a.tradability ?? "paper_tradable",
-     a.base, a.market_cap ?? null, a.base * 1e6]);
+     simulate ? a.base : null, simulate ? a.market_cap ?? null : null, simulate ? a.base * 1e6 : null]);
   const id = row!.id;
   for (const p of a.providers) await q("INSERT INTO asset_providers (asset_id, provider_id, provider_symbol) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING", [id, p, a.symbol]);
   const scheme = a.asset_class === "crypto" ? (a.identifier === "native" ? "native" : a.venue === "solana" ? "mint" : a.venue === "sui" || a.venue === "aptos" ? "coin_type" : "erc20") : "ticker";
   await q("INSERT INTO asset_identifiers (asset_id, scheme, value) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING", [id, scheme, `${a.venue}:${a.identifier}`]);
   if (a.coingecko_id) await q("INSERT INTO asset_identifiers (asset_id, scheme, value) VALUES ($1,'coingecko',$2) ON CONFLICT DO NOTHING", [id, a.coingecko_id]);
   const bars = await one<{ n: number }>("SELECT count(*)::int AS n FROM price_bars WHERE asset_id=$1", [id]);
-  if (!bars?.n) { await backfillSimulatedBars(id, a.base, a.asset_class); created++; }
+  if (simulate && !bars?.n) { await backfillSimulatedBars(id, a.base, a.asset_class); created++; }
 }
-console.log(`✔ ${SEED_ASSETS.length} catalog assets (${created} with new simulated history)`);
+console.log(`✔ ${SEED_ASSETS.length} catalog assets (${simulate ? `${created} with new simulated history` : "real market data only — prices come from live providers"})`);
 
-if (demo) {
+if (demo && simulate) {
   for (const d of DEMO_LAUNCHES) {
     const r = await one<{ id: string }>(
       `INSERT INTO assets (asset_class, symbol, name, venue, identifier, decimals, categories, risk_flags, tradability, lifecycle, last_price, change_24h, liquidity_usd, volume_24h, market_cap, price_source, price_updated_at, launched_at)

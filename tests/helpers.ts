@@ -20,6 +20,8 @@ export async function newUser(opts: { mode?: "manual" | "auto_within_limits" | "
 /** Keep simulated prices "fresh" so stale-price protection doesn't reject test orders. */
 export async function freshPrices() {
   const { q } = await import("@/server/db");
+  // The test catalog runs on simulated prices (production never does).
+  await q("INSERT INTO feature_flags (key, enabled, description) VALUES ('simulated_prices', true, 'tests') ON CONFLICT (key) DO UPDATE SET enabled=true");
   await q("UPDATE assets SET price_updated_at=now()");
 }
 

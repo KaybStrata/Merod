@@ -3,6 +3,7 @@ import { one, q } from "../db";
 import { publish } from "../realtime";
 import { contextFor, providerUsable } from "../providers/integrations";
 import { readJson } from "../providers/http";
+import { keylessUsable, recordTick } from "./real-data";
 
 export interface AssetRow {
   id: string; asset_class: "stock" | "etf" | "crypto" | "option"; symbol: string; name: string; venue: string; identifier: string;
@@ -104,7 +105,7 @@ export async function refreshLivePrices(): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   const env = "production" as const;
 
-  if (await providerUsable("coingecko", env)) {
+  if (await keylessUsable("coingecko")) {
     const ctx = contextFor("coingecko", env);
     const assets = await q<AssetRow>("SELECT * FROM assets WHERE coingecko_id IS NOT NULL");
     const key = await ctx.cred("COINGECKO_API_KEY");
@@ -118,11 +119,12 @@ export async function refreshLivePrices(): Promise<Record<string, number>> {
       if (!a || typeof r.current_price !== "number") continue;
       await q(`UPDATE assets SET last_price=$2, change_24h=$3, volume_24h=$4, market_cap=$5, price_source='coingecko', price_updated_at=now(), logo_url=COALESCE(logo_url,$6) WHERE id=$1`,
         [a.id, r.current_price, r.price_change_percentage_24h ?? 0, r.total_volume ?? null, r.market_cap ?? null, r.image ?? null]);
+      await recordTick(a.id, r.current_price, "coingecko");
     }
     counts.coingecko = (rows as any[]).length;
   }
 
-  if (await providerUsable("dexscreener", env)) {
+  if (await keylessUsable("dexscreener")) {
     const ctx = contextFor("dexscreener", env);
     const assets = await q<AssetRow>("SELECT * FROM assets WHERE asset_class='crypto' AND identifier <> 'native' AND venue = ANY($1) AND coingecko_id IS NULL", [Object.keys(DEX_CHAIN)]);
     const byChain = new Map<string, AssetRow[]>();
@@ -139,6 +141,7 @@ export async function refreshLivePrices(): Promise<Record<string, number>> {
           await q(`UPDATE assets SET last_price=$2, change_24h=$3, volume_24h=$4, liquidity_usd=$5, market_cap=$6, price_source='dexscreener', price_updated_at=now(),
                     lifecycle=CASE WHEN $7='pumpfun' THEN 'bonding_curve' WHEN $7='pumpswap' THEN 'graduated' ELSE lifecycle END WHERE id=$1`,
             [a.id, Number(best.priceUsd), best.priceChange?.h24 ?? 0, best.volume?.h24 ?? null, best.liquidity?.usd ?? null, best.marketCap ?? best.fdv ?? null, best.dexId]);
+          await recordTick(a.id, Number(best.priceUsd), "dexscreener");
           n++;
         }
       }
@@ -166,6 +169,7 @@ export async function refreshLivePrices(): Promise<Record<string, number>> {
       const prev = d?.prevDailyBar?.c;
       await q(`UPDATE assets SET last_price=$2, change_24h=$3, volume_24h=$4, price_source=$5, price_updated_at=now() WHERE id=$1`,
         [s.id, px, prev ? ((px - prev) / prev) * 100 : 0, d?.dailyBar?.v ? d.dailyBar.v * px : null, `${pid}:${feed === "sip" ? "sip" : "iex"}`]);
+      await recordTick(s.id, px, `${pid}:${feed === "sip" ? "sip" : "iex"}`);
       n++;
     }
     counts[pid] = n;

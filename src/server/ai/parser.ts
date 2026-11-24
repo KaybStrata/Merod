@@ -135,6 +135,28 @@ export function extractAsset(text: string): { symbol: string | null; contract: s
   return { symbol: null, contract: null, network };
 }
 
+/** Every asset named in a question ("compare BTC and ETH", "nvda vs amd"), in order, up to `max`. */
+export function extractAssets(text: string, max = 3): { symbol: string | null; contract: string | null; network: string | null }[] {
+  const out: { symbol: string | null; contract: string | null; network: string | null }[] = [];
+  const seen = new Set<string>();
+  const push = (a: { symbol: string | null; contract: string | null; network: string | null }) => {
+    const k = (a.contract ?? a.symbol ?? "").toUpperCase();
+    if (k && !seen.has(k) && out.length < max) { seen.add(k); out.push(a); }
+  };
+  const first = extractAsset(text);
+  if (first.contract) push(first);
+  for (const m of text.matchAll(/\$([A-Za-z]{1,10})\b/g)) push({ symbol: m[1].toUpperCase(), contract: null, network: first.network });
+  const n = normalize(text);
+  for (const [name, sym] of Object.entries(NAME_ALIASES)) if (new RegExp(`\\b${name.replace("&", "\\&")}\\b`).test(n)) push({ symbol: sym, contract: null, network: first.network });
+  for (const [name, sym] of CATALOG.names) if (name.includes(" ") && n.includes(name)) push({ symbol: sym, contract: null, network: first.network });
+  for (const w of n.match(/[a-z][a-z0-9.-]*/g) ?? []) {
+    if (CATALOG.names.has(w)) push({ symbol: CATALOG.names.get(w)!, contract: null, network: first.network });
+    else if (!ENGLISH.has(w) && !STOP_WORDS.has(w) && !VOCAB_SET.has(w) && CATALOG.symbols.has(w.toUpperCase())) push({ symbol: w.toUpperCase(), contract: null, network: first.network });
+  }
+  if (!out.length && first.symbol) push(first);
+  return out;
+}
+
 function amount(text: string): { type: TradeLeg["amount_type"]; value: number | null } {
   const t = normalize(text);
   if (/\bhalf\b/.test(t)) return { type: "percent_position", value: 50 };

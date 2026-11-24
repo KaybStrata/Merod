@@ -7,7 +7,7 @@ import { Badge, cx } from "@/components/ui";
 import { ago } from "@/lib/format";
 
 type Step = { text: string; kind: string; at: number };
-const STEP_ICON: Record<string, any> = { read: Newspaper, signal: TrendingUp, think: Brain, idea: Lightbulb, warn: AlertTriangle, learn: Brain };
+const STEP_ICON: Record<string, any> = { news: Newspaper, read: Newspaper, signal: TrendingUp, think: Brain, idea: Lightbulb, warn: AlertTriangle, learn: Brain };
 const LABEL: Record<string, string> = { news: "News", crowd: "Trader flow", momentum: "Momentum", own: "Your book" };
 const pctTxt = (x: number | null) => (x == null ? "pending" : `${x >= 0 ? "+" : ""}${(Number(x) * 100).toFixed(1)}%`);
 
@@ -46,6 +46,7 @@ export function ModoPanel({ active }: { active: boolean }) {
   useEffect(() => { listRef.current?.scrollTo({ top: 1e9, behavior: "smooth" }); }, [steps]);
 
   const ideas: any[] = data?.ideas ?? [];
+  const news: any[] = data?.news ?? [];
   const st = data?.state;
   const graded = st?.stats?.graded ?? 0;
   return (
@@ -69,13 +70,33 @@ export function ModoPanel({ active }: { active: boolean }) {
             const Icon = STEP_ICON[s.kind] ?? Brain;
             return (
               <div key={i} className="fade-up flex gap-1.5 text-[11px] leading-snug">
-                <Icon className={cx("mt-px size-3 shrink-0", s.kind === "idea" ? "text-accent-2" : s.kind === "warn" ? "text-warn" : "text-faint")} />
-                <span className={s.kind === "idea" ? "text-text" : "text-muted"}>{s.text}</span>
+                <Icon className={cx("mt-px size-3 shrink-0", s.kind === "idea" || s.kind === "news" ? "text-accent-2" : s.kind === "warn" ? "text-warn" : "text-faint")} />
+                <span className={s.kind === "idea" || s.kind === "news" ? "text-text" : "text-muted"}>{s.text}</span>
               </div>
             );
           })}
           {thinking && <div className="flex items-center gap-1.5 text-[11px] text-faint"><Loader2 className="size-3 animate-spin" /> working…</div>}
         </div>
+      </section>
+
+      {/* News facts: real headlines, quoted exactly, with source and link */}
+      <section>
+        <h4 className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-faint"><Newspaper className="size-3" /> News facts</h4>
+        {news.length === 0 ? <p className="text-[11px] text-faint">{data ? "No recent headlines from the news feeds right now." : "Loading headlines…"}</p> : (
+          <ul className="space-y-1.5">
+            {news.slice(0, 6).map((n: any) => (
+              <li key={n.url} className="rounded-xl border border-line bg-panel p-2.5">
+                <a href={n.url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium leading-snug text-text hover:text-accent-2">{n.title}</a>
+                {n.summary && <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted">{n.summary}</p>}
+                <div className="mt-1 flex flex-wrap items-center gap-1 text-[9px] text-faint">
+                  <span className={cx("rounded px-1 py-0.5", n.tone === "positive" ? "bg-up/15 text-up" : n.tone === "negative" ? "bg-down/15 text-down" : "bg-panel-2")}>{n.why}</span>
+                  <span>{n.source}</span>
+                  {n.publishedAt && <span className="ml-auto">{ago(n.publishedAt)}</span>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {/* Ideas */}

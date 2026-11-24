@@ -11,7 +11,7 @@ import { aiAvailable, llmModoIdeas } from "../ai/llm";
  * Learning: every idea is checked 1h and 24h later; signal weights move toward what has been right.
  * Ideas are suggestions only: acting on one goes through the normal order engine and your confirmations.
  */
-type Step = (text: string, kind?: "read" | "signal" | "think" | "idea" | "learn" | "warn") => void | Promise<void>;
+type Step = (text: string, kind?: "read" | "signal" | "think" | "idea" | "learn" | "warn" | "news") => void | Promise<void>;
 type Weights = { news: number; crowd: number; momentum: number; own: number };
 const DEFAULT_W: Weights = { news: 1, crowd: 1, momentum: 1, own: 1 };
 
@@ -19,6 +19,29 @@ const POS = /\b(surge[sd]?|soar[sd]?|rall(y|ies|ied)|jump[sd]?|gain[sd]?|beat[sd
 const NEG = /\b(plunge[sd]?|crash(es|ed)?|tumble[sd]?|slump[sd]?|fall[s]?|fell|drop[s]?|sink[s]?|miss(es|ed)?|downgrade[sd]?|lawsuit|sue[sd]?|hack(ed)?|exploit|ban(s|ned)?|probe|bearish|outflows?|fraud|bankrupt|delist(ed)?|layoffs?)\b/i;
 const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
+const agoText = (iso: string) => { const m = Math.max(1, Math.round((Date.now() - Date.parse(iso)) / 60_000)); return m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`; };
+
+export type NewsFact = { title: string; url: string; source: string; publishedAt: string | null; summary: string; symbols: string[]; why: string; tone: "positive" | "negative" | "neutral" };
+
+/**
+ * News facts for this user: real headlines from the news feeds, word for word with source, time and link
+ * (never rewritten by AI). Ranked by relevance: assets you hold, then your watchlist, then any ticker news, newest first.
+ */
+export async function newsFacts(userId: string, limit = 8, items?: any[]): Promise<NewsFact[]> {
+  const list = items ?? (await getNews({ limit: 120 }).catch(() => ({ items: [] as any[] }))).items;
+  const held = new Set((await q<{ symbol: string }>("SELECT DISTINCT a.symbol FROM positions p JOIN assets a ON a.id=p.asset_id WHERE p.user_id=$1 AND p.quantity>0", [userId])).map((r) => r.symbol));
+  const watched = new Set((await q<{ symbol: string }>("SELECT DISTINCT a.symbol FROM watchlists w JOIN watchlist_items i ON i.watchlist_id=w.id JOIN assets a ON a.id=i.asset_id WHERE w.user_id=$1", [userId]).catch(() => [])).map((r) => r.symbol));
+  const now = Date.now();
+  return list.map((a: any) => {
+    const h = a.symbols.filter((x: string) => held.has(x)), w = a.symbols.filter((x: string) => watched.has(x));
+    const ageH = a.publishedAt ? (now - Date.parse(a.publishedAt)) / 3_600_000 : 48;
+    const score = h.length * 6 + w.length * 4 + (a.symbols.length ? 2 : 0) - Math.min(ageH, 72) / 12;
+    const tone = POS.test(a.title) && !NEG.test(a.title) ? "positive" : NEG.test(a.title) && !POS.test(a.title) ? "negative" : "neutral";
+    const why = h.length ? `You hold ${h.join(", ")}` : w.length ? `On your list: ${w.join(", ")}` : a.symbols.length ? `Mentions ${a.symbols.slice(0, 3).join(", ")}` : "Market news";
+    return { score, fact: { title: a.title, url: a.url, source: a.source, publishedAt: a.publishedAt, summary: String(a.summary ?? "").slice(0, 220), symbols: a.symbols.slice(0, 4), why, tone } as NewsFact };
+  }).filter((x: any) => x.fact.publishedAt == null || now - Date.parse(x.fact.publishedAt) < 3 * 86_400_000)
+    .sort((a: any, b: any) => b.score - a.score).slice(0, limit).map((x: any) => x.fact);
+}
 
 export async function modoState(userId: string) {
   const s = await one<{ weights: Weights; stats: any; notes: any[]; updated_at: string }>("SELECT weights, stats, notes, updated_at FROM modo_state WHERE user_id=$1", [userId]);
@@ -43,6 +66,9 @@ export async function think(userId: string, step: Step) {
     }
   }
   await step(news.items.length ? `Read ${news.items.length} headlines from ${news.sources.filter((s: any) => s.ok).map((s: any) => s.source).join(", ") || "news feeds"}; ${newsBy.size} mention specific tickers.` : "No headlines available right now, so I'll lean on trading flow and momentum.", "read");
+  // Relevant news facts, quoted exactly as published.
+  const facts = await newsFacts(userId, 4, news.items).catch(() => []);
+  for (const f of facts) await step(`${f.source}${f.publishedAt ? `, ${agoText(f.publishedAt)}` : ""}: “${f.title}” (${f.why.toLowerCase()})`, "news");
   const topNews = [...newsBy.entries()].sort((a, b) => (b[1].pos + b[1].neg) - (a[1].pos + a[1].neg)).slice(0, 3);
   for (const [sym, e] of topNews) await step(`${sym} in the news: ${e.pos} positive, ${e.neg} negative. e.g. “${e.titles[0]}”`, "signal");
 
