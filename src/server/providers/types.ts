@@ -1,4 +1,4 @@
-export type ProviderCategory = "crypto_execution" | "stock_execution" | "market_data" | "blockchain_infra" | "wallet" | "ai";
+export type ProviderCategory = "crypto_execution" | "crypto_exchange" | "stock_execution" | "market_data" | "blockchain_infra" | "wallet" | "ai";
 export type ProviderEnv = "sandbox" | "production";
 export type IntegrationStatus =
   | "not_configured" | "credentials_configured" | "testing" | "sandbox_connected" | "awaiting_approval"
@@ -13,7 +13,8 @@ export interface CredentialField {
 }
 export interface SettingField { key: string; label: string; defaults: Partial<Record<ProviderEnv, string>>; help?: string }
 
-export interface TestResult { ok: boolean; message: string; latencyMs?: number; detail?: Record<string, unknown> }
+/** `unverified`: keys were stored, but this provider's auth (OAuth login, local gateway, single-use token) can't be checked automatically. */
+export interface TestResult { ok: boolean; message: string; latencyMs?: number; detail?: Record<string, unknown>; unverified?: boolean }
 
 export interface ProviderContext {
   env: ProviderEnv;

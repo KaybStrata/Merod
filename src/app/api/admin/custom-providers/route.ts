@@ -8,7 +8,7 @@ import { PROVIDERS } from "@/server/providers/catalog";
 
 const Create = z.object({
   name: z.string().min(2).max(60),
-  category: z.enum(["crypto_execution", "stock_execution", "market_data", "blockchain_infra", "wallet", "ai"]),
+  category: z.enum(["crypto_execution", "crypto_exchange", "stock_execution", "market_data", "blockchain_infra", "wallet", "ai"]),
   description: z.string().max(500).default(""),
   docsUrl: z.string().url().max(500).optional().or(z.literal("")),
   baseUrl: z.string().url().max(500).refine((u) => u.startsWith("https://"), "Base URL must use https://"),

@@ -1,6 +1,7 @@
 import "@/lib/server-only-shim";
 import type { ProviderContext, ProviderDefinition, TestResult } from "./types";
 import { readJson } from "./http";
+import { DIRECTORY_PROVIDERS } from "./directory";
 
 /**
  * Merod provider catalog. Each entry documents official links, exact environment variable names,
@@ -463,9 +464,10 @@ export const PROVIDERS: ProviderDefinition[] = [
       return { ok: true, message: `Profile ${j.profile.name ?? j.profile.id}` };
     }),
   },
+  ...DIRECTORY_PROVIDERS,
 ];
 
 /** Production requires an explicit compliance approval for these categories even after a successful test. */
-export const APPROVAL_GATED = new Set(["crypto_execution", "stock_execution", "wallet"]);
+export const APPROVAL_GATED = new Set(["crypto_execution", "crypto_exchange", "stock_execution", "wallet"]);
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id);

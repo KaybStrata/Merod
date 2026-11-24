@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { KeyRound, ExternalLink, CheckCircle2, XCircle, Trash2, ShieldCheck, ChevronDown, ChevronRight, ArrowRight } from "lucide-react";
 import { api, useApi } from "@/lib/api";
@@ -7,15 +7,16 @@ import { ago } from "@/lib/format";
 import { Badge, Button, Card, Empty, Pills, Skeleton, cx, useToast } from "@/components/ui";
 
 const CATEGORY: Record<string, string> = {
-  market_data: "Market data", blockchain_infra: "Blockchain infrastructure", wallet: "Wallets", crypto_execution: "Crypto execution", ai: "AI", stock_execution: "Brokerage",
+  market_data: "Market data", blockchain_infra: "Blockchain infrastructure", wallet: "Wallets", crypto_execution: "On-chain swaps", crypto_exchange: "Crypto exchange", ai: "AI", stock_execution: "Brokerage",
 };
 
 /** "Bring your own key": users paste their own API keys; encrypted per user and used only for their own requests. */
-export function UserApiKeys({ categories, providers, title = "My API keys", onChange }: { categories?: string[]; providers?: string[]; title?: string; onChange?: () => void } = {}) {
+export function UserApiKeys({ categories, providers, sections, title = "My API keys", intro, onChange }: { categories?: string[]; providers?: string[]; sections?: string[]; title?: string; intro?: ReactNode; onChange?: () => void } = {}) {
   const { data: raw, loading, refresh } = useApi<{ providers: any[]; keys: any[] }>("/api/me/keys");
-  const data = raw && (categories || providers) ? { ...raw, providers: raw.providers.filter((p) => (!categories || categories.includes(p.category)) && (!providers || providers.includes(p.id))) } : raw;
+  const data = raw && (categories || providers || sections) ? { ...raw, providers: raw.providers.filter((p) => (!categories || categories.includes(p.category)) && (!providers || providers.includes(p.id)) && (!sections || sections.includes(p.directory?.section))) } : raw;
   return (
     <Card title={title} icon={<KeyRound className="size-4 text-accent-2" />}>
+      {intro}
       <p className="mb-4 flex gap-2 rounded-xl border border-line bg-bg-2/60 px-3 py-2.5 text-xs text-muted">
         <ShieldCheck className="mt-px size-4 shrink-0 text-up" />
         <span>Your keys are encrypted and used only for your own requests. Personal brokerage keys trade only your own account. Merod never shows a saved key again. You can replace or remove it at any time.</span>
@@ -65,7 +66,10 @@ function ProviderKeys({ p, keys, onChange }: { p: any; keys: any[]; onChange: ()
         {open ? <ChevronDown className="size-4 text-muted" /> : <ChevronRight className="size-4 text-muted" />}
         <span className="min-w-0 flex-1">
           <span className="font-medium">{p.name}</span> <span className="text-xs text-faint">{CATEGORY[p.category] ?? p.category}{p.userKeys === "personal_account" && " · your own account"}</span>
+          {p.directory?.coverage && <span className="block truncate text-[11px] text-faint">{p.directory.coverage}</span>}
         </span>
+        {p.directory?.access && <Badge className="hidden sm:inline-flex" title="Access type from the Merod API directory">{p.directory.access}</Badge>}
+        {p.routing === false && <Badge tone="warn" title={`Merod saves and checks your ${p.name} keys, but placing orders through ${p.name} isn't built yet.`}>keys only</Badge>}
         {keys.length > 0 && <Badge tone={anyConnected ? "up" : keys.some((k) => k.status === "error") ? "down" : "accent"}>{anyConnected ? "Connected" : keys.some((k) => k.status === "error") ? "Error" : "Saved · untested"}</Badge>}
       </button>
       {open && (
@@ -102,12 +106,15 @@ function ProviderKeys({ p, keys, onChange }: { p: any; keys: any[]; onChange: ()
             {envKeys[0]?.tested_at && <span className="text-[11px] text-faint">Last tested {ago(envKeys[0].tested_at)}</span>}
           </div>
           {(result || (status === "error" && envKeys[0]?.last_error)) && (
-            <p className={cx("flex gap-2 rounded-lg px-3 py-2 text-xs", (result?.ok ?? status === "connected") ? "bg-up-soft text-up" : "bg-down-soft text-down")}>
-              {(result?.ok ?? false) ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <XCircle className="mt-px size-3.5 shrink-0" />}
+            <p className={cx("flex gap-2 rounded-lg px-3 py-2 text-xs", (result?.ok ?? status === "connected") ? "bg-up-soft text-up" : result?.unverified ? "bg-accent-soft text-accent-2" : "bg-down-soft text-down")}>
+              {(result?.ok ?? false) || result?.unverified ? <CheckCircle2 className="mt-px size-3.5 shrink-0" /> : <XCircle className="mt-px size-3.5 shrink-0" />}
               {result?.message ?? envKeys[0]?.last_error}
             </p>
           )}
-          {p.userKeys === "personal_account" && (result?.ok || status === "connected") && (
+          {p.routing === false && (
+            <p className="text-[11px] text-faint">Orders can&apos;t be sent through {p.name} from Merod yet. Your keys are stored safely and ready for when that connection is built.</p>
+          )}
+          {p.userKeys === "personal_account" && p.routing !== false && (result?.ok || status === "connected") && (
             <Link href="/wallet" className="inline-flex items-center gap-1 text-xs text-accent-2 hover:underline">Create a trading account from these keys in Wallet & Funding <ArrowRight className="size-3" /></Link>
           )}
         </div>

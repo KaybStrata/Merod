@@ -6,13 +6,15 @@ import { findProvider } from "@/server/providers/custom";
 import { listUserCredentials, saveUserKeys, userKeyProviders } from "@/server/providers/integrations";
 import { deleteUserCredentials } from "@/server/providers/credentials";
 import { audit } from "@/server/audit";
+import { DIRECTORY_INFO } from "@/server/providers/directory";
+import { adapterById } from "@/server/providers/execution";
 
 /** The user's own pasted API keys ("bring your own key"). Values are never returned — only masked last4 + status. */
 export const GET = route(async () => {
   const u = await requireUser();
   const providers = (await userKeyProviders()).map((p) => ({
     id: p.id, name: p.name, category: p.category, description: p.description, docsUrl: p.docsUrl, signupUrl: p.signupUrl,
-    userKeys: p.userKeys, environments: p.environments, credentials: p.credentials.map((c) => ({ name: c.name, label: c.label, required: c.required, secret: c.secret, help: c.help })),
+    userKeys: p.userKeys, environments: p.environments, directory: DIRECTORY_INFO[p.id] ?? null, routing: !!adapterById(p.id), credentials: p.credentials.map((c) => ({ name: c.name, label: c.label, required: c.required, secret: c.secret, help: c.help })),
   }));
   return ok({ providers, keys: await listUserCredentials(u.id) });
 });

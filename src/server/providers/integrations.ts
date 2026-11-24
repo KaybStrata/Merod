@@ -213,7 +213,7 @@ export async function testUserKeys(userId: string, providerId: string, env: Prov
   const result = await def.test(contextFor(providerId, env, { userId, userOnly: true }));
   const { q } = await import("../db");
   await q("UPDATE user_provider_secrets SET status=$4, last_error=$5, tested_at=now() WHERE user_id=$1 AND provider_id=$2 AND environment=$3",
-    [userId, providerId, env, result.ok ? "connected" : "error", result.ok ? null : result.message.slice(0, 300)]);
+    [userId, providerId, env, result.ok ? "connected" : result.unverified ? "untested" : "error", result.ok ? null : result.message.slice(0, 300)]);
   return result;
 }
 export { listUserCredentials };

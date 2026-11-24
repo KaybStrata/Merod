@@ -23,7 +23,7 @@ const STATUS: Record<Status, { label: string; tone: "neutral" | "accent" | "info
   disabled: { label: "Disabled", tone: "neutral", help: "Turned off by an administrator." },
 };
 const CATEGORY: Record<string, string> = {
-  market_data: "Market data", blockchain_infra: "Blockchain infrastructure", wallet: "Wallets & auth", crypto_execution: "Crypto execution",
+  market_data: "Market data", blockchain_infra: "Blockchain infrastructure", wallet: "Wallets & auth", crypto_execution: "Crypto execution", crypto_exchange: "Crypto exchange (account)",
   ai: "Artificial intelligence", stock_execution: "Stock brokerage",
 };
 const PHASE: Record<number, string> = { 1: "Foundation", 2: "Market data & wallets", 3: "Crypto execution", 4: "AI & automation", 5: "Stock integrations", 6: "Custom / production" };
