@@ -4,7 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useEffect, useState } from "react";
 import {
   Home, Compass, CandlestickChart, Sparkles, Zap, Bot, Users, PieChart, Wallet, Settings, Shield, Bell, Search, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare, Copy, Repeat, LineChart, Bitcoin,
+  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare, Copy, Repeat, LineChart, Bitcoin, Newspaper,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -16,6 +16,7 @@ import { api, useApi } from "@/lib/api";
 const NAV: { href: string; label: string; icon: any; also?: string[] }[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/discover", label: "Discover", icon: Compass },
+  { href: "/news", label: "Articles & News", icon: Newspaper },
   { href: "/bots", label: "Bots & Shortcut Buttons", icon: Bot, also: ["/shortcuts"] },
   { href: "/activity", label: "Live & World Activity", icon: Radio, also: ["/world"] },
   { href: "/learning", label: "Auto-Training", icon: Brain, also: ["/training"] },
@@ -207,15 +208,16 @@ function TopBar({ onMenu, unread, connected }: { onMenu: () => void; unread: num
 function DiscoverSubLinks() {
   const pathname = usePathname();
   const sp = useSearchParams();
-  const cls = pathname === "/discover" ? sp.get("class") : null;
+  const cls = pathname === "/discover" ? (sp.get("tab") === "articles" ? "articles" : sp.get("class")) : null;
   const items = [
     { cls: "stocks", label: "Stocks", icon: LineChart },
     { cls: "crypto", label: "Crypto", icon: Bitcoin },
+    { cls: "articles", label: "Articles", icon: Newspaper },
   ];
   return (
     <div className="mb-1 ml-6 flex flex-col gap-0.5 border-l border-line pl-2">
       {items.map((i) => (
-        <Link key={i.cls} href={`/discover?class=${i.cls}`}
+        <Link key={i.cls} href={i.cls === "articles" ? "/discover?tab=articles" : `/discover?class=${i.cls}`}
           className={cx("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
             cls === i.cls ? "bg-accent-soft text-text" : "text-muted hover:bg-panel-2 hover:text-text")}>
           <i.icon className={cx("size-3.5", cls === i.cls && "text-accent-2")} />{i.label}

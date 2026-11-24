@@ -1,4 +1,5 @@
 "use client";
+import { NewsFeed } from "@/components/NewsFeed";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -8,8 +9,8 @@ import { Card, Badge, Pills, Sparkline, Skeleton, Empty, ChangeText, AssetIcon, 
 import { price, compact, usd, ago } from "@/lib/format";
 import { TradabilityBadge } from "@/components/terminal/TradabilityBadge";
 
-type Tab = "trending" | "new" | "gainers" | "losers" | "volume" | "cap";
-const SORT: Record<Tab, string> = { trending: "volume", new: "new", gainers: "gainers", losers: "losers", volume: "volume", cap: "cap" };
+type Tab = "trending" | "new" | "gainers" | "losers" | "volume" | "cap" | "articles";
+const SORT: Record<Tab, string> = { trending: "volume", new: "new", gainers: "gainers", losers: "losers", volume: "volume", cap: "cap", articles: "volume" };
 
 function DiscoverInner() {
   const router = useRouter();
@@ -17,6 +18,8 @@ function DiscoverInner() {
   const toast = useToast();
   const tabParam = sp.get("tab") ?? "";
   const [tab, setTab] = useState<Tab>(tabParam in SORT ? (tabParam as Tab) : "trending");
+  // Menu links (Stocks / Crypto / Articles) change the URL while this page stays open.
+  useEffect(() => { setTab((t) => (tabParam in SORT ? (tabParam as Tab) : t === "articles" ? "trending" : t)); }, [tabParam]);
   const [term, setTerm] = useState(sp.get("q") ?? "");
   const [debounced, setDebounced] = useState(term);
   const clsParam = sp.get("class");
@@ -90,9 +93,11 @@ function DiscoverInner() {
         <Pills value={tab} onChange={setTab} options={[
           { value: "trending", label: "Trending" }, { value: "new", label: "New tokens" }, { value: "gainers", label: "Top gainers" },
           { value: "losers", label: "Top losers" }, { value: "volume", label: "Volume" }, { value: "cap", label: "Market cap" },
+          { value: "articles", label: "Articles" },
         ]} />
       </div>
 
+      {tab === "articles" ? <NewsFeed category={cls} query={debounced} /> : (
       <Card pad={false}>
         {!res.data ? <div className="space-y-2 p-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-10" />)}</div> : res.data.assets.length === 0 ? (
           <div className="p-4">
@@ -140,6 +145,7 @@ function DiscoverInner() {
           </div>
         )}
       </Card>
+      )}
 
       <WatchlistModal open={listModal} onClose={() => setListModal(false)} data={wl.data} refresh={wl.refresh} />
     </div>
