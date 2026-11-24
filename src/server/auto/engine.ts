@@ -6,6 +6,7 @@ import { publish } from "../realtime";
 import { place, notify } from "../engine/engine";
 import { backtest } from "../bots/runner";
 import { isRealSource } from "../ai/market-answers";
+import { think as modoThink } from "../modo/engine";
 
 /**
  * AUTO TRADING (owner only)
@@ -36,7 +37,8 @@ const money = (n: number) => `$${Number(n).toLocaleString("en-US", { maximumFrac
 export async function getSettings(userId: string) {
   return (await one<any>("SELECT * FROM auto_trading WHERE user_id=$1", [userId]))
     ?? { user_id: userId, enabled: false, account_id: null, markets: "both", trade_usd: 100, max_daily_usd: 500, max_open: 5, min_confidence: 0.6,
-         min_theory_trades: 5, min_theory_win_rate: 0.55, take_profit_pct: 4, stop_loss_pct: 2, weights: DEFAULT_WEIGHTS, last_run_at: null };
+         min_theory_trades: 5, min_theory_win_rate: 0.55, take_profit_pct: 4, stop_loss_pct: 2, weights: DEFAULT_WEIGHTS, last_run_at: null,
+         asset_ids: [], modo_autopilot: false, modo_min_confidence: 0.5, modo_last_run_at: null, modo_thoughts: [] };
 }
 
 export async function saveSettings(userId: string, patch: Partial<{ enabled: boolean; accountId: string | null; markets: string; tradeUsd: number; maxDailyUsd: number; maxOpen: number;
@@ -172,7 +174,7 @@ export async function closeTrade(userId: string, t: any, px: number, reason: str
 }
 
 /** Close theory/real trades that hit take-profit, stop-loss or 24h. */
-async function manageOpen(userId: string, cfg: any) {
+export async function manageOpen(userId: string, cfg: any) {
   const open = await q<any>("SELECT * FROM auto_trades WHERE user_id=$1 AND status='open' ORDER BY created_at", [userId]);
   let closed = 0;
   for (const t of open) {
@@ -333,4 +335,84 @@ export async function overview(userId: string) {
   const real = await one<any>("SELECT count(*)::int AS n, count(*) FILTER (WHERE return_pct>0)::int AS wins, COALESCE(sum(return_pct),0) AS sum FROM auto_trades WHERE user_id=$1 AND mode='real' AND status='closed'", [userId]);
   return { settings: { ...settings, weights: { ...DEFAULT_WEIGHTS, ...(settings.weights ?? {}) } }, theory: record,
     real: { trades: real?.n ?? 0, wins: real?.wins ?? 0, totalReturnPct: Number(real?.sum ?? 0) }, trades };
+}
+
+/* ───────────────────────── Modo Autopilot ───────────────────────── */
+/**
+ * Modo scans news and markets (headlines, other traders' flow weighted by how profitable they've been, momentum,
+ * your book), and trades its own ideas directly: buys on buy ideas, sells its open trades on sell ideas. There is no cap
+ * on how many trades it takes. Every result feeds back into the learned weights (Modo's own grading + these trades).
+ * Real-money orders still need the platform's real-money switches and pass every risk check in the order engine.
+ */
+export async function setModoAutopilot(userId: string, on: boolean, minConfidence?: number) {
+  await getSettings(userId);
+  await q(`INSERT INTO auto_trading (user_id, modo_autopilot, modo_min_confidence) VALUES ($1,$2,COALESCE($3,0.5))
+           ON CONFLICT (user_id) DO UPDATE SET modo_autopilot=$2, modo_min_confidence=COALESCE($3, auto_trading.modo_min_confidence), updated_at=now()`, [userId, on, minConfidence ?? null]);
+  await audit({ actorType: "user", actorId: userId, userId, action: on ? "modo_autopilot.enabled" : "modo_autopilot.disabled", data: {} });
+}
+
+export async function runModoAutopilotFor(userId: string) {
+  const cfg = await getSettings(userId);
+  if (!cfg.modo_autopilot) return { skipped: "off" };
+  await q("UPDATE auto_trading SET modo_last_run_at=now() WHERE user_id=$1", [userId]);
+  await manageOpen(userId, cfg); // exits (take-profit / stop-loss / 24h) and learning on every pass
+  const thoughts: { text: string; kind: string; at: number }[] = [];
+  const ideas = await modoThink(userId, (text, kind = "think") => { thoughts.push({ text, kind, at: Date.now() }); });
+  const account = await accountFor(userId, cfg.account_id);
+  let bought = 0, sold = 0;
+  for (const idea of ideas) {
+    const conf = Number(idea.confidence);
+    if (idea.side === "sell") {
+      const open = await q<any>("SELECT * FROM auto_trades WHERE user_id=$1 AND asset_id=$2 AND status='open'", [userId, idea.asset_id]);
+      for (const t of open) {
+        const px = await livePrice(t.asset_id);
+        if (px && await closeTrade(userId, t, px, `Modo sell signal: ${String(idea.thesis).slice(0, 120)}`)) { sold++; thoughts.push({ text: `Sold my ${t.symbol} trade: ${idea.thesis}`, kind: "idea", at: Date.now() }); }
+      }
+      continue;
+    }
+    if (conf < Number(cfg.modo_min_confidence)) { thoughts.push({ text: `Not trading ${idea.symbol}: ${Math.round(conf * 100)}% confidence is under my ${Math.round(Number(cfg.modo_min_confidence) * 100)}% bar.`, kind: "think", at: Date.now() }); continue; }
+    if (await one("SELECT 1 FROM auto_trades WHERE user_id=$1 AND asset_id=$2 AND status='open'", [userId, idea.asset_id])) continue;
+    const px = await livePrice(idea.asset_id);
+    if (!px) { thoughts.push({ text: `Skipping ${idea.symbol}: no live price from a real data source right now.`, kind: "warn", at: Date.now() }); continue; }
+    if (!account) { thoughts.push({ text: "No trading account to use.", kind: "warn", at: Date.now() }); break; }
+    const sig = idea.signals ?? {};
+    const signals: Signals = {
+      merod: { value: Number(sig.crowd ?? 0), evidence: "other Merod traders' flow (profitable traders weigh more)" },
+      thirdParty: { value: 0, evidence: "not used by Modo Autopilot" },
+      modo: { value: conf, evidence: String(idea.thesis).slice(0, 160) },
+      backtest: { value: 0, evidence: "not used by Modo Autopilot" },
+      momentum: { value: Number(sig.momentum ?? 0), evidence: "24h price move" },
+    };
+    const before = `[Modo Autopilot] Buying ${idea.symbol} at ${Math.round(conf * 100)}% confidence. ${idea.thesis}\n• News ${Number(sig.news ?? 0).toFixed(2)} · trader flow ${Number(sig.crowd ?? 0).toFixed(2)} · momentum ${Number(sig.momentum ?? 0).toFixed(2)} · your book ${Number(sig.own ?? 0).toFixed(2)}${idea.risk ? `\n• Risk: ${idea.risk}` : ""}`;
+    const row = await one<{ id: string }>(
+      `INSERT INTO auto_trades (user_id, asset_id, symbol, side, mode, status, signals, score, confidence, entry_price, explain_before, origin)
+       VALUES ($1,$2,$3,'buy','real','open',$4,$5,$6,$7,$8,'modo') RETURNING id`, [userId, idea.asset_id, idea.symbol, JSON.stringify(signals), conf, conf, px, before]);
+    try {
+      const { order } = await place({ asset: { assetId: idea.asset_id }, side: "buy", orderType: "market", notionalUsd: Number(cfg.trade_usd), timeInForce: "gtc", accountId: account.id } as any,
+        { userId, source: "auto", sourceRef: row!.id, idempotencyKey: `modo-auto:${row!.id}`, actor: { type: "system", id: "modo-autopilot" }, userConfirmed: account.kind === "paper" } as any);
+      const ok = ["filled", "partially_filled", "submitted"].includes(order.status);
+      const fill = Number(order.avg_fill_price) || null;
+      const during = ok ? `Order ${order.status}${fill ? ` at ${money(fill)}` : ""} in your ${account.kind === "paper" ? "paper" : "live"} account. Exits at +${cfg.take_profit_pct}% / −${cfg.stop_loss_pct}%, 24h, or a Modo sell signal.`
+        : order.status === "pending_approval" ? "Waiting for your approval (real-money automation needs approval)." : `Order ${order.status}: ${order.status_reason ?? "rejected by the risk checks"}.`;
+      await q(`UPDATE auto_trades SET order_id=$2, explain_during=$3, entry_price=COALESCE($4, entry_price), status=CASE WHEN $5 OR $6 THEN 'open' ELSE 'failed' END WHERE id=$1`,
+        [row!.id, order.id, during, fill, ok, order.status === "pending_approval"]);
+      if (ok) bought++;
+      thoughts.push({ text: `Bought ${idea.symbol}: ${during}`, kind: "idea", at: Date.now() });
+      await publish(`user:${userId}`, "auto", { id: row!.id, phase: "before", symbol: idea.symbol, mode: "real", origin: "modo" });
+    } catch (e: any) {
+      await q("UPDATE auto_trades SET status='failed', explain_during=$2 WHERE id=$1", [row!.id, `Order failed: ${e.message}`]);
+    }
+  }
+  if (!ideas.length) thoughts.push({ text: "No trade this round: the signals don't agree strongly enough.", kind: "think", at: Date.now() });
+  await q("UPDATE auto_trading SET modo_thoughts=$2 WHERE user_id=$1", [userId, JSON.stringify(thoughts.slice(-40))]);
+  return { bought, sold, ideas: ideas.length };
+}
+
+/** Worker entry: Modo thinks every 3 minutes for each owner with Autopilot on (exits are checked on each pass). */
+export async function runModoAutopilot() {
+  const users = await q<{ user_id: string }>(
+    `SELECT t.user_id FROM auto_trading t JOIN users u ON u.id=t.user_id AND u.role='super_admin'
+      WHERE t.modo_autopilot AND (t.modo_last_run_at IS NULL OR t.modo_last_run_at < now() - interval '170 seconds')`);
+  for (const u of users) { try { await runModoAutopilotFor(u.user_id); } catch (e: any) { console.error("[modo-autopilot]", e.message); } }
+  return users.length;
 }

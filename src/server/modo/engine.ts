@@ -73,12 +73,17 @@ export async function think(userId: string, step: Step) {
   for (const [sym, e] of topNews) await step(`${sym} in the news: ${e.pos} positive, ${e.neg} negative. e.g. “${e.titles[0]}”`, "signal");
 
   // 2) Other traders on Merod (anonymous totals, last 6h)
+  // Learned from other users' results: each trader's flow counts 0.5×–1.5× by how profitable their closed trades were (30 days).
   const crowd = await q<{ asset_id: string; symbol: string; net: string; traders: number }>(
-    `SELECT a.id AS asset_id, a.symbol, SUM(CASE WHEN o.side='buy' THEN e.quantity*e.price ELSE -e.quantity*e.price END) AS net, count(DISTINCT o.user_id)::int AS traders
-       FROM executions e JOIN orders o ON o.id=e.order_id JOIN assets a ON a.id=o.asset_id
-      WHERE e.executed_at > now() - interval '6 hours' AND o.user_id <> $1 AND NOT ('demo_data' = ANY(a.risk_flags))
-      GROUP BY a.id, a.symbol ORDER BY abs(SUM(CASE WHEN o.side='buy' THEN e.quantity*e.price ELSE -e.quantity*e.price END)) DESC LIMIT 15`, [userId]);
-  await step(crowd.length ? `Checked the last 6 hours of trading by other Merod users: ${crowd.length} assets with activity.` : "Other Merod traders have been quiet in the last 6 hours.", "read");
+    `WITH skill AS (
+       SELECT user_id, 0.5 + COALESCE(count(*) FILTER (WHERE realized_pnl > 0)::numeric / NULLIF(count(*),0), 0.5) AS w
+         FROM orders WHERE side='sell' AND status='filled' AND updated_at > now() - interval '30 days' GROUP BY user_id)
+     SELECT a.id AS asset_id, a.symbol,
+            SUM(COALESCE(sk.w, 1) * CASE WHEN o.side='buy' THEN e.quantity*e.price ELSE -e.quantity*e.price END) AS net, count(DISTINCT o.user_id)::int AS traders
+       FROM executions e JOIN orders o ON o.id=e.order_id JOIN assets a ON a.id=o.asset_id LEFT JOIN skill sk ON sk.user_id=o.user_id
+      WHERE e.executed_at > now() - interval '6 hours' AND o.user_id <> $1 AND o.source NOT IN ('auto','copy') AND NOT ('demo_data' = ANY(a.risk_flags))
+      GROUP BY a.id, a.symbol ORDER BY abs(SUM(COALESCE(sk.w, 1) * CASE WHEN o.side='buy' THEN e.quantity*e.price ELSE -e.quantity*e.price END)) DESC LIMIT 15`, [userId]);
+  await step(crowd.length ? `Checked the last 6 hours of trading by other Merod users: ${crowd.length} assets with activity (traders with profitable recent trades count more).` : "Other Merod traders have been quiet in the last 6 hours.", "read");
   for (const c of crowd.slice(0, 2)) await step(`${c.traders} trader${c.traders > 1 ? "s" : ""} net ${Number(c.net) >= 0 ? "bought" : "sold"} $${Math.abs(Number(c.net)).toFixed(0)} of ${c.symbol}.`, "signal");
 
   // 3) Your own book

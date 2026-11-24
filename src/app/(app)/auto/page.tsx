@@ -77,6 +77,8 @@ export default function AutoTradingWorkspace() {
         </button>
       </div>
 
+      <ModoAutopilot data={data} onChange={refresh} />
+
       {/* Strategy bar */}
       <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-line bg-panel/80 p-2">
         <span className="flex shrink-0 items-center gap-2 px-2 text-sm font-semibold"><Layers className="size-4 text-accent-2" /> Active Strategies ({activeStrategies.length})</span>
@@ -129,7 +131,7 @@ export default function AutoTradingWorkspace() {
               <li key={t.id}><button onClick={() => setDetail(t)} className="flex w-full items-center gap-2 rounded-lg px-1.5 py-1 text-left text-xs hover:bg-panel-2">
                 <span className="w-4 text-faint">{i + 1}</span>
                 <span className="flex w-20 items-center gap-1.5 font-semibold"><AssetIcon symbol={t.symbol} size={16} />{t.symbol}</span>
-                <span className="flex-1 truncate text-muted">{t.mode === "real" ? `Buy ${t.notional_usd ? usd(Number(t.notional_usd)) : ""}` : "Theoretical buy"}{t.strategy ? ` · ${t.strategy}` : ""}</span>
+                <span className="flex-1 truncate text-muted">{t.origin === "modo" ? "Modo · " : ""}{t.mode === "real" ? `Buy ${t.notional_usd ? usd(Number(t.notional_usd)) : ""}` : "Theoretical buy"}{t.strategy ? ` · ${t.strategy}` : ""}</span>
                 <QueueState t={t} />
               </button></li>))}</ol>
           )}
@@ -445,5 +447,52 @@ function SettingsForm({ s, onSaved }: { s: any; onSaved: () => void }) {
       </div>
       <div className="mt-2 flex justify-end"><Button variant="primary" loading={busy} onClick={save}>Save settings</Button></div>
     </div>
+  );
+}
+
+/** Modo Autopilot: Modo scans news + markets and trades on its own, learning from every result. */
+function ModoAutopilot({ data, onChange }: { data: any; onChange: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const s = data?.settings;
+  const on = !!s?.modo_autopilot;
+  const thoughts: any[] = s?.modo_thoughts ?? [];
+  const m = data?.modo;
+  async function patch(body: any, msg?: string) {
+    setBusy(true);
+    try { await api("/api/auto", { method: "PATCH", json: body }); onChange(); if (msg) toast(msg, "up"); }
+    catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
+  }
+  return (
+    <section className={cx("rounded-2xl border p-3", on ? "border-accent/50 bg-accent-soft/40" : "border-line bg-panel/80")}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 max-w-3xl">
+          <h2 className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-accent-2" /> Modo Autopilot {on && <Badge tone="up">ON</Badge>}</h2>
+          <p className="mt-0.5 text-xs text-muted">Modo scans news and articles, reads what other traders are doing (traders with profitable recent trades count more), checks momentum and your positions, and places its own trades: no limit on how many. It sells when it changes its mind, at take-profit / stop-loss, or after 24h, and trains itself on every profitable and unprofitable result.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select aria-label="Minimum confidence" value={String(Math.round(Number(s?.modo_min_confidence ?? 0.5) * 100))} disabled={!s || busy} onChange={(e) => patch({ modoMinConfidence: Number(e.target.value) / 100 }, "Saved")}>
+            {[40, 50, 60, 70, 80].map((v) => <option key={v} value={v}>Trade at {v}%+ confidence</option>)}
+          </Select>
+          <button onClick={() => patch({ modoAutopilot: !on }, on ? "Modo Autopilot is OFF" : "Modo Autopilot is ON: Modo is thinking…")} disabled={!s || busy} aria-label="Modo Autopilot switch"
+            className={cx("relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50", on ? "bg-up" : "bg-panel-2")}>
+            {busy ? <Loader2 className="absolute left-3.5 top-1.5 size-4 animate-spin text-white" /> : <span className={cx("absolute top-1 size-5 rounded-full bg-white transition-all", on ? "left-[26px]" : "left-1")} />}
+          </button>
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
+          <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Modo trades</div><div className="num text-sm font-semibold">{m?.trades ?? 0}</div><div className="text-faint">{m?.open ?? 0} open</div></div>
+          <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Win rate</div><div className="num text-sm font-semibold">{m?.closed ? `${Math.round((m.wins / m.closed) * 100)}%` : "—"}</div><div className="text-faint">{m?.wins ?? 0}/{m?.closed ?? 0} closed</div></div>
+          <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Total return</div><div className={cx("num text-sm font-semibold", Number(m?.total_return) >= 0 ? "text-up" : "text-down")}>{m?.closed ? pct(Number(m.total_return)) : "—"}</div><div className="text-faint">{s?.modo_last_run_at ? `thought ${ago(s.modo_last_run_at)}` : "not run yet"}</div></div>
+        </div>
+        <div className="max-h-28 overflow-y-auto rounded-lg border border-line bg-bg/40 p-2 lg:col-span-2">
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">Modo's latest thinking</div>
+          {thoughts.length === 0 ? <p className="text-[11px] text-faint">{on ? "Thinking… the first pass appears here within a minute." : "Turn it on to watch Modo scan the news and trade."}</p>
+            : <ul className="space-y-0.5">{thoughts.slice(-10).map((t, i) => <li key={i} className={cx("text-[11px] leading-snug", t.kind === "idea" || t.kind === "news" ? "text-text" : t.kind === "warn" ? "text-warn" : "text-muted")}>• {t.text}</li>)}</ul>}
+        </div>
+      </div>
+      <p className="mt-2 text-[10px] text-faint">Trades use the account and “$ per trade” from Settings below (paper by default). Real-money trades also need the real-money switches in Admin and still pass every risk check.</p>
+    </section>
   );
 }

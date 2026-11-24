@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { requireSuperAdmin } from "@/server/auth";
 import { ok, parse, route } from "@/server/http";
-import { overview, saveSettings, runFor } from "@/server/auto/engine";
+import { overview, saveSettings, runFor, setModoAutopilot, runModoAutopilotFor } from "@/server/auto/engine";
 
 /** Auto trading (owner only). GET: settings, theoretical + real record, recent trades with Modo's explanations. */
 export const GET = route(async () => {
@@ -22,13 +22,22 @@ const Patch = z.object({
   minTheoryWinRate: z.number().min(0).max(1).optional(),
   takeProfitPct: z.number().min(0.1).max(500).optional(),
   stopLossPct: z.number().min(0.1).max(100).optional(),
+  modoAutopilot: z.boolean().optional(),
+  modoMinConfidence: z.number().min(0.3).max(0.95).optional(),
 }).strict();
 
 /** Change settings or flip the on/off switch. Turning it on runs a first pass right away. */
+export const maxDuration = 60;
+
 export const PATCH = route(async (req) => {
   const u = await requireSuperAdmin();
   const b = await parse(req, Patch);
-  await saveSettings(u.id, b);
+  const { modoAutopilot, modoMinConfidence, ...rest } = b;
+  if (Object.keys(rest).length) await saveSettings(u.id, rest);
+  if (modoAutopilot !== undefined || modoMinConfidence !== undefined) {
+    await setModoAutopilot(u.id, modoAutopilot ?? (await overview(u.id)).settings.modo_autopilot, modoMinConfidence);
+    if (modoAutopilot) await runModoAutopilotFor(u.id).catch(() => {});
+  }
   if (b.enabled) await runFor(u.id).catch(() => {});
   return ok(await overview(u.id));
 });

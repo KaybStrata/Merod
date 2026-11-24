@@ -43,7 +43,7 @@ export async function workspace(userId: string) {
 
   // Concurrent queue: the latest auto decisions and where each one is.
   const queue = (await q<any>(
-    `SELECT t.id, t.symbol, t.mode, t.status, t.confidence, t.created_at, t.explain_before, t.explain_during, t.explain_after, t.return_pct, o.status AS order_status, o.notional_usd, s.name AS strategy
+    `SELECT t.id, t.symbol, t.mode, t.status, t.origin, t.confidence, t.created_at, t.explain_before, t.explain_during, t.explain_after, t.return_pct, o.status AS order_status, o.notional_usd, s.name AS strategy
        FROM auto_trades t LEFT JOIN orders o ON o.id=t.order_id LEFT JOIN auto_strategies s ON s.id=t.strategy_id
       WHERE t.user_id=$1 ORDER BY t.created_at DESC LIMIT 12`, [userId])).map((t) => ({
     ...t, state: t.status === "closed" ? "Closed" : t.status === "failed" ? "Failed" : t.mode === "theory" ? "Testing" :
@@ -72,7 +72,10 @@ export async function workspace(userId: string) {
     `SELECT o.id, o.side, o.notional_usd, o.quantity, o.source, o.created_at, o.status_reason, a.symbol FROM orders o JOIN assets a ON a.id=o.asset_id
       WHERE o.user_id=$1 AND o.status='pending_approval' ORDER BY o.created_at DESC LIMIT 10`, [userId]);
 
-  return { settings, strategies, kinds: Object.entries(STRATEGY_KINDS).map(([id, k]) => ({ id, label: k.label, note: k.note })), tiles, positions, queue, watchlists,
+  const modo = await one<any>(`SELECT count(*)::int AS trades, count(*) FILTER (WHERE status='open')::int AS open, count(*) FILTER (WHERE status='closed' AND return_pct > 0)::int AS wins,
+                                     count(*) FILTER (WHERE status='closed')::int AS closed, COALESCE(sum(return_pct) FILTER (WHERE status='closed'),0) AS total_return
+                                FROM auto_trades WHERE user_id=$1 AND origin='modo'`, [userId]);
+  return { modo, settings, strategies, kinds: Object.entries(STRATEGY_KINDS).map(([id, k]) => ({ id, label: k.label, note: k.note })), tiles, positions, queue, watchlists,
     tasks, bots, approvals, risk: await risk(userId, positions, assetIds.length), theory: ov.theory, realRecord: ov.real, activity: await activity(userId) };
 }
 
