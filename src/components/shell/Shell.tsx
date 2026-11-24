@@ -95,7 +95,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           </Link>
           {n.href === "/discover" && <Suspense fallback={null}><DiscoverSubLinks /></Suspense>}
           {n.href === "/admin" && <AdminSubLinks pathname={pathname} superAdmin={user.role === "super_admin"} />}
-          {n.href === "/mimic" && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/auto", label: "Auto trading", icon: Cpu }]} />}
+          {n.href === "/mimic" && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }, { href: "/auto", label: "Auto trading", icon: Cpu }]} />}
           </Fragment>
         );
       })}
