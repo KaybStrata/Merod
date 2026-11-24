@@ -84,7 +84,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
               <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold">{a.symbol}</h1><span className="text-sm text-muted">{a.name}</span>
                 <Badge>{a.venue}</Badge><TradabilityBadge a={a} /><SourceBadge source={a.price_source} /></div>
               <div className="flex items-baseline gap-3">
-                <span className="num text-3xl font-semibold tracking-tight">{price(px)}</span>
+                <span className="num text-2xl font-semibold tracking-tight">{price(px)}</span>
                 <ChangeText value={a.change_24h} className="text-sm" />
                 <span className="text-xs text-faint">updated {ago(a.price_updated_at)}</span>
               </div>
@@ -116,7 +116,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-4 py-2.5 text-xs">
               <span className="font-medium text-muted">Trades on chart:</span>
-              {([["mine", "You", "bg-up"], ["bot", "Your bots", "bg-[#9b82ff]"], ["ghost", "Ghost strategy", "bg-up/50"], ["others", "Others (anon.)", "bg-faint"]] as const).map(([k, l, dot]) => (
+              {([["mine", "You", "bg-up"], ["bot", "Your bots", "bg-[#4aa8ff]"], ["ghost", "Ghost strategy", "bg-up/50"], ["others", "Others (anon.)", "bg-faint"]] as const).map(([k, l, dot]) => (
                 <button key={k} onClick={() => setLayers((x) => ({ ...x, [k]: !x[k] }))} className={cx("flex items-center gap-1.5 rounded-lg border px-2 py-1", layers[k] ? "border-accent/50 bg-accent-soft text-text" : "border-line text-faint")}>
                   <span className={cx("size-2 rounded-full", dot)} />{l}
                 </button>

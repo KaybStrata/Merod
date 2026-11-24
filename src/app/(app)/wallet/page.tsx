@@ -40,7 +40,7 @@ function WalletInner() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Wallet & Funding</h1>
+          <h1 className="text-xl font-semibold">Wallet & Funding</h1>
           <p className="text-sm text-muted">Stock brokerage funds and crypto wallet funds are accounted for separately. Merod never asks for private keys or seed phrases.</p>
         </div>
         <div className="flex flex-wrap gap-2">

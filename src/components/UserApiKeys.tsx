@@ -11,10 +11,11 @@ const CATEGORY: Record<string, string> = {
 };
 
 /** "Bring your own key": users paste their own API keys; encrypted per user and used only for their own requests. */
-export function UserApiKeys() {
-  const { data, loading, refresh } = useApi<{ providers: any[]; keys: any[] }>("/api/me/keys");
+export function UserApiKeys({ categories, title = "My API keys" }: { categories?: string[]; title?: string } = {}) {
+  const { data: raw, loading, refresh } = useApi<{ providers: any[]; keys: any[] }>("/api/me/keys");
+  const data = raw && categories ? { ...raw, providers: raw.providers.filter((p) => categories.includes(p.category)) } : raw;
   return (
-    <Card title="My API keys" icon={<KeyRound className="size-4 text-accent-2" />}>
+    <Card title={title} icon={<KeyRound className="size-4 text-accent-2" />}>
       <p className="mb-4 flex gap-2 rounded-xl border border-line bg-bg-2/60 px-3 py-2.5 text-xs text-muted">
         <ShieldCheck className="mt-px size-4 shrink-0 text-up" />
         <span>Your keys are encrypted and used only for your own requests. Personal brokerage keys trade only your own account. Merod never shows a saved key again. You can replace or remove it at any time.</span>

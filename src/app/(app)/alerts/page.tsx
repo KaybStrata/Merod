@@ -41,7 +41,7 @@ export default function AlertsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Notifications & Activity</h1>
+        <h1 className="text-xl font-semibold">Notifications & Activity</h1>
         <p className="text-sm text-muted">Fills, approvals, price alerts, bot activity and social updates in one place.</p>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">

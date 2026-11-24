@@ -37,7 +37,7 @@ export default function BotsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Agents & Bots</h1>
+          <h1 className="text-xl font-semibold">Agents & Bots</h1>
           <p className="text-sm text-muted">Automated strategies running on Merod's servers — they keep working when your browser is closed. Profit is never guaranteed.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -50,7 +50,7 @@ export default function BotsPage() {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[["Bots", bots.length], ["Running", running], ["Paused", bots.filter((b) => b.status === "paused").length], ["Total bot P&L", usd(bots.reduce((s, b) => s + Number(b.pnl_usd), 0), { sign: true })]].map(([k, v]) => (
-          <div key={k as string} className="rounded-2xl border border-line bg-panel/80 p-4"><div className="text-xs text-muted">{k}</div><div className="num mt-1 text-xl font-semibold">{v}</div></div>
+          <div key={k as string} className="rounded-xl border border-line bg-panel/80 p-4"><div className="text-xs text-muted">{k}</div><div className="num mt-1 text-xl font-semibold">{v}</div></div>
         ))}
       </div>
 
@@ -123,7 +123,7 @@ function PromptCreate({ onDone }: { onDone: () => void }) {
       <p className="text-xs text-muted">Describe the strategy and include the asset and amount, e.g. “Buy $100 of SOL at a 3% dip and sell at +5%, repeat”. Merod prepares a bot with safe limits for you to review.</p>
       <div className="max-h-[50vh] space-y-3 overflow-y-auto">
         {msgs.map((m) => m.role === "user"
-          ? <div key={m.id} className="ml-auto w-fit max-w-[85%] rounded-2xl bg-accent px-3 py-1.5 text-sm text-white">{m.content}</div>
+          ? <div key={m.id} className="ml-auto w-fit max-w-[85%] rounded-xl bg-accent px-3 py-1.5 text-sm text-white">{m.content}</div>
           : <div key={m.id} className="text-sm"><div>{m.content}</div><PlanCard message={m} onChip={(s) => send(s)} onDone={onDone} /></div>)}
       </div>
       <div className="flex gap-2">

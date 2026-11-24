@@ -24,7 +24,7 @@ function SettingsInner() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+      <h1 className="text-xl font-semibold">Settings</h1>
       <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)]">
         <nav className="flex gap-1 overflow-x-auto lg:flex-col">
           {TABS.map((t) => (
@@ -72,7 +72,7 @@ function useSave(refresh: () => void) {
 }
 
 function AccountTab({ data, refresh }: any) {
-  const [v, setV] = useState({ display_name: data.profile.display_name, bio: data.profile.bio ?? "", avatar_color: data.profile.avatar_color ?? "#7c5cff", country: data.user.country ?? "" });
+  const [v, setV] = useState({ display_name: data.profile.display_name, bio: data.profile.bio ?? "", avatar_color: data.profile.avatar_color ?? "#14c3bb", country: data.user.country ?? "" });
   const { save, busy } = useSave(refresh);
   return (
     <Card title="Account information">

@@ -63,9 +63,9 @@ export function PromptBar() {
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-3 lg:pl-60">
-      <div className="pointer-events-auto w-full max-w-3xl">
+      <div className="pointer-events-auto w-full max-w-[1000px]">
         {open && messages.length > 0 && (
-          <div className="fade-up mb-2 overflow-hidden rounded-2xl border border-line bg-panel/95 shadow-2xl backdrop-blur">
+          <div className="fade-up mb-2 overflow-hidden rounded-xl border border-line bg-panel/95 shadow-2xl backdrop-blur">
             <div className="flex items-center justify-between border-b border-line px-4 py-2 text-xs text-muted">
               <span className="flex items-center gap-1.5"><Sparkles className="size-3.5 text-accent-2" /> Merod AI {note && <span className="text-warn">· {note}</span>}</span>
               <span className="flex items-center gap-1">
@@ -75,7 +75,7 @@ export function PromptBar() {
             </div>
             <div ref={listRef} className="max-h-[55vh] space-y-3 overflow-y-auto px-4 py-3">
               {messages.map((m) => (
-                <div key={m.id} className={cx("text-sm", m.role === "user" ? "ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-white" : "max-w-full")}>
+                <div key={m.id} className={cx("text-sm", m.role === "user" ? "ml-auto max-w-[85%] rounded-xl rounded-br-md bg-accent px-3.5 py-2 text-white" : "max-w-full")}>
                   {m.role === "user" ? m.content : (
                     <div className={cx(m.status === "error" && "text-down")}>
                       <div className="whitespace-pre-wrap">{m.content}</div>
@@ -89,14 +89,14 @@ export function PromptBar() {
           </div>
         )}
         <form onSubmit={(e) => { e.preventDefault(); send(); }}
-          className="flex items-end gap-2 rounded-2xl border border-line-2 bg-panel/95 p-2 shadow-[0_10px_40px_rgba(0,0,0,.45)] backdrop-blur focus-within:border-accent">
+          className="flex items-end gap-2 rounded-2xl border border-line-2 bg-panel/95 p-3 shadow-[0_10px_40px_rgba(0,0,0,.45)] backdrop-blur focus-within:border-accent">
           <div className="flex h-9 shrink-0 items-center pl-2"><Sparkles className="size-4 text-accent-2" /></div>
           <div className="min-w-0 flex-1">
             {screenAsset && <div className="px-1 pt-0.5 text-[10px] uppercase tracking-wide text-faint">Context: {screenAsset.symbol}</div>}
-            <textarea ref={inputRef} rows={1} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => messages.length && setOpen(true)}
+            <textarea ref={inputRef} rows={2} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => messages.length && setOpen(true)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               placeholder={screenAsset ? `Ask or trade ${screenAsset.symbol}… e.g. “buy at 3% dip, sell at +5%, repeat”` : "Trade with a prompt… e.g. “Buy $100 of SOL”  (⌘K)"}
-              className="block max-h-32 min-h-9 w-full resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-faint" />
+              className="block max-h-[200px] min-h-[64px] w-full resize-none bg-transparent px-2 py-2.5 text-[15px] outline-none placeholder:text-faint" />
             {!messages.length && !text && (
               <div className="hidden gap-1.5 overflow-x-auto px-1 pb-1 sm:flex">
                 {[...livePrompts, ...EXAMPLES].slice(0, 4).map((e, i) => (
@@ -107,7 +107,7 @@ export function PromptBar() {
               </div>
             )}
           </div>
-          <button type="submit" disabled={!text.trim() || busy} className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-white disabled:opacity-40" aria-label="Send">
+          <button type="submit" disabled={!text.trim() || busy} className="flex size-[44px] shrink-0 items-center justify-center rounded-xl bg-grad text-white disabled:opacity-40" aria-label="Send">
             {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
           </button>
         </form>

@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Home, Compass, CandlestickChart, Sparkles, Zap, Bot, Users, PieChart, Wallet, Settings, Shield, Bell, Search, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, GraduationCap, Percent, Brain,
+  Radio, GraduationCap, Percent, Brain, KeyRound,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { PromptBar } from "./PromptBar";
@@ -25,9 +25,38 @@ const NAV = [
   { href: "/social", label: "Social", icon: Users },
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
   { href: "/wallet", label: "Wallet & Funding", icon: Wallet },
+  { href: "/broker-keys", label: "Broker Keys", icon: KeyRound },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
+
+/**
+ * Sidebar panel with a curved ("warped") right edge and a soft green glow line.
+ * Drawn as a stretched SVG behind the nav; the stroke keeps a constant width at any height.
+ */
+function CurvedSidebarBackground() {
+  // Right edge sweeps between x=90 and x=100 (of 100) so it never cuts into the menu items.
+  const edge = "M92,0 C100,40 100,120 97,220 C93,360 90,470 91,560 C92,690 100,800 99,880 C98,940 94,980 92,1000";
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 1000" preserveAspectRatio="none" aria-hidden>
+      <defs>
+        <linearGradient id="sidebarGlow" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.2" />
+          <stop offset="35%" stopColor="var(--accent)" stopOpacity="0.95" />
+          <stop offset="70%" stopColor="var(--accent-orange)" stopOpacity="0.75" />
+          <stop offset="100%" stopColor="var(--accent-orange)" stopOpacity="0.95" />
+        </linearGradient>
+        <linearGradient id="sidebarFill" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="var(--bg-2)" stopOpacity="0.96" />
+          <stop offset="100%" stopColor="var(--panel)" stopOpacity="0.92" />
+        </linearGradient>
+      </defs>
+      <path d={`M0,0 L92,0 ${edge.slice(edge.indexOf("C"))} L0,1000 Z`} fill="url(#sidebarFill)" />
+      <path d={edge} fill="none" stroke="url(#sidebarGlow)" strokeWidth="6" vectorEffect="non-scaling-stroke" opacity="0.25" />
+      <path d={edge} fill="none" stroke="url(#sidebarGlow)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
 
 export function Shell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
   return (
@@ -60,7 +89,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   ];
 
   const sidebar = (
-    <nav className="flex h-full flex-col gap-0.5 overflow-y-auto p-3">
+    <nav className={cx("relative flex h-full flex-col gap-0.5 overflow-y-auto p-3", !collapsed && "lg:pr-6")}>
       <div className={cx("mb-4 flex items-center px-2 pt-1", collapsed ? "justify-center" : "justify-between")}>
         <Link href="/"><Logo compact={collapsed} /></Link>
       </div>
@@ -69,7 +98,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         return (
           <Link key={n.href} href={n.href} title={collapsed ? n.label : undefined}
             className={cx("flex shrink-0 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors", collapsed && "justify-center px-2",
-              active ? "bg-accent-soft text-text shadow-[inset_0_0_0_1px_rgba(124,92,255,.35)]" : "text-muted hover:bg-panel-2 hover:text-text")}>
+              active ? "bg-accent-soft text-text shadow-[inset_0_0_0_1px_rgba(20,195,187,.35)]" : "text-muted hover:bg-panel-2 hover:text-text")}>
             <n.icon className={cx("size-[18px] shrink-0", active && "text-accent-2")} />
             {!collapsed && <span className="truncate">{n.label}</span>}
           </Link>
@@ -91,7 +120,10 @@ function Frame({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="app-glow min-h-screen">
-      <aside className={cx("fixed inset-y-0 left-0 z-30 hidden border-r border-line bg-bg-2/80 backdrop-blur lg:block transition-[width]", collapsed ? "w-[72px]" : "w-60")}>{sidebar}</aside>
+      <aside className={cx("fixed inset-y-0 left-0 z-30 hidden lg:block transition-[width]", collapsed ? "w-[72px]" : "w-60")}>
+        <CurvedSidebarBackground />
+        {sidebar}
+      </aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setMobileOpen(false)}>
           <aside className="h-full w-64 border-r border-line bg-bg-2" onClick={(e) => e.stopPropagation()}>{sidebar}</aside>
@@ -99,7 +131,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       )}
       <div className={cx("transition-[padding]", collapsed ? "lg:pl-[72px]" : "lg:pl-60")}>
         <TopBar onMenu={() => setMobileOpen(true)} unread={me.data?.unread ?? 0} connected={connected} />
-        <main className="mx-auto max-w-[1600px] px-4 pb-36 pt-4 sm:px-6">{children}</main>
+        <main className="mx-auto max-w-[1600px] px-4 pb-48 pt-4 sm:px-6">{children}</main>
       </div>
       <PromptBar />
     </div>

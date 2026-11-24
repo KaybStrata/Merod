@@ -22,7 +22,7 @@ export default function SocialPage() {
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-w-0 space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold">Social Trading</h1>
+          <h1 className="text-xl font-semibold">Social Trading</h1>
           <p className="text-sm text-muted">Share trades and ideas. Trade tags are verified against real orders on Merod's servers.</p>
         </div>
         <Composer onPosted={posts.refresh} />

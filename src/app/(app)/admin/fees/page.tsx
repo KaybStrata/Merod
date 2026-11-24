@@ -23,7 +23,7 @@ export default function FeesPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="flex items-center gap-2 text-2xl font-semibold"><Percent className="size-6 text-accent-2" /> Platform fees</h1>
+        <h1 className="flex items-center gap-2 text-xl font-semibold"><Percent className="size-6 text-accent-2" /> Platform fees</h1>
         <p className="mt-1 text-sm text-muted">Current: <b className="text-text">{data.description}</b>. Shown to users on every order preview.</p>
       </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

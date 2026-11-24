@@ -28,7 +28,7 @@ export default function Dashboard() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Good to see you, {user.displayName.split(" ")[0]}</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Good to see you, {user.displayName.split(" ")[0]}</h1>
           <p className="text-sm text-muted">Your unified overview across stocks and crypto.</p>
         </div>
         {s?.pendingApprovals > 0 && (
@@ -43,7 +43,7 @@ export default function Dashboard() {
           <div className="flex flex-wrap items-start justify-between gap-4 px-5 pt-4">
             <div>
               <div className="flex items-center gap-2 text-sm text-muted">Total portfolio value <PaperBadge /></div>
-              {s ? <div className="num mt-1 text-4xl font-semibold tracking-tight">{usd(s.total)}</div> : <Skeleton className="mt-2 h-10 w-56" />}
+              {s ? <div className="num mt-1 text-3xl font-semibold tracking-tight">{usd(s.total)}</div> : <Skeleton className="mt-2 h-10 w-56" />}
               {s && <div className={cx("num mt-1 text-sm", tone(s.dayChange))}>{usd(s.dayChange, { sign: true })} ({pct(s.dayChangePct)}) today</div>}
             </div>
             <Pills size="sm" value={range} onChange={setRange} options={(["1D", "1W", "1M", "3M", "1Y"] as const).map((v) => ({ value: v, label: v }))} />

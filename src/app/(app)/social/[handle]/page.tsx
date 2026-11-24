@@ -40,7 +40,7 @@ export default function ProfilePage({ params }: { params: Promise<{ handle: stri
           <div className="flex items-center gap-4">
             <Avatar name={p.display_name} color={p.avatar_color} size={76} />
             <div className="min-w-0">
-              <h1 className="text-2xl font-semibold">{p.display_name}</h1>
+              <h1 className="text-xl font-semibold">{p.display_name}</h1>
               <div className="text-sm text-muted">@{p.handle} · joined {ago(p.created_at)}</div>
               {p.bio && <p className="mt-1 max-w-md whitespace-pre-wrap text-sm">{p.bio}</p>}
             </div>

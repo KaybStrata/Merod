@@ -123,7 +123,7 @@ function PortfolioInner() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><h1 className="text-2xl font-semibold">Portfolio</h1><PaperBadge paper={book === "paper"} /></div>
+        <div className="flex items-center gap-3"><h1 className="text-xl font-semibold">Portfolio</h1><PaperBadge paper={book === "paper"} /></div>
         <div className="flex flex-wrap gap-2">
           <Pills size="sm" value={book} onChange={setBook} options={[{ value: "paper", label: "Paper (simulated)" }, { value: "live", label: "Live accounts" }]} />
           {book === "paper" && <Button size="sm" variant="ghost" onClick={() => setResetOpen(true)}><RotateCcw className="size-4" /> Reset paper</Button>}
@@ -132,7 +132,7 @@ function PortfolioInner() {
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2" title="My portfolio" icon={<Activity className="size-4 text-accent-2" />}>
-          <div className="num text-4xl font-semibold tracking-tight">{usd(s.total)}</div>
+          <div className="num text-3xl font-semibold tracking-tight">{usd(s.total)}</div>
           <div className={cx("num mt-1 text-sm", tone(s.lifetimePnl))}>{usd(s.lifetimePnl, { sign: true })} lifetime{s.starting ? ` (${pct((s.lifetimePnl / s.starting) * 100)})` : ""}</div>
           <div className="mt-4 grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-5">
             <Stat label="Cash" value={usd(s.cash)} />

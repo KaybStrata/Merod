@@ -94,7 +94,7 @@ function AIPage() {
       </div>
 
       {/* Chat */}
-      <div className="flex min-h-[70vh] flex-col rounded-2xl border border-line bg-panel/80">
+      <div className="flex min-h-[70vh] flex-col rounded-xl border border-line bg-panel/80">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
           <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent-2" /><h1 className="font-semibold">AI Trade</h1>
             {screenAsset && <Badge tone="accent">Context: {screenAsset.symbol}</Badge>}</div>
@@ -127,10 +127,10 @@ function AIPage() {
               {m.role === "user" ? (
                 <div className="flex items-start justify-end gap-1.5">
                   <button onClick={() => savePrompt(m.content)} title="Save as reusable prompt" className="mt-2 opacity-0 transition-opacity group-hover:opacity-100"><BookmarkPlus className="size-3.5 text-faint hover:text-text" /></button>
-                  <div className="rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-white">{m.content}</div>
+                  <div className="rounded-xl rounded-br-md bg-accent px-3.5 py-2 text-white">{m.content}</div>
                 </div>
               ) : (
-                <div className={cx("rounded-2xl rounded-bl-md border border-line bg-bg-2/50 px-3.5 py-2.5", m.status === "error" && "border-down/40 text-down")}>
+                <div className={cx("rounded-xl rounded-bl-md border border-line bg-bg-2/50 px-3.5 py-2.5", m.status === "error" && "border-down/40 text-down")}>
                   <div className="whitespace-pre-wrap">{m.content}</div>
                   <PlanCard message={m} onChip={(s) => send(s)} />
                   {m.ai_provider && <div className="mt-1.5 text-[10px] text-faint">{m.ai_provider === "merod" ? "Rule parser" : `${m.ai_provider} · ${m.ai_model}`}</div>}

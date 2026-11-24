@@ -26,8 +26,8 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="fade-up w-full max-w-md rounded-2xl border border-line bg-panel/90 p-7">
-      <h1 className="text-2xl font-semibold">Create your account</h1>
+    <div className="fade-up w-full max-w-md rounded-xl border border-line bg-panel/90 p-7">
+      <h1 className="text-xl font-semibold">Create your account</h1>
       <p className="mt-1 text-sm text-muted">Start with $100,000 in virtual funds. Paper trading only — no real money.</p>
       <form onSubmit={submit} className="mt-6 space-y-4">
         <div className="grid grid-cols-2 gap-3">

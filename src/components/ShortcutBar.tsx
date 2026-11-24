@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Zap, TrendingUp, TrendingDown, ShieldCheck, Target, XCircle, PauseCircle, Repeat, Eye, Sparkles, Bot, Flame, DollarSign, CheckCircle2, AlertTriangle,
+  Plus, Zap, TrendingUp, TrendingDown, ShieldCheck, Target, XCircle, PauseCircle, Repeat, Eye, Sparkles, Bot, Flame, DollarSign, CheckCircle2, AlertTriangle, SlidersHorizontal,
 } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { Badge, Button, Modal, PaperBadge, SourceBadge, cx, useToast } from "@/components/ui";
@@ -77,9 +77,15 @@ export function ShortcutBar({ placement, assetId }: { placement: "terminal" | "d
           </button>
         );
       })}
-      <Link href="/shortcuts" className="inline-flex h-9 items-center gap-1 rounded-xl border border-dashed border-line px-3 text-sm text-muted hover:border-accent/60 hover:text-text" title="Manage shortcuts">
+      <Link href="/shortcuts" className="inline-flex h-9 items-center gap-1 rounded-xl border border-dashed border-line px-3 text-sm text-muted hover:border-accent/60 hover:text-text" title="Add a shortcut">
         <Plus className="size-4" />{list.length === 0 && "Add shortcut"}
       </Link>
+      {list.length > 0 && (
+        <Link href="/shortcuts" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-accent/40 bg-accent-soft px-3 text-sm font-medium text-accent-2 hover:bg-accent/20"
+          title="Customize your shortcut buttons: rename, recolor, change icons, amounts and order, duplicate or delete">
+          <SlidersHorizontal className="size-4" /> Customize
+        </Link>
+      )}
 
       <Modal open={!!preview} onClose={() => setPreview(null)} title={preview ? `Confirm “${preview.shortcut.name}”` : ""} wide>
         {preview && (

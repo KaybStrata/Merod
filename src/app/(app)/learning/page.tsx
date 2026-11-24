@@ -9,7 +9,7 @@ export default function LearningPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold"><Brain className="size-6 text-accent-2" /> AI Learning</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold"><Brain className="size-6 text-accent-2" /> AI Learning</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">What Merod has learned from your trades, bots and shortcuts — updated live. Press <b className="text-text">Update</b> to apply a learning to your account.</p>
         </div>
         <div className="flex gap-2 text-sm">

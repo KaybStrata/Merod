@@ -20,7 +20,7 @@ const ACTIONS: { type: string; label: string; amount?: "usd" | "qty" | "pct"; or
   { type: "open_watchlist", label: "Open watchlist" },
   { type: "analyze_asset", label: "Analyze asset (AI)" },
 ];
-const COLORS = ["", "#7c5cff", "#22c993", "#f0506e", "#f5b84a", "#4aa8ff", "#c084fc"];
+const COLORS = ["", "#14c3bb", "#22c993", "#f0506e", "#f5b84a", "#4aa8ff", "#c084fc"];
 const PRESETS = [
   { name: "Buy $50", icon: "trending-up", color: "#22c993", actions: [{ type: "buy_usd", amount: 50, orderType: "market" }] },
   { name: "Buy $100", icon: "trending-up", color: "#22c993", actions: [{ type: "buy_usd", amount: 100, orderType: "market" }] },
@@ -31,7 +31,7 @@ const PRESETS = [
   { name: "TP +20%", icon: "target", color: "#4aa8ff", actions: [{ type: "set_take_profit_pct", amount: 20, orderType: "market" }] },
   { name: "Cancel orders", icon: "x", color: "", actions: [{ type: "cancel_open_orders", orderType: "market" }] },
   { name: "Pause bots", icon: "pause", color: "", actions: [{ type: "pause_all_bots", orderType: "market" }] },
-  { name: "Analyze", icon: "sparkles", color: "#7c5cff", actions: [{ type: "analyze_asset", orderType: "market" }] },
+  { name: "Analyze", icon: "sparkles", color: "#14c3bb", actions: [{ type: "analyze_asset", orderType: "market" }] },
 ];
 
 type Draft = {
@@ -98,7 +98,7 @@ export default function ShortcutsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Shortcuts</h1>
+          <h1 className="text-xl font-semibold">Shortcuts</h1>
           <p className="text-sm text-muted">One-click trading buttons. Every click is previewed and validated by the trading engine before anything executes.</p>
         </div>
         <Button variant="primary" onClick={() => setDraft(blank())}><Plus className="size-4" /> New shortcut</Button>
@@ -143,10 +143,10 @@ export default function ShortcutsPage() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {shown.map((s) => (
-                <div key={s.id} className="rounded-2xl border border-line bg-panel/80 p-4">
+                <div key={s.id} className="rounded-xl border border-line bg-panel/80 p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5">
-                      <span className="flex size-9 items-center justify-center rounded-xl" style={{ background: `${s.color || "#7c5cff"}22`, color: s.color || "#9b82ff" }}><ShortcutIcon name={s.icon} className="size-4" /></span>
+                      <span className="flex size-9 items-center justify-center rounded-xl" style={{ background: `${s.color || "#14c3bb"}22`, color: s.color || "#3ddbd3" }}><ShortcutIcon name={s.icon} className="size-4" /></span>
                       <div>
                         <div className="font-semibold">{s.name}</div>
                         <div className="text-xs text-muted">{s.asset_symbol ? s.asset_symbol : "Current asset"}{s.asset_category ? ` · ${s.asset_category}` : ""}</div>

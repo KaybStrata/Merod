@@ -14,7 +14,7 @@ export default function AdminPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold"><Shield className="size-6 text-accent-2" /> Administration</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold"><Shield className="size-6 text-accent-2" /> Administration</h1>
           <p className="mt-1 text-sm text-muted">System health, users, trading activity, compliance controls and audit trail.</p>
         </div>
         <Link href="/admin/integrations"><Button variant="outline"><Plug className="size-4" /> API Integration Center <ArrowRight className="size-4" /></Button></Link>
@@ -53,8 +53,8 @@ function Overview() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         {[["Users", c.users, `+${c.users_7d ?? 0} this week`], ["Active sessions", c.active_sessions], ["Bots running", c.bots_running], ["Orders (24h)", c.orders_24h],
           ["Live orders (24h)", c.live_orders_24h, "real-money disabled"], ["Workers alive", `${alive}/${data.heartbeats.length}`]].map(([k, v, s]) => (
-          <div key={k as string} className="rounded-2xl border border-line bg-panel/70 p-4">
-            <div className="text-xs text-muted">{k}</div><div className="num mt-1 text-2xl font-semibold">{v ?? 0}</div>{s && <div className="text-[11px] text-faint">{s}</div>}
+          <div key={k as string} className="rounded-xl border border-line bg-panel/70 p-4">
+            <div className="text-xs text-muted">{k}</div><div className="num mt-1 text-xl font-semibold">{v ?? 0}</div>{s && <div className="text-[11px] text-faint">{s}</div>}
           </div>
         ))}
       </div>
@@ -183,8 +183,8 @@ function Trading() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <div className="rounded-2xl border border-line bg-panel/70 p-4"><div className="text-xs text-muted">Paper orders (7d)</div><div className="num mt-1 text-2xl font-semibold">{pl.paper ?? 0}</div><div className="text-[11px] text-faint">{usd(pl.paper_volume, { compact: true })} simulated volume</div></div>
-        <div className="rounded-2xl border border-line bg-panel/70 p-4"><div className="text-xs text-muted">Live orders (7d)</div><div className="num mt-1 text-2xl font-semibold">{pl.live ?? 0}</div><div className="text-[11px] text-faint">{usd(pl.live_volume, { compact: true })} volume</div></div>
+        <div className="rounded-xl border border-line bg-panel/70 p-4"><div className="text-xs text-muted">Paper orders (7d)</div><div className="num mt-1 text-xl font-semibold">{pl.paper ?? 0}</div><div className="text-[11px] text-faint">{usd(pl.paper_volume, { compact: true })} simulated volume</div></div>
+        <div className="rounded-xl border border-line bg-panel/70 p-4"><div className="text-xs text-muted">Live orders (7d)</div><div className="num mt-1 text-xl font-semibold">{pl.live ?? 0}</div><div className="text-[11px] text-faint">{usd(pl.live_volume, { compact: true })} volume</div></div>
         <Card title="By status" className="md:col-span-1"><div className="flex flex-wrap gap-1">{data.byStatus.map((s: any) => <span key={s.status} className="inline-flex items-center gap-1 text-xs"><StatusPill status={s.status} /><span className="num text-muted">{s.n}</span></span>)}</div></Card>
         <Card title="By source"><div className="flex flex-wrap gap-1">{data.bySource.map((s: any) => <Badge key={s.source}>{s.source} · {s.n}</Badge>)}</div></Card>
       </div>
@@ -240,7 +240,7 @@ function Compliance() {
   return (
     <div className="space-y-4">
       {halt && (
-        <div className={cx("flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4", halt.enabled ? "border-down bg-down-soft" : "border-line bg-panel/70")}>
+        <div className={cx("flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4", halt.enabled ? "border-down bg-down-soft" : "border-line bg-panel/70")}>
           <div className="flex items-center gap-3">
             <AlertOctagon className={cx("size-7", halt.enabled ? "text-down" : "text-muted")} />
             <div><div className="font-semibold">{halt.enabled ? "GLOBAL TRADING HALT ACTIVE" : "Emergency trading shutdown"}</div><div className="text-xs text-muted">Stops all order submission and bot activity platform-wide.</div></div>

@@ -7,10 +7,10 @@ export const cx = clsx;
 
 export function Card({ className, children, title, action, icon, pad = true }: { className?: string; children: ReactNode; title?: ReactNode; action?: ReactNode; icon?: ReactNode; pad?: boolean }) {
   return (
-    <section className={cx("rounded-2xl border border-line bg-panel/80 backdrop-blur-sm", className)}>
+    <section className={cx("rounded-xl border border-line bg-panel/80 backdrop-blur-sm", className)}>
       {(title || action) && (
         <header className="flex items-center justify-between gap-3 px-4 pt-3.5 pb-2">
-          <h2 className="flex items-center gap-2 text-[15px] font-semibold text-text">{icon}{title}</h2>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-text">{icon}{title}</h2>
           {action}
         </header>
       )}
@@ -27,8 +27,8 @@ export function Button({ variant = "secondary", size = "md", loading, className,
       disabled={p.disabled || loading}
       className={cx(
         "inline-flex items-center justify-center gap-1.5 rounded-xl font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-accent",
-        size === "sm" && "h-8 px-3 text-xs", size === "md" && "h-9 px-3.5 text-sm", size === "lg" && "h-11 px-5 text-[15px]",
-        variant === "primary" && "bg-accent text-white hover:bg-accent-2",
+        size === "sm" && "h-8 px-3 text-xs", size === "md" && "h-9 px-3.5 text-sm", size === "lg" && "h-11 px-5 text-sm",
+        variant === "primary" && "bg-grad text-white shadow-sm",
         variant === "secondary" && "bg-panel-2 text-text border border-line hover:border-line-2",
         variant === "outline" && "border border-accent/50 text-accent-2 hover:bg-accent-soft",
         variant === "ghost" && "text-muted hover:text-text hover:bg-panel-2",
@@ -45,7 +45,7 @@ export function Button({ variant = "secondary", size = "md", loading, className,
 
 export function Badge({ tone = "neutral", children, className, title }: { tone?: "neutral" | "accent" | "up" | "down" | "warn" | "info"; children: ReactNode; className?: string; title?: string }) {
   return (
-    <span title={title} className={cx("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap",
+    <span title={title} className={cx("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium whitespace-nowrap",
       tone === "neutral" && "bg-panel-2 text-muted border border-line", tone === "accent" && "bg-accent-soft text-accent-2",
       tone === "up" && "bg-up-soft text-up", tone === "down" && "bg-down-soft text-down", tone === "warn" && "bg-warn-soft text-warn",
       tone === "info" && "bg-[rgba(74,168,255,.12)] text-[#4aa8ff]", className)}>{children}</span>
@@ -97,7 +97,7 @@ export function Pills<T extends string>({ value, onChange, options, size = "md" 
       {options.map((o) => (
         <button key={o.value} onClick={() => onChange(o.value)}
           className={cx("rounded-lg font-medium transition-colors", size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm",
-            value === o.value ? "bg-accent text-white" : "text-muted hover:text-text")}>{o.label}</button>
+            value === o.value ? "bg-grad text-white" : "text-muted hover:text-text")}>{o.label}</button>
       ))}
     </div>
   );
@@ -142,7 +142,7 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} className={cx("fade-up max-h-[92vh] w-full overflow-auto rounded-t-2xl border border-line bg-panel sm:rounded-2xl", wide ? "sm:max-w-3xl" : "sm:max-w-lg")}>
+      <div onClick={(e) => e.stopPropagation()} className={cx("fade-up max-h-[92vh] w-full overflow-auto rounded-t-2xl border border-line bg-panel sm:rounded-xl", wide ? "sm:max-w-3xl" : "sm:max-w-lg")}>
         <div className="sticky top-0 flex items-center justify-between border-b border-line bg-panel px-5 py-3.5">
           <h3 className="text-base font-semibold">{title}</h3>
           <button onClick={onClose} className="rounded-lg p-1 text-muted hover:bg-panel-2 hover:text-text" aria-label="Close"><X className="size-4" /></button>
@@ -205,7 +205,7 @@ export function ChangeText({ value, className }: { value: number | null | undefi
 }
 
 export function AssetIcon({ symbol, size = 28, logo }: { symbol: string; size?: number; logo?: string | null }) {
-  const palette = ["#7c5cff", "#22c993", "#f5b84a", "#4aa8ff", "#f0506e", "#c084fc", "#2dd4bf"];
+  const palette = ["#14c3bb", "#22c993", "#f5b84a", "#4aa8ff", "#f0506e", "#c084fc", "#2dd4bf"];
   const c = palette[[...symbol].reduce((a, ch) => a + ch.charCodeAt(0), 0) % palette.length];
   if (logo) return <img src={logo} alt="" width={size} height={size} className="rounded-full" />;
   return (

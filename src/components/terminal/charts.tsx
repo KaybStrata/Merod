@@ -63,7 +63,7 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
     };
     if (indicators.includes("sma20")) line(sma(closes, 20), "#f5b84a");
     if (indicators.includes("ema50")) line(ema(closes, 50), "#4aa8ff");
-    if (indicators.includes("bb")) { const b = boll(closes); line(b.map((x) => x?.up ?? null), "#9b82ff88", 1); line(b.map((x) => x?.lo ?? null), "#9b82ff88", 1); }
+    if (indicators.includes("bb")) { const b = boll(closes); line(b.map((x) => x?.up ?? null), "#3ddbd388", 1); line(b.map((x) => x?.lo ?? null), "#3ddbd388", 1); }
     c.timeScale().fitContent();
     lastBar.current = bars.length ? { ...bars[bars.length - 1] } : null;
     tfSec.current = bars.length > 1 ? bars[bars.length - 1].time - bars[bars.length - 2].time : 3600;
@@ -78,7 +78,7 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
     const step = tfSec.current, first = bars[0].time;
     const style: Record<ChartMarker["kind"], { buy: string; sell: string; shape: "arrowUp" | "arrowDown" | "circle" | "square" }> = {
       mine: { buy: "#22c993", sell: "#f0506e", shape: "arrowUp" },
-      bot: { buy: "#9b82ff", sell: "#c084fc", shape: "square" },
+      bot: { buy: "#4aa8ff", sell: "#7cc4ff", shape: "square" },
       ghost: { buy: "#22c99399", sell: "#f0506e99", shape: "circle" },
       others: { buy: "#8b93ad88", sell: "#8b93ad88", shape: "circle" },
     };

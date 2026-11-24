@@ -68,13 +68,13 @@ export default function IntegrationsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-xs text-muted"><Link href="/admin" className="hover:text-text">Admin</Link><ChevronRight className="size-3" />Integrations</div>
-          <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold"><Plug className="size-6 text-accent-2" /> API Integration Center</h1>
+          <h1 className="mt-1 flex items-center gap-2 text-xl font-semibold"><Plug className="size-6 text-accent-2" /> API Integration Center</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">Paste and manage credentials for every provider. Keys are encrypted server-side (AES-256-GCM) and never sent back to the browser.</p>
         </div>
         <Button variant="primary" onClick={() => setAddOpen(true)}><Plus className="size-4" /> Add custom API</Button>
       </div>
 
-      <div className="grid gap-3 rounded-2xl border border-line bg-panel/60 p-4 text-sm sm:grid-cols-3">
+      <div className="grid gap-3 rounded-xl border border-line bg-panel/60 p-4 text-sm sm:grid-cols-3">
         <div className="flex gap-2"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-up" /><span><b>Saving keys never marks a provider connected.</b> <span className="text-muted">Only a passing live connection test does.</span></span></div>
         <div className="flex gap-2"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" /><span><b>Production trading needs more than keys:</b> <span className="text-muted">compliance approval here plus the matching feature flag in Admin.</span></span></div>
         <div className="flex gap-2"><Info className="mt-0.5 size-4 shrink-0 text-accent-2" /><span><b>Hosting env vars work too.</b> <span className="text-muted">Keys set as environment variables (same names) show source “env”. Vault keys take precedence.</span></span></div>
@@ -82,7 +82,7 @@ export default function IntegrationsPage() {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[["Providers", summary.total], ["Connected envs", summary.connected], ["Connection errors", summary.errors], ["Awaiting approval", summary.approval]].map(([k, v]) => (
-          <div key={k as string} className="rounded-2xl border border-line bg-panel/70 p-4"><div className="text-xs text-muted">{k}</div><div className="num mt-1 text-2xl font-semibold">{v}</div></div>
+          <div key={k as string} className="rounded-xl border border-line bg-panel/70 p-4"><div className="text-xs text-muted">{k}</div><div className="num mt-1 text-xl font-semibold">{v}</div></div>
         ))}
       </div>
 

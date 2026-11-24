@@ -25,8 +25,8 @@ function LoginForm() {
   }
 
   return (
-    <div className="fade-up w-full max-w-sm rounded-2xl border border-line bg-panel/90 p-7">
-      <h1 className="text-2xl font-semibold">Sign in</h1>
+    <div className="fade-up w-full max-w-sm rounded-xl border border-line bg-panel/90 p-7">
+      <h1 className="text-xl font-semibold">Sign in</h1>
       <p className="mt-1 text-sm text-muted">Welcome back to Merod.</p>
       <form onSubmit={submit} className="mt-6 space-y-4">
         <Input label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
