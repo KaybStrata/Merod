@@ -20,3 +20,9 @@ test("news reader parses RSS and Atom feeds into headline + link + time", () => 
   assert.equal(b[0].url, "https://example.com/b");
   assert.equal(b[0].category, "stocks");
 });
+
+test("news titles decode hex and double-encoded entities", async () => {
+  const { parseFeed } = await import("@/server/news/service");
+  const xml = `<rss><channel><item><title>Nvidia&amp;#x2019;s CEO &#x201C;bullish&#x201D; &amp; more</title><link>https://ex.com/a</link><pubDate>Mon, 24 Nov 2026 10:00:00 GMT</pubDate></item></channel></rss>`;
+  assert.equal(parseFeed(xml, "Ex", "stocks" as any)[0].title, "Nvidia’s CEO “bullish” & more");
+});
