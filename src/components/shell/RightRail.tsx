@@ -1,7 +1,8 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ModoPanel } from "./ModoPanel";
 import Link from "next/link";
-import { Bot, Zap, Pause, Play, PanelRightClose, PanelRightOpen, Plus, OctagonX, Loader2, Activity } from "lucide-react";
+import { Bot, Zap, Pause, Play, PanelRightClose, PanelRightOpen, Plus, OctagonX, Loader2, Activity, Sparkles } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { ShortcutBar } from "@/components/ShortcutBar";
 import { PaperBadge, StatusPill, cx, useToast } from "@/components/ui";
@@ -10,6 +11,10 @@ import { useRealtime, useShell } from "./context";
 
 /** Right-hand control bar: one-click shortcut buttons and the user's bots, on every screen (xl and wider). */
 export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  // Which view the right panel shows (remembered in this browser).
+  const [tab, setTabState] = useState<"controls" | "modo">("controls");
+  useEffect(() => { try { const t = localStorage.getItem("merod-rail-tab"); if (t === "modo" || t === "controls") setTabState(t); } catch { /* ignore */ } }, []);
+  const setTab = (t: "controls" | "modo") => { setTabState(t); try { localStorage.setItem("merod-rail-tab", t); } catch { /* ignore */ } };
   const { screenAsset, connected } = useShell();
   const bots = useApi<any>(open ? "/api/bots" : null, { refreshMs: connected ? 30000 : 10000 });
   const [busy, setBusy] = useState<string | null>(null);
@@ -48,12 +53,19 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
       </button>
     )}
     <aside aria-hidden={!open} className={cx("fixed inset-y-0 right-0 z-30 hidden w-72 flex-col border-l border-line bg-bg-2 transition-transform duration-300 xl:flex", !open && "translate-x-full")}>
-      <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-line px-3">
-        <span className="text-sm font-semibold">Quick controls</span>
+      <div className="flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-line px-2">
+        <div className="flex flex-1 gap-0.5 rounded-lg border border-line bg-bg-2/60 p-0.5">
+          {([["controls", "Bots & shortcuts", Zap], ["modo", "Modo", Sparkles]] as const).map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setTab(k)} className={cx("flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors", tab === k ? "bg-accent-soft text-text" : "text-muted hover:text-text")}>
+              <Icon className={cx("size-3.5", tab === k && "text-accent-2")} />{label}
+            </button>
+          ))}
+        </div>
         <button onClick={onToggle} className="rounded-lg p-1.5 text-muted hover:text-text" title="Hide panel"><PanelRightClose className="size-4" /></button>
       </div>
 
-      <div className="flex-1 space-y-5 overflow-y-auto p-3 pb-40">
+      {tab === "modo" && <div className="flex-1 overflow-y-auto p-3 pb-40"><ModoPanel active={open && tab === "modo"} /></div>}
+      <div className={cx("flex-1 space-y-5 overflow-y-auto p-3 pb-40", tab !== "controls" && "hidden")}>
         <section>
           <div className="mb-2 flex items-center justify-between">
             <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted"><Zap className="size-3.5 text-accent-2" /> Shortcuts</h3>

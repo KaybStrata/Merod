@@ -18,8 +18,15 @@ const ValueChart = dynamic(() => import("@/components/terminal/charts").then((m)
 export default function Dashboard() {
   const { user, openPrompt } = useShell();
   const d = useApi<any>("/api/dashboard", { refreshMs: 15000 });
-  const [range, setRange] = useState<"1D" | "1W" | "1M" | "3M" | "1Y">("1M");
-  const hist = useApi<any>(`/api/portfolio/history?range=${range}`);
+  // Chart window: a preset, or a custom length typed by the user ("45m", "3d", "2w"…).
+  const [range, setRange] = useState<string>("1M");
+  const [custom, setCustom] = useState<{ label: string; seconds: number } | null>(null);
+  const hist = useApi<any>(custom ? `/api/portfolio/history?seconds=${custom.seconds}` : `/api/portfolio/history?range=${range}`,
+    { refreshMs: (custom?.seconds ?? RANGE_SECS[range] ?? 86_400) <= 6 * 3600 ? 30_000 : 120_000 });
+  const pts: { time: number; value: number }[] = hist.data?.points ?? [];
+  const windowChange = pts.length > 1 ? pts[pts.length - 1].value - pts[0].value : null;
+  const windowPct = pts.length > 1 && pts[0].value ? (windowChange! / pts[0].value) * 100 : null;
+  const windowLabel = custom ? custom.label : RANGE_LABEL[range] ?? range;
   useRealtime((e) => { if (e.type === "fill" || e.type === "order") d.refresh(); }, undefined);
 
   const s = d.data;
@@ -39,12 +46,19 @@ export default function Dashboard() {
             <div>
               <div className="flex items-center gap-2 text-sm text-muted">Total portfolio value <PaperBadge /></div>
               {s ? <div className="num mt-1 text-3xl font-semibold tracking-tight">{usd(s.total)}</div> : <Skeleton className="mt-2 h-10 w-56" />}
-              {s && <div className={cx("num mt-1 text-sm", tone(s.dayChange))}>{usd(s.dayChange, { sign: true })} ({pct(s.dayChangePct)}) today</div>}
+              {windowChange != null
+                ? <div className={cx("num mt-1 text-sm", tone(windowChange))}>{usd(windowChange, { sign: true })} ({pct(windowPct)}) <span className="text-faint">over the last {windowLabel}</span></div>
+                : s && <div className={cx("num mt-1 text-sm", tone(s.dayChange))}>{usd(s.dayChange, { sign: true })} ({pct(s.dayChangePct)}) today</div>}
             </div>
-            <Pills size="sm" value={range} onChange={setRange} options={(["1D", "1W", "1M", "3M", "1Y"] as const).map((v) => ({ value: v, label: v }))} />
+            <div className="flex flex-col items-end gap-1.5">
+              <div className="max-w-full overflow-x-auto">
+                <Pills size="sm" value={custom ? "" : range} onChange={(v) => { setCustom(null); setRange(v); }} options={Object.keys(RANGE_SECS).map((v) => ({ value: v, label: v }))} />
+              </div>
+              <CustomRange active={custom?.label ?? null} onPick={setCustom} />
+            </div>
           </div>
           <div className="px-2">{hist.data ? <ValueChart points={hist.data.points} /> : <Skeleton className="mx-3 h-[180px]" />}</div>
-          {hist.data?.estimated && <p className="px-5 text-[11px] text-faint">Chart estimated from current holdings × historical prices until enough snapshots are recorded.</p>}
+          {hist.data?.estimated && <p className="px-5 text-[11px] text-faint">Estimated from your current holdings × past prices{hist.data.resolutionSec ? ` (${hist.data.resolutionSec >= 86400 ? "daily" : hist.data.resolutionSec >= 3600 ? "hourly" : "5-minute"} detail)` : ""}, until enough history is recorded.</p>}
           <div className="grid grid-cols-2 gap-4 border-t border-line px-5 py-4 sm:grid-cols-4">
             <Mini label="Cash (virtual)" value={usd(s?.cash)} />
             <Mini label="Invested" value={usd(s?.invested)} />
@@ -82,6 +96,33 @@ export default function Dashboard() {
 
       <DraggableBoard storageKey={`merod-home-layout:${user.id}`} blocks={blocks} />
     </div>
+  );
+}
+
+const RANGE_SECS: Record<string, number> = { "1m": 60, "15m": 900, "30m": 1800, "1h": 3600, "6h": 21_600, "12h": 43_200, "1D": 86_400, "1W": 604_800, "1M": 2_592_000, "3M": 7_776_000, "1Y": 31_536_000 };
+const RANGE_LABEL: Record<string, string> = { "1m": "minute", "15m": "15 minutes", "30m": "30 minutes", "1h": "hour", "6h": "6 hours", "12h": "12 hours", "1D": "day", "1W": "week", "1M": "month", "3M": "3 months", "1Y": "year" };
+const UNIT: [RegExp, number, string][] = [[/^(m|min|mins|minutes?)$/, 60, "minute"], [/^(h|hr|hrs|hours?)$/, 3600, "hour"], [/^(d|days?)$/, 86_400, "day"], [/^(w|wk|wks|weeks?)$/, 604_800, "week"], [/^(mo|mos|months?)$/, 2_592_000, "month"], [/^(y|yr|yrs|years?)$/, 31_536_000, "year"]];
+/** "45m", "3 days", "2w", "1.5h" → seconds and a readable label. */
+function parseWindow(text: string): { label: string; seconds: number } | null {
+  const m = text.trim().toLowerCase().match(/^(\d+(?:\.\d+)?)\s*([a-z]+)$/);
+  if (!m) return null;
+  const n = Number(m[1]); const u = UNIT.find(([re]) => re.test(m[2]));
+  if (!u || !(n > 0)) return null;
+  const seconds = Math.round(n * u[1]);
+  if (seconds < 60 || seconds > 315_360_000) return null;
+  return { label: `${n} ${u[2]}${n === 1 ? "" : "s"}`, seconds };
+}
+function CustomRange({ active, onPick }: { active: string | null; onPick: (r: { label: string; seconds: number }) => void }) {
+  const [text, setText] = useState("");
+  const [bad, setBad] = useState(false);
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); const r = parseWindow(text); setBad(!r); if (r) onPick(r); }} className="flex items-center gap-1.5">
+      <input value={text} onChange={(e) => { setText(e.target.value); setBad(false); }} placeholder="Custom: 45m, 3d, 2w"
+        className={cx("h-7 w-32 rounded-lg border bg-bg-2 px-2 text-[11px] outline-none focus:border-accent", bad ? "border-down" : active ? "border-accent" : "border-line")}
+        title="Type a length of time, e.g. 45m, 2h, 3d, 2w, 6mo, 1y" />
+      <button className="h-7 rounded-lg border border-line px-2 text-[11px] text-muted hover:text-text">Go</button>
+      {active && <span className="text-[10px] text-accent-2">{active}</span>}
+    </form>
   );
 }
 
