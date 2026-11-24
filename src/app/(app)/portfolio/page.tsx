@@ -8,6 +8,7 @@ import { api, useApi } from "@/lib/api";
 import { usd, price, qty, pct, ago, tone } from "@/lib/format";
 import { AssetIcon, Badge, Button, Card, ChangeText, Empty, Input, Modal, PaperBadge, Pills, Skeleton, SourceBadge, Sparkline, Stat, StatusPill, cx, useToast } from "@/components/ui";
 import { useRealtime } from "@/components/shell/context";
+import { ValueHistory } from "@/components/ValueHistory";
 
 type Tab = "overview" | "holdings" | "transactions" | "orders" | "performance";
 
@@ -38,17 +39,7 @@ function Donut({ parts }: { parts: { label: string; value: number; color: string
 }
 
 function History() {
-  const [range, setRange] = useState("1M");
-  const h = useApi<any>(`/api/portfolio/history?range=${range}`);
-  const points: number[] = (h.data?.points ?? h.data?.snapshots ?? []).map((p: any) => Number(p.total_value ?? p.value));
-  return (
-    <div>
-      <div className="mb-2 flex justify-end"><Pills size="sm" value={range} onChange={setRange} options={["1D", "1W", "1M", "3M", "1Y", "ALL"].map((v) => ({ value: v, label: v }))} /></div>
-      {h.error ? <div className="flex h-36 items-center justify-center text-xs text-muted">Performance history unavailable ({h.error})</div>
-        : points.length > 1 ? <Sparkline data={points} width={720} height={150} className="h-36 w-full" />
-        : <div className="flex h-36 items-center justify-center text-xs text-muted">{h.loading ? "Loading…" : "History builds as the worker records portfolio snapshots (every 5 minutes)."}</div>}
-    </div>
-  );
+  return <ValueHistory initial="1M" />;
 }
 
 function PortfolioInner() {

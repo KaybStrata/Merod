@@ -3,8 +3,9 @@ import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Wallet, Plus, Building2, KeyRound, ArrowDownToLine, ArrowUpFromLine, Receipt, RefreshCw, Unplug, Copy, ShieldAlert, Sparkles, PieChart } from "lucide-react";
+import { Activity, Wallet, Plus, Building2, KeyRound, ArrowDownToLine, ArrowUpFromLine, Receipt, RefreshCw, Unplug, Copy, ShieldAlert, Sparkles, PieChart } from "lucide-react";
 import { api, useApi } from "@/lib/api";
+import { ValueHistory } from "@/components/ValueHistory";
 import { usd, ago, qty } from "@/lib/format";
 import { Badge, Button, Card, Empty, Input, Modal, Select, Skeleton, StatusPill, useToast } from "@/components/ui";
 import { FundingPanel } from "@/components/wallet/FundingPanel";
@@ -77,6 +78,10 @@ function WalletInner() {
           <p className="mt-2 text-[11px] text-muted">Real-money orders only go through when the platform owner has turned on live trading.</p>
         </Card>
       </div>
+
+      <Card title="Account value" icon={<Activity className="size-4 text-accent-2" />}>
+        <ValueHistory initial="1D" />
+      </Card>
 
       <Card title="Connected accounts" icon={<Wallet className="size-4 text-accent-2" />}>
         <div className="overflow-x-auto">

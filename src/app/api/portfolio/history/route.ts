@@ -10,7 +10,7 @@ import { HttpError } from "@/server/errors";
  * The last point is always the live value from current prices.
  */
 const PRESETS: Record<string, number> = {
-  "1m": 60, "15m": 900, "30m": 1800, "1h": 3600, "6h": 21_600, "12h": 43_200,
+  "1m": 60, "15m": 900, "30m": 1800, "1h": 3600, "3h": 10_800, "6h": 21_600, "12h": 43_200,
   "1D": 86_400, "1W": 604_800, "1M": 2_592_000, "3M": 7_776_000, "1Y": 31_536_000, ALL: 315_360_000,
 };
 
