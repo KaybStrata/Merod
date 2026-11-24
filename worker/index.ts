@@ -87,7 +87,10 @@ const subs = new Map<WebSocket, { userId: string; role: string; channels: Set<st
 
 wss.on("connection", (ws, req) => {
   const token = new URL(req.url ?? "", "http://x").searchParams.get("token") ?? "";
-  const claims = verifyRealtimeToken(token);
+  // Never let a bad token (or missing REALTIME_SECRET) crash the worker — just refuse the socket.
+  let claims: { u: string; r: string } | null = null;
+  try { claims = verifyRealtimeToken(token); }
+  catch (e: any) { console.error("[realtime] token check failed:", e?.message); ws.close(1011, "realtime not configured"); return; }
   if (!claims) { ws.close(4401, "unauthorized"); return; }
   const s = { userId: claims.u, role: claims.r, channels: new Set(["market", "launches", "social", "activity", `user:${claims.u}`]) };
   if (claims.r === "admin") s.channels.add("admin");
