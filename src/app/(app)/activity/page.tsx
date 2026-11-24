@@ -1,4 +1,5 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Radio, Pause, Play, Bot, ArrowRightLeft, Zap, Sparkles, GraduationCap, Globe2, User } from "lucide-react";
@@ -72,6 +73,7 @@ export default function ActivityPage() {
 
   return (
     <div className="space-y-5">
+      <SectionTabs tabs={[{ href: "/activity", label: "My live activity", icon: Radio }, { href: "/world", label: "World trades", icon: Globe2 }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold"><Radio className="size-6 text-accent-2" /> Live Activity</h1>

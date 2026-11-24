@@ -48,7 +48,7 @@ const protectPx = (o: OrderLike, ref: number) => ref * (1 + ((o.side === "buy" ?
 
 /* ───────────────────────── Kraken ───────────────────────── */
 const krakenBase = (s: string) => (s === "BTC" ? "XBT" : s === "DOGE" ? "XDG" : s);
-async function krakenPrivate(ctx: ProviderContext, path: string, params: Record<string, string>) {
+export async function krakenPrivate(ctx: ProviderContext, path: string, params: Record<string, string>) {
   const { KRAKEN_API_KEY, KRAKEN_API_SECRET } = await creds(ctx, "kraken", "KRAKEN_API_KEY", "KRAKEN_API_SECRET");
   const nonce = `${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`;
   const body = new URLSearchParams({ nonce, ...params }).toString();
@@ -134,7 +134,7 @@ export const binanceUsAdapter: ExecutionAdapter = {
 };
 
 /* ───────────────────────── Coinbase Advanced Trade ───────────────────────── */
-async function coinbaseFetch(ctx: ProviderContext, method: "GET" | "POST", path: string, body?: unknown) {
+export async function coinbaseFetch(ctx: ProviderContext, method: "GET" | "POST", path: string, body?: unknown) {
   const { COINBASE_API_KEY_NAME: kid, COINBASE_API_PRIVATE_KEY: pem } = await creds(ctx, "coinbase_advanced", "COINBASE_API_KEY_NAME", "COINBASE_API_PRIVATE_KEY");
   const b64u = (x: object | Buffer) => Buffer.from(x instanceof Buffer ? x : JSON.stringify(x)).toString("base64url");
   const now = Math.floor(Date.now() / 1000);

@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Home, Compass, CandlestickChart, Sparkles, Zap, Bot, Users, PieChart, Wallet, Settings, Shield, Bell, Search, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare,
+  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare, Copy,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -13,16 +13,13 @@ import { Logo } from "./Logo";
 import { ToastProvider, useToast, cx, Badge } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 
-const NAV = [
+const NAV: { href: string; label: string; icon: any; also?: string[] }[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/progress", label: "Progress", icon: Gauge },
   { href: "/discover", label: "Discover", icon: Compass },
   { href: "/terminal", label: "Trade", icon: CandlestickChart },
-  { href: "/ai", label: "AI Trade", icon: Sparkles },
-  { href: "/shortcuts", label: "Shortcuts", icon: Zap },
-  { href: "/bots", label: "Agents & Bots", icon: Bot },
-  { href: "/world", label: "World Trades", icon: Globe2 },
-  { href: "/activity", label: "Live Activity", icon: Radio },
+  { href: "/bots", label: "Bots & Shortcut Buttons", icon: Bot, also: ["/shortcuts"] },
+  { href: "/activity", label: "Live & World Activity", icon: Radio, also: ["/world"] },
   { href: "/learning", label: "AI Learning", icon: Brain },
   { href: "/training", label: "Auto-Training", icon: GraduationCap },
   { href: "/chat", label: "Community Chat", icon: MessagesSquare },
@@ -75,8 +72,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   const isAdmin = user.role === "admin" || user.role === "super_admin";
   const nav = [...NAV,
     ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }, { href: "/admin/integrations", label: "Integrations", icon: Plug }] : []),
-    ...(user.role === "super_admin" ? [{ href: "/admin/fees", label: "Fees (Super admin)", icon: Percent }] : []),
-  ];
+    ...(user.role === "super_admin" ? [{ href: "/copy", label: "Copy Trading", icon: Copy }, { href: "/admin/fees", label: "Fees (Super admin)", icon: Percent }] : []),
+  ] as { href: string; label: string; icon: any; also?: string[] }[];
 
   const sidebar = (
     <nav className="relative flex h-full flex-col">
@@ -89,13 +86,14 @@ function Frame({ children }: { children: React.ReactNode }) {
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3">
       {nav.map((n) => {
-        const active = n.href === "/" ? pathname === "/" : pathname === n.href || (pathname.startsWith(n.href + "/") && !(n.href === "/admin" && pathname.startsWith("/admin/integrations")));
+        const active = n.href === "/" ? pathname === "/" : pathname === n.href || (pathname.startsWith(n.href + "/") && !(n.href === "/admin" && pathname.startsWith("/admin/integrations")))
+          || !!n.also?.some((x) => pathname === x || pathname.startsWith(x + "/"));
         return (
           <Link key={n.href} href={n.href} 
             className={cx("flex shrink-0 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
               active ? "bg-accent-soft text-text shadow-[inset_0_0_0_1px_rgba(56,189,248,.35)]" : "text-muted hover:bg-panel-2 hover:text-text")}>
             <n.icon className={cx("size-[18px] shrink-0", active && "text-accent-2")} />
-            <span className="truncate">{n.label}</span>
+            <span className="leading-tight">{n.label}</span>
           </Link>
         );
       })}

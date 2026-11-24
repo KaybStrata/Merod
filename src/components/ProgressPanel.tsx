@@ -157,7 +157,7 @@ export function ProgressPanel({ compact = false }: { compact?: boolean }) {
           </ul>
         </Card>
 
-        <Card title="Prompts" icon={<Sparkles className="size-4 text-accent-2" />} action={<Link href="/ai" className="text-xs text-accent-2">Open AI Trade</Link>}>
+        <Card title="Prompts" icon={<Sparkles className="size-4 text-accent-2" />} action={<Link href="/ai" className="text-xs text-accent-2">Prompt history</Link>}>
           {(data?.recent?.prompts ?? []).length === 0 ? <div className="text-xs text-muted">No prompts yet. Type one in the box at the bottom.</div> : (
             <ul className="divide-y divide-line">
               {data.recent.prompts.map((p: any) => (

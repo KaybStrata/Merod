@@ -10,7 +10,7 @@ export const GET = route(async () => {
   const u = await requireUser();
   const [user, profile, risk, permissions] = await Promise.all([
     one<any>("SELECT email, country, trading_mode, totp_enabled, role, created_at FROM users WHERE id=$1", [u.id]),
-    one<any>("SELECT handle, display_name, bio, avatar_color, is_public, share_performance, theme, ai_provider, ai_model, notification_prefs FROM user_profiles WHERE user_id=$1", [u.id]),
+    one<any>("SELECT handle, display_name, bio, avatar_color, is_public, share_performance, allow_copy_trading, theme, ai_provider, ai_model, notification_prefs FROM user_profiles WHERE user_id=$1", [u.id]),
     one<any>("SELECT * FROM risk_settings WHERE user_id=$1", [u.id]),
     one<any>("SELECT * FROM trading_permissions WHERE user_id=$1", [u.id]),
   ]);
@@ -39,7 +39,7 @@ const Sections = z.discriminatedUnion("section", [
   }) }),
   z.object({ section: z.literal("notifications"), values: z.object({ fills: z.boolean(), bots: z.boolean(), alerts: z.boolean(), social: z.boolean(), email: z.boolean() }) }),
   z.object({ section: z.literal("ai"), values: z.object({ ai_provider: z.enum(["anthropic", "openai", "merod"]), ai_model: z.string().min(1).max(60) }) }),
-  z.object({ section: z.literal("privacy"), values: z.object({ is_public: z.boolean(), share_performance: z.boolean() }) }),
+  z.object({ section: z.literal("privacy"), values: z.object({ is_public: z.boolean(), share_performance: z.boolean(), allow_copy_trading: z.boolean().optional() }) }),
   z.object({ section: z.literal("theme"), values: z.object({ theme: z.enum(["dark", "light"]) }) }),
 ]);
 
@@ -84,7 +84,9 @@ export const PATCH = route(async (req) => {
       break;
     }
     case "privacy":
-      await q("UPDATE user_profiles SET is_public=$2, share_performance=$3 WHERE user_id=$1", [u.id, v.is_public, v.share_performance]);
+      await q("UPDATE user_profiles SET is_public=$2, share_performance=$3, allow_copy_trading=COALESCE($4, allow_copy_trading) WHERE user_id=$1", [u.id, v.is_public, v.share_performance, v.allow_copy_trading ?? null]);
+      // Turning copy trading off stops everyone copying you right away.
+      if (v.allow_copy_trading === false) await q("UPDATE copy_follows SET status='paused' WHERE leader_user_id=$1 AND status='active'", [u.id]);
       break;
     case "theme":
       await q("UPDATE user_profiles SET theme=$2 WHERE user_id=$1", [u.id, v.theme]);

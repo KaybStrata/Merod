@@ -1,6 +1,7 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Copy, Trash2, Pencil, FolderPlus, Folder, Wand2, X, History, Zap } from "lucide-react";
+import { Plus, Copy, Trash2, Pencil, FolderPlus, Folder, Wand2, X, History, Zap, Bot } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { Badge, Button, Card, Empty, Input, Modal, Select, Toggle, StatusPill, cx, useToast } from "@/components/ui";
 import { ShortcutIcon, SHORTCUT_ICONS } from "@/components/ShortcutBar";
@@ -96,9 +97,10 @@ export default function ShortcutsPage() {
 
   return (
     <div className="space-y-5">
+      <SectionTabs tabs={[{ href: "/bots", label: "Bots", icon: Bot }, { href: "/shortcuts", label: "Shortcut buttons", icon: Zap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Shortcuts</h1>
+          <h1 className="text-xl font-semibold">Shortcut buttons</h1>
           <p className="text-sm text-muted">One-click trading buttons. Every click is previewed and validated by the trading engine before anything executes.</p>
         </div>
         <Button variant="primary" onClick={() => setDraft(blank())}><Plus className="size-4" /> New shortcut</Button>

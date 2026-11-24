@@ -69,7 +69,7 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-3 py-1.5 text-xs text-muted">
               <span className="flex min-w-0 items-center gap-1.5"><Sparkles className="size-3.5 shrink-0 text-accent-2" /> <span className="shrink-0">Merod AI</span> {note && <span className="truncate text-warn">· {note}</span>}</span>
               <span className="flex shrink-0 items-center gap-0.5">
-                <Link href={conversationId ? `/ai?c=${conversationId}` : "/ai"} className="rounded p-1 hover:text-text" title="Open in AI Trade page"><ExternalLink className="size-3.5" /></Link>
+                <Link href={conversationId ? `/ai?c=${conversationId}` : "/ai"} className="rounded p-1 hover:text-text" title="Open full prompt history"><ExternalLink className="size-3.5" /></Link>
                 <button onClick={() => setView(view === "full" ? "open" : "full")} className="rounded p-1 hover:text-text" title={view === "full" ? "Exit full screen" : "Full screen"}>
                   {view === "full" ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
                 </button>

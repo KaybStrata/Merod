@@ -1,15 +1,19 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bot, Plus, OctagonX, PauseCircle, PlayCircle, Sparkles, Loader2, X, LayoutTemplate } from "lucide-react";
+import { Bot, Plus, OctagonX, PauseCircle, PlayCircle, Sparkles, Loader2, X, LayoutTemplate, Zap } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { Badge, Button, Card, Empty, Input, Modal, PaperBadge, Select, StatusPill, Toggle, cx, useToast } from "@/components/ui";
 import { PlanCard } from "@/components/shell/PlanCard";
+import { CopyBotsPanel } from "@/components/CopyBots";
+import { useShell } from "@/components/shell/context";
 import { usd, ago, tone } from "@/lib/format";
 
 const SCHEDULES = [["every_15s", "15 seconds"], ["every_1m", "1 minute"], ["every_5m", "5 minutes"], ["every_15m", "15 minutes"], ["every_1h", "1 hour"]];
 
 export default function BotsPage() {
+  const { user } = useShell();
   const { data, refresh } = useApi<any>("/api/bots", { refreshMs: 10000 });
   const strategies = useApi<any>("/api/bots/strategies");
   const toast = useToast();
@@ -35,9 +39,10 @@ export default function BotsPage() {
 
   return (
     <div className="space-y-5">
+      <SectionTabs tabs={[{ href: "/bots", label: "Bots", icon: Bot }, { href: "/shortcuts", label: "Shortcut buttons", icon: Zap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Agents & Bots</h1>
+          <h1 className="text-xl font-semibold">Bots</h1>
           <p className="text-sm text-muted">Automated strategies running on Merod's servers — they keep working when your browser is closed. Profit is never guaranteed.</p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -47,6 +52,7 @@ export default function BotsPage() {
           <Button variant="primary" onClick={() => setCreating("dip_rebound_loop")}><Plus className="size-4" /> New bot</Button>
         </div>
       </div>
+      {user.role === "super_admin" && <CopyBotsPanel compact />}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[["Bots", bots.length], ["Running", running], ["Paused", bots.filter((b) => b.status === "paused").length], ["Total bot P&L", usd(bots.reduce((s, b) => s + Number(b.pnl_usd), 0), { sign: true })]].map(([k, v]) => (

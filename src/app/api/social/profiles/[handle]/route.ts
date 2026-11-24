@@ -10,7 +10,7 @@ export const GET = route<Ctx>(async (_req, { params }) => {
   const u = await requireUser();
   const { handle } = await params;
   const p = await one<any>(
-    `SELECT pr.user_id, pr.handle, pr.display_name, pr.bio, pr.avatar_color, pr.is_public, pr.share_performance, pr.created_at,
+    `SELECT pr.user_id, pr.handle, pr.display_name, pr.bio, pr.avatar_color, pr.is_public, pr.share_performance, pr.allow_copy_trading, pr.created_at,
             (SELECT count(*)::int FROM followers WHERE followee_id=pr.user_id) AS followers,
             (SELECT count(*)::int FROM followers WHERE follower_id=pr.user_id) AS following,
             EXISTS (SELECT 1 FROM followers WHERE follower_id=$2 AND followee_id=pr.user_id) AS is_following

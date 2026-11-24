@@ -7,6 +7,7 @@ import { pct, usd, ago } from "@/lib/format";
 import { Badge, Button, Card, Empty, Pills, Skeleton, Stat, cx, useToast, PaperBadge } from "@/components/ui";
 import { useShell } from "@/components/shell/context";
 import { Avatar, PostCard } from "@/components/social/PostCard";
+import { CopyTradeButton } from "@/components/CopyBots";
 
 type Tab = "posts" | "performance" | "strategies";
 
@@ -56,6 +57,7 @@ export default function ProfilePage({ params }: { params: Promise<{ handle: stri
               </>
             ) : <div className="col-span-2 text-xs text-muted">Performance is private (shared only with the trader's consent).</div>}
           </div>
+          {!data.self && user.role === "super_admin" && <CopyTradeButton handle={p.handle} allowed={!!p.allow_copy_trading} />}
           {!data.self ? <Button variant={p.is_following ? "secondary" : "primary"} loading={busy} onClick={follow}>{p.is_following ? "Following" : "Follow +"}</Button>
             : <Link href="/settings?tab=account"><Button variant="secondary">Edit profile</Button></Link>}
         </div>

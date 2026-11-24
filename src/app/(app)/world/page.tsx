@@ -1,6 +1,7 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Globe2, Pause, Play, Plus, X, Search, Bitcoin, Building2, Waves } from "lucide-react";
+import { Globe2, Pause, Play, Plus, X, Search, Bitcoin, Building2, Waves, Radio } from "lucide-react";
 import { useRealtime, useShell } from "@/components/shell/context";
 import { Badge, Card, Empty, Pills, Stat, cx } from "@/components/ui";
 import { CRYPTO_VENUES, useCryptoTape, type FeedState, type WorldTrade } from "@/components/world/useCryptoTape";
@@ -101,6 +102,7 @@ export default function WorldTradesPage() {
 
   return (
     <div className="space-y-4">
+      <SectionTabs tabs={[{ href: "/activity", label: "My live activity", icon: Radio }, { href: "/world", label: "World trades", icon: Globe2 }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold"><Globe2 className="size-6 text-accent-2" /> World Trades</h1>

@@ -133,7 +133,7 @@ export default function Dashboard() {
         </Card>
     ) },
     { id: "bots", title: "Active bots", size: "third", node: (
-        <Card title="Active bots" icon={<Bot className="size-4 text-accent-2" />} action={<Link href="/bots" className="text-xs text-accent-2 hover:underline">Agents & Bots</Link>}>
+        <Card title="Active bots" icon={<Bot className="size-4 text-accent-2" />} action={<Link href="/bots" className="text-xs text-accent-2 hover:underline">Bots & Shortcut Buttons</Link>}>
           {!s ? <Skeleton className="h-32" /> : s.bots.length === 0 ? (
             <Empty title="No active bots" action={<button onClick={() => openPrompt("Buy at a 3% dip and sell at 5% increase, then rinse and repeat")} className="text-xs text-accent-2 hover:underline">Create one with a prompt</button>} />
           ) : (

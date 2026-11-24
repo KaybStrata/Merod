@@ -96,7 +96,7 @@ function AIPage() {
       {/* Chat */}
       <div className="flex min-h-[70vh] flex-col rounded-xl border border-line bg-panel/80">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
-          <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent-2" /><h1 className="font-semibold">AI Trade</h1>
+          <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent-2" /><h1 className="font-semibold">Prompt history</h1>
             {screenAsset && <Badge tone="accent">Context: {screenAsset.symbol}</Badge>}</div>
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Select value={provider} onChange={(e) => { const p = providers.find((x) => x.id === e.target.value); savePreference(e.target.value, p?.models[0]?.id ?? ""); }} className="w-40">

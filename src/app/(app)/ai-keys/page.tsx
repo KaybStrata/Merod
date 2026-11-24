@@ -86,7 +86,7 @@ export default function AIKeysPage() {
 
       <Card>
         <div className="text-xs text-muted">
-          <span className="font-medium text-text">How it works:</span> paste your key and press <b>Save</b>, then <b>Test</b>. Once it shows connected, pick a model above. Your prompts in the prompt box and AI Trade then go to that model using your key, and you pay that company directly for usage. Without a key, Merod uses its own connected key if an admin has added one; otherwise it uses its built-in rule reader. The AI only turns your words into a trade plan. Every trade still goes through your limits and confirmations.
+          <span className="font-medium text-text">How it works:</span> paste your key and press <b>Save</b>, then <b>Test</b>. Once it shows connected, pick a model above. Your prompts in the prompt box then go to that model using your key, and you pay that company directly for usage. Without a key, Merod uses its own connected key if an admin has added one; otherwise it uses its built-in rule reader. The AI only turns your words into a trade plan. Every trade still goes through your limits and confirmations.
         </div>
       </Card>
     </div>

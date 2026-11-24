@@ -261,7 +261,7 @@ function AiTab({ data, refresh }: any) {
 }
 
 function PrivacyTab({ data, refresh }: any) {
-  const [v, setV] = useState({ is_public: data.profile.is_public, share_performance: data.profile.share_performance });
+  const [v, setV] = useState({ is_public: data.profile.is_public, share_performance: data.profile.share_performance, allow_copy_trading: !!data.profile.allow_copy_trading });
   const { save, busy } = useSave(refresh);
   return (
     <Card title="Privacy">
@@ -270,6 +270,8 @@ function PrivacyTab({ data, refresh }: any) {
           <p className="ml-11 text-xs text-muted">Others can view your profile and public posts.</p></div>
         <div><Toggle checked={v.share_performance} disabled={!v.is_public} onChange={(b) => setV({ ...v, share_performance: b })} label="Share verified trading performance" />
           <p className="ml-11 text-xs text-muted">With your consent, Merod shows win rate and realized P&L computed from your filled orders (paper and live shown separately), lists you on the leaderboard, and shows your active bot strategies (names and parameters only — never balances or account details).</p></div>
+        <div><Toggle checked={v.allow_copy_trading} onChange={(b) => setV({ ...v, allow_copy_trading: b })} label="Let others copy my trades" />
+          <p className="ml-11 text-xs text-muted">Approved copy traders automatically mirror the trades you make on Merod, and the trades you make in brokerage or exchange accounts you've connected here (Alpaca, Kraken, Coinbase), even if you place them outside Merod. They see the trade (asset, side, size and time), never your balances or keys. You'll be notified when someone starts copying you. Turn this off to stop all copying immediately.</p></div>
       </div>
       <div className="mt-4 flex justify-end"><Button variant="primary" loading={busy} onClick={() => save("privacy", v)}>Save</Button></div>
     </Card>
