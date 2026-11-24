@@ -16,6 +16,95 @@ const NAME_ALIASES: Record<string, string> = {
 const STOP_WORDS = new Set(["my", "the", "a", "an", "of", "worth", "position", "shares", "share", "all", "it", "this", "that", "at", "and", "then", "when", "if", "every", "dip", "increase", "gain", "drop", "rinse", "repeat", "sell", "buy", "half", "price", "target", "usd", "dollars", "coins", "coin", "tokens"]);
 
 const num = (s: string) => Number(s.replace(/[,$]/g, ""));
+
+/* ───────────── Forgiving language layer: case-insensitive, typo-tolerant, synonym-aware ───────────── */
+
+/** Command words the grammar below understands. Misspellings are snapped to these. */
+const VOCAB = [
+  "buy", "sell", "purchase", "cancel", "orders", "order", "pause", "resume", "restart", "notify", "alert", "every", "daily", "weekly", "monthly", "hourly",
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "dip", "drop", "decline", "pullback", "increase", "profit", "gain", "rise",
+  "repeat", "rinse", "loop", "again", "bot", "bots", "agent", "monitor", "watch", "watchlist", "rebalance", "portfolio", "holdings", "performance",
+  "position", "shares", "share", "dollars", "worth", "half", "when", "once", "reaches", "reach", "hits", "above", "below", "under", "over", "limit", "stop",
+  "loss", "take", "launch", "launched", "tokens", "coins", "analyze", "research", "explain", "outlook", "news", "everything", "entire", "whole", "close",
+  "trim", "liquidity", "target", "price", "percent", "falls", "drops", "rises", "continuous", "forever", "cycles", "times", "remind",
+];
+const VOCAB_SET = new Set(VOCAB);
+/** Short words are too risky to auto-correct by distance, so only these well-known slips are fixed. */
+const SHORT_FIXES: Record<string, string> = { sel: "sell", sll: "sell", seel: "sell", byu: "buy", bui: "buy", buu: "buy", bye: "buy", cancle: "cancel", alret: "alert", notfiy: "notify" };
+/** Everyday phrasings mapped onto the grammar's words (applied after typo correction). */
+const PHRASES: [RegExp, string][] = [
+  [/\b(get me|grab|pick up|scoop up|snag|acquire|load up on|go long on|go long|invest in|invest|put (?=\$?\d))\b/g, "buy "],
+  [/\b(unload|offload|liquidate|dump|cash out of|cash out|get rid of|get out of|exit)\b/g, "sell "],
+  [/\b(per ?cent|pct|percentage)\b/g, "%"],
+  [/\b(stoploss|stop loss|stop-loss|sl)\b/g, "stop-loss"],
+  [/\b(takeprofit|take profit|take-profit|tp)\b/g, "take-profit"],
+  [/\b(bucks|usd)\b/g, "dollars"],
+  [/\bonce it\b/g, "when it"],
+];
+/** Common English words that also happen to be tickers. Never read these as assets unless written $LIKE or in caps. */
+const ENGLISH = new Set(["a", "i", "all", "am", "an", "are", "at", "be", "by", "can", "do", "for", "go", "has", "have", "he", "hi", "how", "if", "in", "is", "it", "low", "me", "my", "new", "no", "now", "of", "on", "one", "or", "out", "see", "so", "the", "to", "two", "up", "us", "we", "well", "you", "big", "cat", "key", "real", "open", "true", "fast", "love", "life", "run", "play", "very", "good", "get", "coin", "and", "then", "when", "some", "any", "more", "less", "next", "best", "sure", "fun", "car", "hot", "own", "nice", "safe", "grow", "pump", "moon", "dip", "buy", "sell", "loop", "stop", "half", "max", "min", "am", "pm", "day", "week", "net", "fee", "tax", "cash", "gold", "bond", "rent", "it's", "lets", "let", "want", "need", "like", "just", "please", "much", "many", "ok", "okay"]);
+
+let CATALOG: { symbols: Set<string>; names: Map<string, string> } = { symbols: new Set(), names: new Map() };
+/** Feed the live asset catalog (symbols + company/coin names) to the parser. Called by the server before parsing. */
+export function setCatalog(symbols: Iterable<string>, names: Iterable<[string, string]>) {
+  const n = new Map<string, string>();
+  for (const [name, sym] of names) {
+    const clean = name.toLowerCase().replace(/[.,]/g, "").replace(/\b(inc|corp|corporation|co|company|ltd|plc|holdings|group|class [a-c]|trust|etf|sa|nv|ag)\b/g, "").replace(/\s+/g, " ").trim();
+    if (clean.length >= 3) n.set(clean, sym);
+    const first = clean.split(" ")[0];
+    if (first.length >= 4 && !n.has(first) && !VOCAB_SET.has(first) && !ENGLISH.has(first)) n.set(first, sym);
+  }
+  CATALOG = { symbols: new Set([...symbols].map((x) => x.toUpperCase())), names: n };
+}
+
+/** Optimal-string-alignment edit distance (insert, delete, substitute, swap neighbours). */
+function editDistance(a: string, b: string, cap = 3): number {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const c = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+const allowedTypos = (len: number) => (len <= 3 ? 0 : len <= 6 ? 1 : 2);
+function closest(word: string, candidates: Iterable<string>): { word: string; dist: number } | null {
+  const max = allowedTypos(word.length);
+  if (!max) return null;
+  let best: { word: string; dist: number } | null = null;
+  for (const c of candidates) {
+    if (Math.abs(c.length - word.length) > max || c[0] !== word[0] && c.length < 6) continue;
+    const dist = editDistance(word, c, max);
+    if (dist <= max && (!best || dist < best.dist)) best = { word: c, dist };
+  }
+  return best;
+}
+const assetNameKeys = () => [...Object.keys(NAME_ALIASES), ...CATALOG.names.keys()].filter((k) => !k.includes(" ") && k.length >= 4);
+
+/** Lowercase, tidy punctuation, expand 1k → 1000, fix typos in command words and asset names, map synonyms. */
+export function normalize(raw: string): string {
+  let t = raw.toLowerCase().replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/[*_~`]+/g, " ")
+    .replace(/(\d+(?:\.\d+)?)\s*k\b/g, (_, n) => String(Number(n) * 1000))
+    .replace(/(\d+(?:\.\d+)?)\s*(m|mil|million)\b/g, (_, n) => String(Number(n) * 1_000_000))
+    .replace(/([a-z])\1{2,}/g, "$1$1");
+  const names = assetNameKeys();
+  t = t.replace(/[a-z][a-z'-]*/g, (w) => {
+    if (w in SHORT_FIXES) return SHORT_FIXES[w];
+    if (VOCAB_SET.has(w) || ENGLISH.has(w) || w in NAME_ALIASES || CATALOG.names.has(w) || CATALOG.symbols.has(w.toUpperCase())) return w;
+    const deduped = w.replace(/([a-z])\1+/g, "$1");
+    if (VOCAB_SET.has(deduped) || deduped in NAME_ALIASES) return deduped;
+    const v = closest(w, VOCAB), a = closest(w, names);
+    if (v && (!a || v.dist <= a.dist)) return v.word;
+    if (a) return a.word;
+    return w;
+  });
+  for (const [re, to] of PHRASES) t = t.replace(re, to);
+  return t.replace(/\s+/g, " ").trim();
+}
 const leg = (p: Partial<TradeLeg> & Pick<TradeLeg, "side">): TradeLeg => ({
   symbol: null, network: null, contract_address: null, amount_type: null, amount: null, order_type: "market",
   limit_price: null, stop_price: null, take_profit_pct: null, stop_loss_pct: null, ...p,
@@ -31,30 +120,37 @@ export function extractAsset(text: string): { symbol: string | null; contract: s
   const network = /\bon (solana|ethereum|base|bsc|bnb chain|polygon|arbitrum|avalanche|sui|aptos)\b/.exec(t)?.[1]?.replace("bnb chain", "bsc") ?? null;
   if (evm) return { symbol: null, contract: evm[0], network };
   if (sol && !/^[A-Z]{2,6}$/.test(sol[0])) return { symbol: null, contract: sol[0], network: network ?? "solana" };
-  const cashtag = text.match(/\$([A-Za-z]{2,10})\b/);
+  const cashtag = text.match(/\$([A-Za-z]{1,10})\b/);
   if (cashtag) return { symbol: cashtag[1].toUpperCase(), contract: null, network };
-  for (const [name, sym] of Object.entries(NAME_ALIASES)) if (new RegExp(`\\b${name.replace("&", "\\&")}\\b`).test(t)) return { symbol: sym, contract: null, network };
-  const upper = text.match(/\b[A-Z]{2,6}\b/g)?.filter((w) => !["USD", "AND", "THE", "ETF", "TP", "SL"].includes(w));
+  const n = normalize(text);
+  for (const [name, sym] of Object.entries(NAME_ALIASES)) if (new RegExp(`\\b${name.replace("&", "\\&")}\\b`).test(n)) return { symbol: sym, contract: null, network };
+  // Multi-word company names first ("bank of america"), then single words / tickers in any letter case.
+  for (const [name, sym] of CATALOG.names) if (name.includes(" ") && n.includes(name)) return { symbol: sym, contract: null, network };
+  for (const w of n.match(/[a-z][a-z0-9.-]*/g) ?? []) {
+    if (CATALOG.names.has(w)) return { symbol: CATALOG.names.get(w)!, contract: null, network };
+    if (!ENGLISH.has(w) && !STOP_WORDS.has(w) && !VOCAB_SET.has(w) && CATALOG.symbols.has(w.toUpperCase())) return { symbol: w.toUpperCase(), contract: null, network };
+  }
+  const upper = text.match(/\b[A-Z]{2,6}\b/g)?.filter((w) => !["USD", "AND", "THE", "ETF", "TP", "SL", "OK", "AM", "PM"].includes(w));
   if (upper?.length) return { symbol: upper[0], contract: null, network };
   return { symbol: null, contract: null, network };
 }
 
 function amount(text: string): { type: TradeLeg["amount_type"]; value: number | null } {
-  const t = text.toLowerCase();
+  const t = normalize(text);
   if (/\bhalf\b/.test(t)) return { type: "percent_position", value: 50 };
   if (/\b(everything|all of|entire|whole) (my )?(position|holding|it)\b|\bclose (my )?position\b|\bsell all\b/.test(t)) return { type: "percent_position", value: 100 };
   const pct = t.match(/(\d+(?:\.\d+)?)\s*%\s*(of\s+)?(my\s+)?([a-z$]+\s+)?(position|holding|stake|bag)?/);
   const usd = t.match(/\$\s?(\d[\d,]*(?:\.\d+)?)|(\d[\d,]*(?:\.\d+)?)\s*(usd|dollars|bucks)\b/);
   const qty = t.match(/\b(\d+(?:\.\d+)?)\s+(shares?|coins?|tokens?|units?|[a-z]{2,6})\b(?! ?%)/);
   if (usd) return { type: "usd", value: num(usd[1] ?? usd[2]) };
-  if (pct && (pct[5] || /\bsell\b/.test(t)) && !/\b(dip|drop|gain|increase|reach|rise|up|down)\b/.test(t.slice(pct.index ?? 0, (pct.index ?? 0) + 30))) return { type: "percent_position", value: num(pct[1]) };
+  if (pct && (pct[5] || /\bsell\b/.test(t)) && !/\b(dip|drop|gain|increase|reach|rise|up|down|profit|loss|higher|lower)\b|take-profit|stop-loss/.test(t.slice(Math.max(0, (pct.index ?? 0) - 14), (pct.index ?? 0) + 30))) return { type: "percent_position", value: num(pct[1]) };
   if (qty && !/%/.test(qty[0])) return { type: "quantity", value: num(qty[1]) };
   return { type: null, value: null };
 }
 
 export function parsePrompt(raw: string): Instruction {
   const text = raw.trim();
-  const t = text.toLowerCase();
+  const t = normalize(text);
   const asset = extractAsset(text);
   const amt = amount(text);
 
@@ -133,11 +229,13 @@ export function parsePrompt(raw: string): Instruction {
   if (sideMatch) {
     const side: "buy" | "sell" = ["buy", "purchase", "long", "ape"].includes(sideMatch[1]) ? "buy" : "sell";
     const lim = t.match(/\b(limit|at)\s*\$?\s?(\d[\d,]*(?:\.\d+)?)(?!\s*%)/);
-    const tp = t.match(/take[- ]?profit (of |at )?(\d+(?:\.\d+)?)\s*%/), sl = t.match(/stop[- ]?loss (of |at )?(\d+(?:\.\d+)?)\s*%/);
+    const tpM = t.match(/take-profit (?:of |at )?\+?(\d+(?:\.\d+)?)\s*%/) ?? (side === "buy" ? t.match(/\b(?:sell|close)\b[^%]{0,25}?\+?(\d+(?:\.\d+)?)\s*%\s*(?:profit|gain|up|increase|higher|rise)/) ?? t.match(/\+?(\d+(?:\.\d+)?)\s*%\s*(?:profit|gain)\b/) : null);
+    const slM = t.match(/stop-loss (?:of |at )?-?(\d+(?:\.\d+)?)\s*%/) ?? (side === "buy" ? t.match(/-?(\d+(?:\.\d+)?)\s*%\s*(?:loss|down|drop)\b/) : null);
+    const tp = tpM ? [tpM[0], null, tpM[1]] as const : null, sl = slM ? [slM[0], null, slM[1]] as const : null;
     let a = amt;
     if (side === "sell" && /\bclose\b/.test(t)) a = { type: "percent_position", value: 100 };
-    if (!a.value) return base("clarify", `${side} ${asset.symbol ?? ""}`.trim(), { clarification_question: side === "buy" ? `How much${asset.symbol ? ` ${asset.symbol}` : ""} should I buy? (e.g. $100 or 2 shares)` : "How much should I sell? (e.g. 25% or 10 shares)",
-      trades: [leg({ side, symbol: asset.symbol, network: asset.network, contract_address: asset.contract })] });
+    if (!a.value) return base("clarify", `${side} ${asset.symbol ?? ""}`.trim(), { clarification_question: side === "buy" ? `How much${asset.symbol ? ` ${asset.symbol}` : ""} should I buy? (e.g. $100 or 2 shares)` : `How much${asset.symbol ? ` ${asset.symbol}` : ""} should I sell? (e.g. 25% or 10 shares)`,
+      trades: [leg({ side, symbol: asset.symbol, network: asset.network, contract_address: asset.contract, take_profit_pct: tp ? num(tp[2]) : null, stop_loss_pct: sl ? num(sl[2]) : null })] });
     return base("trade", `${side === "buy" ? "Buy" : "Sell"} ${a.type === "usd" ? `$${a.value} of` : a.type === "percent_position" ? `${a.value}% of` : a.value} ${asset.symbol ?? asset.contract ?? "this asset"}`, {
       trades: [leg({ side, symbol: asset.symbol, network: asset.network, contract_address: asset.contract, amount_type: a.type, amount: a.value,
         order_type: lim && /limit/.test(lim[1]) ? "limit" : "market", limit_price: lim && /limit/.test(lim[1]) ? num(lim[2]) : null,
@@ -147,12 +245,16 @@ export function parsePrompt(raw: string): Instruction {
 
   if (/\b(portfolio|holdings|p&l|pnl|how am i doing|performance)\b/.test(t)) return base("portfolio_question", "Portfolio summary");
   if (/\?|\b(why|what|how|analy[sz]e|research|explain|outlook|news)\b/.test(t)) return base("research", "Market research", { research_query: text });
+  if ((asset.symbol || asset.contract) && t.split(" ").length <= 4)
+    return base("clarify", `What to do with ${asset.symbol ?? "this token"}`, { clarification_question: `What would you like to do with ${asset.symbol ?? "this token"}? Buy, sell, set an alert, or analyze it?`,
+      trades: [leg({ side: "buy", symbol: asset.symbol, network: asset.network, contract_address: asset.contract })] });
   return base("clarify", "Unclear request", { clarification_question: "I couldn't tell what you'd like to do. Try e.g. “Buy $100 of SOL”, “Sell 25% of NVDA”, or “Buy at a 3% dip and sell at +5%, repeat”." });
 }
 
 /** Merge a clarification answer (e.g. "$100" or "SOL") into the pending instruction. */
 export function mergeClarification(pending: Instruction, answer: string): Instruction | null {
   const a = amount(answer.includes("$") || /\d/.test(answer) ? answer : "");
+  if (!a.value && /^\s*\d[\d,]*(\.\d+)?\s*$/.test(answer)) { a.value = num(answer); a.type = pending.trades[0]?.side === "buy" ? "usd" : "quantity"; }
   const asset = extractAsset(answer);
   const next: Instruction = JSON.parse(JSON.stringify(pending));
   if (!next.trades.length) return null;

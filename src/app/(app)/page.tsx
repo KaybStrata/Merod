@@ -192,16 +192,16 @@ function Allocation({ a, total }: { a: { stocks: number; crypto: number; cash: n
   let acc = 0;
   const R = 54, C = 2 * Math.PI * R;
   return (
-    <div className="flex items-center gap-5">
-      <svg width="140" height="140" viewBox="0 0 140 140" className="shrink-0 -rotate-90">
+    <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-4">
+      <svg viewBox="0 0 140 140" className="size-[104px] shrink-0 -rotate-90 2xl:size-[132px]" aria-hidden>
         <circle cx="70" cy="70" r={R} fill="none" stroke="var(--panel-2)" strokeWidth="16" />
         {parts.map((p) => { const frac = total ? p.v / total : 0; const el = <circle key={p.k} cx="70" cy="70" r={R} fill="none" stroke={p.c} strokeWidth="16" strokeDasharray={`${frac * C} ${C}`} strokeDashoffset={-acc * C} />; acc += frac; return el; })}
       </svg>
-      <div className="flex-1 space-y-2.5">
+      <div className="min-w-[150px] flex-1 space-y-2.5">
         {parts.map((p) => (
-          <div key={p.k} className="flex items-center justify-between gap-2 text-sm">
-            <span className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{ background: p.c }} />{p.k}</span>
-            <span className="num text-muted">{total ? ((p.v / total) * 100).toFixed(1) : "0.0"}%</span>
+          <div key={p.k} className="flex min-w-0 items-center justify-between gap-3 text-sm">
+            <span className="flex min-w-0 items-center gap-2"><span className="size-2.5 shrink-0 rounded-full" style={{ background: p.c }} /><span className="truncate">{p.k}</span></span>
+            <span className="num shrink-0 text-muted">{total ? ((p.v / total) * 100).toFixed(1) : "0.0"}%</span>
           </div>
         ))}
         <div className="num border-t border-line pt-2 text-xs text-faint">{usd(total)} total</div>

@@ -93,7 +93,7 @@ wss.on("connection", (ws, req) => {
   try { claims = verifyRealtimeToken(token); }
   catch (e: any) { console.error("[realtime] token check failed:", e?.message); ws.close(1011, "realtime not configured"); return; }
   if (!claims) { ws.close(4401, "unauthorized"); return; }
-  const s = { userId: claims.u, role: claims.r, channels: new Set(["market", "launches", "social", "activity", "world", `user:${claims.u}`]) };
+  const s = { userId: claims.u, role: claims.r, channels: new Set(["market", "launches", "social", "activity", "world", "chat", `user:${claims.u}`]) };
   if (claims.r === "admin") s.channels.add("admin");
   subs.set(ws, s);
   ws.on("message", async (raw) => {

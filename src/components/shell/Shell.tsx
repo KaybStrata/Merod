@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Home, Compass, CandlestickChart, Sparkles, Zap, Bot, Users, PieChart, Wallet, Settings, Shield, Bell, Search, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu,
+  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -25,6 +25,7 @@ const NAV = [
   { href: "/activity", label: "Live Activity", icon: Radio },
   { href: "/learning", label: "AI Learning", icon: Brain },
   { href: "/training", label: "Auto-Training", icon: GraduationCap },
+  { href: "/chat", label: "Community Chat", icon: MessagesSquare },
   { href: "/social", label: "Social", icon: Users },
   { href: "/portfolio", label: "Portfolio", icon: PieChart },
   { href: "/wallet", label: "Wallet & Funding", icon: Wallet },
@@ -115,7 +116,7 @@ function Frame({ children }: { children: React.ReactNode }) {
       <RightRail open={railOpen} onToggle={toggleRail} />
       <div className={cx("transition-[padding]", collapsed ? "lg:pl-0" : "lg:pl-60", railOpen ? "xl:pr-72" : "xl:pr-0")}>
         <TopBar onMenu={() => setMobileOpen(true)} unread={me.data?.unread ?? 0} connected={connected} />
-        <main className="mx-auto max-w-[1600px] px-4 pb-48 pt-4 sm:px-6">{children}</main>
+        <main className="mx-auto max-w-[1600px] px-4 pb-32 pt-4 sm:px-6">{children}</main>
       </div>
       <PromptBar leftCollapsed={collapsed} railOpen={railOpen} />
     </div>

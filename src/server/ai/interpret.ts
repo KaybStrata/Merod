@@ -6,7 +6,7 @@ import { preview, place, resolveAsset, cancelAll } from "../engine/engine";
 import type { OrderIntent } from "../engine/types";
 import { createBot, type BotConfig } from "../bots/service";
 import { pauseAllBots, resumeAllBots } from "../bots/runner";
-import { parsePrompt, mergeClarification } from "./parser";
+import { parsePrompt, mergeClarification, setCatalog } from "./parser";
 import { aiAvailable, llmInterpret, llmResearch, type AIProvider } from "./llm";
 import type { Instruction, TradeLeg } from "./schema";
 import { promptDefaults } from "../training/trainer";
@@ -26,6 +26,17 @@ export type PlanCard =
   | { type: "executed"; detail: string; orderId?: string; status?: string }
   | { type: "research"; text: string }
   | { type: "clarify"; question: string; suggestions: string[] };
+
+/** Give the rule parser the live asset catalog so tickers and company names work in any letter case (refreshed every 5 min). */
+let catalogAt = 0;
+export async function ensureParserCatalog() {
+  if (Date.now() - catalogAt < 300_000) return;
+  catalogAt = Date.now();
+  try {
+    const rows = await q<{ symbol: string; name: string }>("SELECT symbol, name FROM assets WHERE NOT ('demo_data' = ANY(risk_flags)) AND tradability <> 'unsupported' ORDER BY volume_24h DESC NULLS LAST LIMIT 6000");
+    setCatalog(rows.map((r) => r.symbol), rows.map((r) => [r.name, r.symbol] as [string, string]));
+  } catch { catalogAt = 0; }
+}
 
 async function userAI(userId: string, input: PromptInput) {
   const p = await one<{ ai_provider: AIProvider; ai_model: string }>("SELECT ai_provider, ai_model FROM user_profiles WHERE user_id=$1", [userId]);
@@ -101,8 +112,15 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   const last = await one<any>("SELECT * FROM trading_prompts WHERE conversation_id=$1 AND role='assistant' ORDER BY created_at DESC LIMIT 1", [convId]);
   let instruction: Instruction | null = null, usedProvider = "merod", usedModel = "deterministic", fallbackReason: string | null = null;
   let originText = text;
+  await ensureParserCatalog();
   if (last?.status === "clarify" && last.interpretation) {
-    instruction = mergeClarification(last.interpretation, text);
+    // A full new command ("buy $100 of msft") replaces the pending question; it inherits the asset if it didn't name one.
+    const fresh = parsePrompt(text);
+    if (fresh.kind !== "clarify") {
+      const pl = last.interpretation.trades?.[0], fl = fresh.trades?.[0];
+      if (fl && pl && !fl.symbol && !fl.contract_address) { fl.symbol = pl.symbol; fl.contract_address = pl.contract_address; fl.network = pl.network; }
+      instruction = fresh;
+    } else instruction = mergeClarification(last.interpretation, text);
     if (instruction) {
       // Record the user's original instruction (not just the clarification answer) on anything we create.
       const orig = await one<{ content: string }>("SELECT content FROM trading_prompts WHERE conversation_id=$1 AND role='user' AND created_at < $2 ORDER BY created_at DESC LIMIT 1", [convId, last.created_at]);
@@ -125,7 +143,14 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   const leg = ins.trades[0];
   switch (ins.kind) {
     case "clarify":
-      return reply(ins.clarification_question ?? "Could you clarify?", { type: "clarify", question: ins.clarification_question ?? "", suggestions: /how much/i.test(ins.clarification_question ?? "") ? AMOUNT_CHIPS : [] }, "clarify");
+      {
+        const q0 = ins.clarification_question ?? "";
+        const sym = ins.trades[0]?.symbol;
+        const suggestions = /how much/i.test(q0) ? AMOUNT_CHIPS
+          : /^What would you like to do with/.test(q0) && sym ? [`Buy $100 of ${sym}`, `Sell 25% of ${sym}`, `Alert me when ${sym} drops 5%`, `Analyze ${sym}`]
+          : /couldn't tell/.test(q0) ? ["Buy $100 of BTC", "Sell 25% of NVDA", "Buy at a 3% dip and sell at +5%, repeat"] : [];
+        return reply(q0 || "Could you clarify?", { type: "clarify", question: q0, suggestions }, "clarify");
+      }
 
     case "trade": {
       if (!leg) return reply("I couldn't find a trade in that request.", null, "info");
