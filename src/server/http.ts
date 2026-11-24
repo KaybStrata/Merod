@@ -2,7 +2,7 @@ import "@/lib/server-only-shim";
 import { NextResponse } from "next/server";
 import { ZodError, ZodType } from "zod";
 import { HttpError } from "./errors";
-import { q } from "./db";
+import { q, describeDbError } from "./db";
 import { env } from "./env";
 
 export const ok = (data: unknown, init?: ResponseInit) => NextResponse.json(data, init);
@@ -41,6 +41,12 @@ export function route<C = unknown>(fn: Handler<C>): Handler<C> {
       // Malformed client input that reached Postgres (bad UUID / number / negative LIMIT) is a 400, not a 500.
       const pgCode = (e as { code?: string })?.code;
       if (pgCode === "22P02" || pgCode === "2201W" || pgCode === "2201X" || pgCode === "22003") return NextResponse.json({ error: "Invalid identifier or parameter" }, { status: 400 });
+      // Database unreachable / misconfigured: say exactly what to fix instead of a bare 500.
+      const db = describeDbError(e);
+      if (db) {
+        console.error(`[merod] database error (${db.code}):`, (e as Error)?.message);
+        return NextResponse.json({ error: `Service unavailable — ${db.hint}`, code: db.code }, { status: 503 });
+      }
       console.error("[merod] unhandled route error", e);
       return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
