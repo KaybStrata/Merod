@@ -420,7 +420,12 @@ export const DIRECTORY_PROVIDERS: ProviderDefinition[] = [
 ];
 
 /** Directory metadata for every provider in the PDF (incl. ones already in the main catalog), keyed by provider id. */
-export const DIRECTORY_INFO: Record<string, { section: "stocks" | "global" | "exchanges" | "onchain" | "chains"; coverage: string; access: string }> = {
+export const DIRECTORY_INFO: Record<string, { section: "services" | "stocks" | "global" | "exchanges" | "onchain" | "chains"; coverage: string; access: string }> = {
+  anthropic: { section: "services", coverage: "Claude (Opus, Sonnet, Haiku): reads your prompts", access: "KEY" },
+  openai: { section: "services", coverage: "ChatGPT models: reads your prompts", access: "KEY" },
+  helius: { section: "services", coverage: "Solana blockchain connectivity", access: "KEY" },
+  alchemy: { section: "services", coverage: "EVM blockchain connectivity", access: "KEY" },
+  birdeye: { section: "services", coverage: "Token discovery and prices", access: "KEY" },
   alpaca_trading: { section: "stocks", coverage: "US stocks, ETFs; supported crypto", access: "PERSONAL / SANDBOX" },
   alpaca_broker: { section: "stocks", coverage: "Embedded brokerage; supported securities", access: "SANDBOX" },
   ibkr: { section: "stocks", coverage: "Broad global equities, ETFs", access: "PERSONAL" },

@@ -5,7 +5,7 @@ import { one, q } from "@/server/db";
 import { audit } from "@/server/audit";
 import { getFlags } from "@/server/flags";
 import { HttpError } from "@/server/errors";
-import { ADDRESS_RULES, alpacaBalance, walletCapabilities } from "@/server/wallet/service";
+import { ADDRESS_RULES, alpacaBalance, walletCapabilities, BYO_ACCOUNT_PROVIDERS } from "@/server/wallet/service";
 
 export const GET = route(async () => {
   const u = await requireUser();
@@ -25,7 +25,7 @@ export const GET = route(async () => {
 
 const Body = z.discriminatedUnion("type", [
   z.object({ type: z.literal("external_wallet"), network: z.string(), address: z.string().trim().min(10).max(100), label: z.string().trim().max(60).optional() }),
-  z.object({ type: z.literal("byo_broker"), providerId: z.enum(["alpaca_trading", "tradier"]), environment: z.enum(["sandbox", "production"]),
+  z.object({ type: z.literal("byo_broker"), providerId: z.string().refine((p) => p in BYO_ACCOUNT_PROVIDERS, "Unsupported provider"), environment: z.enum(["sandbox", "production"]),
     label: z.string().trim().max(60).optional(), externalRef: z.string().trim().max(60).optional() }),
 ]);
 
@@ -48,15 +48,15 @@ export const POST = route(async (req) => {
   }
   // User's own brokerage account via their own pasted keys. Keys are tested first; production stays blocked by live flags in the engine.
   const st = await one<{ status: string }>("SELECT min(status) AS status FROM user_provider_secrets WHERE user_id=$1 AND provider_id=$2 AND environment=$3", [u.id, b.providerId, b.environment]);
-  if (!st?.status) throw new HttpError(400, `Paste your ${b.providerId === "alpaca_trading" ? "Alpaca" : "Tradier"} ${b.environment} keys in Settings → API keys first`);
-  if (st.status !== "connected") throw new HttpError(400, "Test your keys in Settings → API keys first (they must pass a connection test)");
+  if (!st?.status) throw new HttpError(400, `Paste your ${BYO_ACCOUNT_PROVIDERS[b.providerId]} ${b.environment} keys on the Broker Keys page first`);
+  if (st.status !== "connected") throw new HttpError(400, "Test your keys on the Broker Keys page first (they must pass the key check)");
   if (b.providerId === "tradier" && !b.externalRef) throw new HttpError(400, "Enter your Tradier account number");
   let cash = 0, ref = b.externalRef ?? null, synced = false;
   if (b.providerId === "alpaca_trading") {
     try { const bal = await alpacaBalance(u.id, b.environment); cash = bal.cash; ref = bal.accountNumber; synced = true; }
     catch (e: any) { throw new HttpError(502, `Couldn't reach Alpaca with your keys: ${e.message}`); }
   }
-  const label = b.label || `${b.providerId === "alpaca_trading" ? "Alpaca" : "Tradier"} ${b.environment === "sandbox" ? "paper" : "live"} (my account)`;
+  const label = b.label || `${BYO_ACCOUNT_PROVIDERS[b.providerId]} ${b.environment === "sandbox" ? "paper" : "live"} (my account)`;
   const a = await one<any>(
     `INSERT INTO trading_accounts (user_id, kind, provider_id, label, external_ref, status, cash_balance, metadata) VALUES ($1,'brokerage',$2,$3,$4,'active',$5,$6) RETURNING id`,
     [u.id, b.providerId, label, ref, cash, JSON.stringify({ byo_keys: true, environment: b.environment, balance_synced: synced })]);

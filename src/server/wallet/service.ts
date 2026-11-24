@@ -17,13 +17,21 @@ export const ADDRESS_RULES: Record<string, { label: string; re: RegExp }> = {
   aptos: { label: "Aptos", re: /^0x[a-fA-F0-9]{1,64}$/ },
 };
 
+/** Providers whose pasted keys can become a Merod trading account (they have an order adapter). */
+export const BYO_ACCOUNT_PROVIDERS: Record<string, string> = {
+  alpaca_trading: "Alpaca", tradier: "Tradier",
+  coinbase_advanced: "Coinbase", kraken: "Kraken", gemini: "Gemini", bitstamp: "Bitstamp", cryptocom: "Crypto.com", binance_us: "Binance.US", okx_us: "OKX",
+};
+
 export async function walletCapabilities(userId: string) {
   const [privy, snaptrade] = await Promise.all([providerUsable("privy", "production").then(async (p) => p || providerUsable("privy", "sandbox")), providerUsable("snaptrade", "production").then(async (p) => p || providerUsable("snaptrade", "sandbox"))]);
   const keyStatus = async (pid: string) => {
     const rows = await one<any>(`SELECT json_object_agg(environment, status) AS s FROM (SELECT environment, min(status) AS status FROM user_provider_secrets WHERE user_id=$1 AND provider_id=$2 GROUP BY environment) x`, [userId, pid]);
     return rows?.s ?? {};
   };
-  return { privy, snaptrade, byo: { alpaca_trading: await keyStatus("alpaca_trading"), tradier: await keyStatus("tradier") } };
+  const byo: Record<string, any> = {};
+  for (const pid of Object.keys(BYO_ACCOUNT_PROVIDERS)) byo[pid] = await keyStatus(pid);
+  return { privy, snaptrade, byo, names: BYO_ACCOUNT_PROVIDERS };
 }
 
 /** Fetch the cash balance of a user's own Alpaca account with THEIR keys only. */

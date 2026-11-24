@@ -65,13 +65,24 @@ test("ambiguous tickers require disambiguation; demo tokens never match by symbo
 test("real money stays disabled: live mode without approvals cannot trade", async () => {
   const u = await newUser(); await freshPrices();
   await q("UPDATE users SET trading_mode='live' WHERE id=$1", [u]);
-  await assert.rejects(preview({ asset: { symbol: "SOL" }, side: "buy", orderType: "market", notionalUsd: 10, timeInForce: "gtc" }, ctx(u)), /Connect a solana wallet/);
+  await assert.rejects(preview({ asset: { symbol: "SOL" }, side: "buy", orderType: "market", notionalUsd: 10, timeInForce: "gtc" }, ctx(u)), /Connect a crypto exchange account .* or a solana wallet/);
   // even with a wallet account, the live flag + provider checks block execution
   await q("INSERT INTO trading_accounts (user_id, kind, provider_id, label, network, external_ref) VALUES ($1,'wallet','privy','Test wallet','solana','11111111111111111111111111111111')", [u]);
   const p = await preview({ asset: { symbol: "SOL" }, side: "buy", orderType: "market", notionalUsd: 10, timeInForce: "gtc" }, ctx(u));
   assert.equal(p.decision, "rejected");
   assert.ok(p.checks.some((c) => c.name === "live_flag" && !c.ok));
   assert.ok(p.checks.some((c) => c.name === "price_real" && !c.ok)); // simulated price can't drive real money
+});
+
+test("live crypto routes to the user's own exchange account; stocks never use an exchange account", async () => {
+  const u = await newUser(); await freshPrices();
+  await q("UPDATE users SET trading_mode='live' WHERE id=$1", [u]);
+  await q(`INSERT INTO trading_accounts (user_id, kind, provider_id, label, status, metadata) VALUES ($1,'brokerage','kraken','Kraken live (my account)','active','{"byo_keys":true,"environment":"production"}')`, [u]);
+  const p = await preview({ asset: { symbol: "SOL" }, side: "buy", orderType: "market", notionalUsd: 10, timeInForce: "gtc" }, ctx(u));
+  assert.equal(p.account.provider_id, "kraken");
+  assert.equal(p.decision, "rejected"); // live flag is off and the keys were never tested
+  assert.ok(p.checks.some((c) => c.name === "live_flag" && !c.ok));
+  await assert.rejects(preview({ asset: { symbol: "AAPL" }, side: "buy", orderType: "market", notionalUsd: 10, timeInForce: "gtc" }, ctx(u)), /Connect a brokerage account/);
 });
 
 test("global trading halt blocks all orders", async () => {

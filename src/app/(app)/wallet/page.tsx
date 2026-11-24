@@ -67,12 +67,12 @@ function WalletInner() {
           {!caps.snaptrade && <p className="mt-2 text-[11px] text-warn">Unavailable: SnapTrade isn't configured by the administrator yet.</p>}
         </Card>
         <Card title="Your own broker keys" icon={<KeyRound className="size-4 text-accent-2" />}>
-          <p className="text-sm text-muted">Trade your own Alpaca (paper or live) or Tradier account with keys you paste in <Link href="/settings?tab=apikeys" className="text-accent-2">Settings → API keys</Link>.</p>
+          <p className="text-sm text-muted">Trade your own brokerage (Alpaca, Tradier) or crypto exchange account (Coinbase, Kraken, Gemini, Bitstamp, Crypto.com, Binance.US, OKX) with keys you paste on <Link href="/broker-keys" className="text-accent-2">Broker Keys</Link>.</p>
           <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-            {Object.entries(caps.byo).map(([pid, envs]: any) => Object.entries(envs).map(([env, st]: any) => <Badge key={pid + env} tone={st === "connected" ? "up" : "warn"}>{pid === "alpaca_trading" ? "Alpaca" : "Tradier"} {env}: {st}</Badge>))}
+            {Object.entries(caps.byo).map(([pid, envs]: any) => Object.entries(envs).map(([env, st]: any) => <Badge key={pid + env} tone={st === "connected" ? "up" : "warn"}>{caps.names?.[pid] ?? pid} {env}: {st}</Badge>))}
             {!Object.values(caps.byo).some((e: any) => Object.keys(e).length) && <span className="text-faint">No keys pasted yet.</span>}
           </div>
-          <p className="mt-2 text-[11px] text-muted">Live (production) broker accounts remain blocked until live brokerage trading is approved.</p>
+          <p className="mt-2 text-[11px] text-muted">Real-money orders only go through when the platform owner has turned on live trading.</p>
         </Card>
       </div>
 
@@ -128,11 +128,11 @@ function WalletInner() {
         </div>
       </Modal>
 
-      <Modal open={modal === "byo"} onClose={() => setModal(null)} title="Connect my own brokerage account">
-        <p className="text-sm text-muted">Uses the keys you pasted and tested in <Link className="text-accent-2" href="/settings?tab=apikeys">Settings → API keys</Link>. Your keys are only ever used for your own account.</p>
+      <Modal open={modal === "byo"} onClose={() => setModal(null)} title="Connect my own brokerage or exchange account">
+        <p className="text-sm text-muted">Uses the keys you pasted and tested on <Link className="text-accent-2" href="/broker-keys">Broker Keys</Link>. Your keys are only ever used for your own account.</p>
         <div className="mt-4 space-y-3">
-          <Select label="Broker" value={byo.providerId} onChange={(e) => setByo({ ...byo, providerId: e.target.value })}><option value="alpaca_trading">Alpaca</option><option value="tradier">Tradier</option></Select>
-          <Select label="Environment" value={byo.environment} onChange={(e) => setByo({ ...byo, environment: e.target.value })}><option value="sandbox">Paper / sandbox (no real money)</option><option value="production">Live (blocked until approved)</option></Select>
+          <Select label="Broker or exchange" value={byo.providerId} onChange={(e) => setByo({ ...byo, providerId: e.target.value, environment: ["alpaca_trading", "tradier", "gemini"].includes(e.target.value) ? byo.environment : "production" })}>{Object.entries(caps.names ?? { alpaca_trading: "Alpaca", tradier: "Tradier" }).map(([id, n]: any) => <option key={id} value={id}>{n}</option>)}</Select>
+          <Select label="Environment" value={byo.environment} onChange={(e) => setByo({ ...byo, environment: e.target.value })}>{["alpaca_trading", "tradier", "gemini"].includes(byo.providerId) && <option value="sandbox">Paper / sandbox (no real money)</option>}<option value="production">Live (real money)</option></Select>
           {byo.providerId === "tradier" && <Input label="Tradier account number" value={byo.externalRef} onChange={(e) => setByo({ ...byo, externalRef: e.target.value })} />}
           <Input label="Label (optional)" value={byo.label} onChange={(e) => setByo({ ...byo, label: e.target.value })} />
           <div className="flex justify-end"><Button variant="primary" loading={busy === "byo"} onClick={() => run("byo", () => api("/api/wallet/accounts", { method: "POST", json: { type: "byo_broker", ...byo, externalRef: byo.externalRef || undefined } }), "Brokerage connected").then((r) => r && setModal(null))}>Connect</Button></div>

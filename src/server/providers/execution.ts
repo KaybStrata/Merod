@@ -3,6 +3,7 @@ import { contextFor } from "./integrations";
 import { readJson, ProviderError } from "./http";
 import type { ExecutionQuote, ProviderContext, ProviderEnv } from "./types";
 import type { AssetRow } from "../market/prices";
+import { EXCHANGE_ADAPTERS } from "./exchanges";
 
 /**
  * Execution adapters. Every adapter returns the same ExecutionQuote shape and submit result,
@@ -376,6 +377,7 @@ export const panoraAdapter: ExecutionAdapter = {
 
 export const EXECUTION_ADAPTERS: ExecutionAdapter[] = [
   alpacaTradingAdapter, snaptradeAdapter, tradierAdapter, pumpfunAdapter, jupiterAdapter, zeroxAdapter, swapkitAdapter, cetusAdapter, panoraAdapter,
+  ...EXCHANGE_ADAPTERS,
 ];
 export const adapterById = (id: string) => (id === "paper" ? paperAdapter : EXECUTION_ADAPTERS.find((a) => a.id === id));
 /** Accounts created from a user's own pasted keys ONLY ever use that user's keys. */

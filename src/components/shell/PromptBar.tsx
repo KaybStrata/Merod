@@ -73,8 +73,8 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
           <div className="min-w-0 flex-1">
             <textarea ref={inputRef} rows={2} value={text} onChange={(e) => setText(e.target.value)} onFocus={() => messages.length && setOpen(true)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              aria-label="Prompt"
-              className="block max-h-[200px] min-h-[64px] w-full resize-none bg-transparent px-2 py-2.5 text-[15px] outline-none" />
+              aria-label="Prompt" placeholder="What's on your mind?"
+              className="block max-h-[200px] min-h-[64px] w-full resize-none bg-transparent px-2 py-2.5 text-[15px] outline-none placeholder:text-faint" />
           </div>
           <button type="submit" disabled={!text.trim() || busy} className="flex size-[44px] shrink-0 items-center justify-center rounded-xl bg-grad text-white disabled:opacity-40" aria-label="Send">
             {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}

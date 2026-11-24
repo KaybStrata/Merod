@@ -7,6 +7,7 @@ import { getFlags, countryAllows } from "../flags";
 import { HttpError } from "../errors";
 import { AssetRow, priceInfo } from "../market/prices";
 import { adapterById, adapterContext, EXECUTION_ADAPTERS, paperAdapter, type SubmitResult } from "../providers/execution";
+import { EXCHANGE_IDS } from "../providers/exchanges";
 import { providerUsable } from "../providers/integrations";
 import type { ExecutionQuote, ProviderEnv } from "../providers/types";
 import type { Check, EngineContext, OrderIntent } from "./types";
@@ -92,10 +93,18 @@ async function resolveAccount(userId: string, accountId: string | undefined, ass
     return a;
   }
   const isStock = ["stock", "etf", "option"].includes(asset.asset_class);
+  const exchangeIds = [...EXCHANGE_IDS];
+  if (!isStock) {
+    // Crypto: prefer the user's own exchange account (no wallet signing needed) when that exchange can trade the coin.
+    const ex = await q<AccountRow>("SELECT * FROM trading_accounts WHERE user_id=$1 AND status='active' AND kind='brokerage' AND provider_id = ANY($2) ORDER BY created_at", [userId, exchangeIds]);
+    const hit = ex.find((x) => adapterById(x.provider_id)?.supports(asset));
+    if (hit) return hit;
+  }
   const a = await one<AccountRow>(
-    `SELECT * FROM trading_accounts WHERE user_id=$1 AND status='active' AND kind=$2 AND ($3::text IS NULL OR network=$3 OR network IS NULL) ORDER BY created_at LIMIT 1`,
-    [userId, isStock ? "brokerage" : "wallet", isStock ? null : asset.venue]);
-  if (!a) throw new HttpError(400, isStock ? "Connect a brokerage account to trade stocks live (or switch to paper mode)" : `Connect a ${asset.venue} wallet to trade this asset live (or switch to paper mode)`, "no_live_account");
+    `SELECT * FROM trading_accounts WHERE user_id=$1 AND status='active' AND kind=$2 AND ($3::text IS NULL OR network=$3 OR network IS NULL)
+       AND NOT (kind='brokerage' AND provider_id = ANY($4)) ORDER BY created_at LIMIT 1`,
+    [userId, isStock ? "brokerage" : "wallet", isStock ? null : asset.venue, exchangeIds]);
+  if (!a) throw new HttpError(400, isStock ? "Connect a brokerage account to trade stocks live (or switch to paper mode)" : `Connect a crypto exchange account (Broker Keys → Wallet) or a ${asset.venue} wallet to trade this asset live (or switch to paper mode)`, "no_live_account");
   return a;
 }
 
@@ -106,7 +115,8 @@ export async function candidateProviders(asset: AssetRow, account: AccountRow): 
   const out: { id: string; env: ProviderEnv }[] = [];
   for (const ad of EXECUTION_ADAPTERS) {
     if (!ad.supports(asset)) continue;
-    if (mapped.size && !mapped.has(ad.id)) continue;
+    // Exchanges list coins by ticker, so the on-chain route map doesn't restrict them.
+    if (mapped.size && !mapped.has(ad.id) && !EXCHANGE_IDS.has(ad.id)) continue;
     if (account.kind === "brokerage" && account.provider_id !== ad.id) continue;
     const env: ProviderEnv = account.metadata?.environment === "sandbox" ? "sandbox" : "production";
     if (account.metadata?.byo_keys) {
