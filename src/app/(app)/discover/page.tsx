@@ -19,7 +19,10 @@ function DiscoverInner() {
   const [tab, setTab] = useState<Tab>(tabParam in SORT ? (tabParam as Tab) : "trending");
   const [term, setTerm] = useState(sp.get("q") ?? "");
   const [debounced, setDebounced] = useState(term);
-  const [cls, setCls] = useState<"" | "stocks" | "crypto">("");
+  const clsParam = sp.get("class");
+  const [cls, setCls] = useState<"" | "stocks" | "crypto">(clsParam === "stocks" || clsParam === "crypto" ? clsParam : "");
+  // The menu's Stocks / Crypto links change ?class= while this page stays open.
+  useEffect(() => { setCls(clsParam === "stocks" || clsParam === "crypto" ? clsParam : ""); }, [clsParam]);
   const [venue, setVenue] = useState("");
   const [minCap, setMinCap] = useState("");
   const [maxCap, setMaxCap] = useState("");

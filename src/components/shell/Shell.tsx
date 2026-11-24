@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Fragment, Suspense, useEffect, useState } from "react";
 import {
   Home, Compass, CandlestickChart, Sparkles, Zap, Bot, Users, PieChart, Wallet, Settings, Shield, Bell, Search, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare, Copy, Repeat,
+  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare, Copy, Repeat, LineChart, Bitcoin,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -87,12 +87,15 @@ function Frame({ children }: { children: React.ReactNode }) {
         const active = n.href === "/" ? pathname === "/" : pathname === n.href || (pathname.startsWith(n.href + "/") && !(n.href === "/admin" && pathname.startsWith("/admin/integrations")))
           || !!n.also?.some((x) => pathname === x || pathname.startsWith(x + "/"));
         return (
-          <Link key={n.href} href={n.href} 
+          <Fragment key={n.href}>
+          <Link href={n.href} 
             className={cx("flex shrink-0 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
               active ? "bg-accent-soft text-text shadow-[inset_0_0_0_1px_rgba(56,189,248,.35)]" : "text-muted hover:bg-panel-2 hover:text-text")}>
             <n.icon className={cx("size-[18px] shrink-0", active && "text-accent-2")} />
             <span className="leading-tight">{n.label}</span>
           </Link>
+          {n.href === "/discover" && <Suspense fallback={null}><DiscoverSubLinks /></Suspense>}
+          </Fragment>
         );
       })}
       <div className="mt-auto space-y-2">
@@ -196,5 +199,28 @@ function TopBar({ onMenu, unread, connected }: { onMenu: () => void; unread: num
         )}
       </div>
     </header>
+  );
+}
+
+
+/** Stocks / Crypto shortcuts under Discover in the menu (open Discover pre-filtered). */
+function DiscoverSubLinks() {
+  const pathname = usePathname();
+  const sp = useSearchParams();
+  const cls = pathname === "/discover" ? sp.get("class") : null;
+  const items = [
+    { cls: "stocks", label: "Stocks", icon: LineChart },
+    { cls: "crypto", label: "Crypto", icon: Bitcoin },
+  ];
+  return (
+    <div className="mb-1 ml-6 flex flex-col gap-0.5 border-l border-line pl-2">
+      {items.map((i) => (
+        <Link key={i.cls} href={`/discover?class=${i.cls}`}
+          className={cx("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
+            cls === i.cls ? "bg-accent-soft text-text" : "text-muted hover:bg-panel-2 hover:text-text")}>
+          <i.icon className={cx("size-3.5", cls === i.cls && "text-accent-2")} />{i.label}
+        </Link>
+      ))}
+    </div>
   );
 }
