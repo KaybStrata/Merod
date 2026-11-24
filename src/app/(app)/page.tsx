@@ -40,6 +40,8 @@ export default function Dashboard() {
         )}
       </div>
 
+      <QuickLists myList={s?.watchlist} onListChange={d.refresh} />
+
       <ProgressPanel compact />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
@@ -64,7 +66,6 @@ export default function Dashboard() {
 
         <Card className="xl:col-span-4" title="Allocation" icon={<PieChart className="size-4 text-accent-2" />}>
           {s ? <Allocation a={s.allocation} total={s.total} /> : <Skeleton className="h-40" />}
-          <QuickLists myList={s?.watchlist} onListChange={d.refresh} />
         </Card>
       </div>
 

@@ -61,6 +61,17 @@ function Frame({ children }: { children: React.ReactNode }) {
     if (e.type === "notification") me.refresh();
   });
   const toggle = () => { setCollapsed((c) => { try { localStorage.setItem("merod-nav", c ? "0" : "1"); } catch {} return !c; }); };
+  // Keyboard: "[" hides/shows the left menu, "]" the right panel (ignored while typing).
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey || (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName)))) return;
+      if (e.key === "[") toggle();
+      if (e.key === "]") toggleRail();
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
   const isAdmin = user.role === "admin" || user.role === "super_admin";
   const nav = [...NAV,
     ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }, { href: "/admin/integrations", label: "Integrations", icon: Plug }] : []),
@@ -70,8 +81,11 @@ function Frame({ children }: { children: React.ReactNode }) {
   const sidebar = (
     <nav className="relative flex h-full flex-col">
       {/* Logo sits outside the scroll area so its glow is never clipped. */}
-      <div className="relative z-10 flex shrink-0 items-center px-5 pb-3 pt-4">
+      <div className="relative z-10 flex shrink-0 items-center justify-between px-5 pb-3 pt-4">
         <Link href="/" aria-label="Merod home"><Logo /></Link>
+        <button onClick={toggle} className="hidden rounded-lg p-1.5 text-faint hover:bg-panel-2 hover:text-text lg:block" title="Hide menu  ( [ )" aria-label="Hide menu">
+          <PanelLeftClose className="size-4" />
+        </button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3">
       {nav.map((n) => {
@@ -111,7 +125,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         </div>
       )}
       {collapsed && (
-        <button onClick={toggle} title="Show menu" aria-label="Show menu"
+        <button onClick={toggle} title="Show menu  ( [ )" aria-label="Show menu"
           className="fade-up fixed left-0 top-1/2 z-30 hidden -translate-y-1/2 rounded-r-xl border border-l-0 border-line bg-bg-2 px-1 py-4 text-muted shadow-lg hover:text-accent-2 lg:block">
           <PanelLeftOpen className="size-4" />
         </button>

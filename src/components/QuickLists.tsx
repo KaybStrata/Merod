@@ -28,10 +28,11 @@ function Rows({ rows, empty, onRemove }: { rows: Row[] | null; empty: React.Reac
 }
 
 /** Two expandable button bars: trending/profitable assets, and the user's own list of stocks and crypto. */
-export function QuickLists({ myList, onListChange }: { myList: Row[] | undefined; onListChange: () => void }) {
-  const [open, setOpen] = useState<"trend" | "mine" | null>("trend");
+export function QuickLists({ myList, onListChange, className }: { myList: Row[] | undefined; onListChange: () => void; className?: string }) {
+  const [shown, setShown] = useState({ trend: true, mine: true });
+  const isOpen = (k: "trend" | "mine") => shown[k];
   const [cls, setCls] = useState<"all" | "crypto" | "stocks">("all");
-  const trending = useApi<{ assets: Row[] }>(open === "trend" ? `/api/assets?sort=gainers&limit=6${cls === "all" ? "" : `&class=${cls}`}` : null, { refreshMs: 20000 });
+  const trending = useApi<{ assets: Row[] }>(shown.trend ? `/api/assets?sort=gainers&limit=6${cls === "all" ? "" : `&class=${cls}`}` : null, { refreshMs: 20000 });
   const toast = useToast();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Row[]>([]);
@@ -54,19 +55,20 @@ export function QuickLists({ myList, onListChange }: { myList: Row[] | undefined
   }
 
   const bar = (key: "trend" | "mine", icon: React.ReactNode, label: string, sub: string) => (
-    <button onClick={() => setOpen(open === key ? null : key)}
+    <button onClick={() => setShown((v) => ({ ...v, [key]: !v[key] }))}
       className={cx("flex w-full items-center gap-2.5 rounded-xl border px-3 py-2 text-left transition-colors",
-        open === key ? "border-accent/50 bg-accent-soft" : "border-line bg-panel-2/60 hover:border-line-2")}>
+        isOpen(key) ? "border-accent/50 bg-accent-soft" : "border-line bg-panel-2/60 hover:border-line-2")}>
       <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-bg-2">{icon}</span>
       <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{label}</span><span className="block truncate text-[11px] text-faint">{sub}</span></span>
-      <ChevronDown className={cx("size-4 shrink-0 text-muted transition-transform", open === key && "rotate-180")} />
+      <ChevronDown className={cx("size-4 shrink-0 text-muted transition-transform", isOpen(key) && "rotate-180")} />
     </button>
   );
 
   return (
-    <div className="mt-4 space-y-2 border-t border-line pt-4">
+    <div className={cx("grid grid-cols-1 items-start gap-3 lg:grid-cols-2", className)}>
+      <div className="space-y-2">
       {bar("trend", <Flame className="size-4 text-warn" />, "Trending & profitable", "Today's top gainers in crypto and stocks")}
-      {open === "trend" && (
+      {shown.trend && (
         <div className="fade-up rounded-xl border border-line px-3 py-2">
           <div className="mb-1 flex items-center justify-between gap-2">
             <Pills size="sm" value={cls} onChange={setCls} options={[{ value: "all", label: "All" }, { value: "crypto", label: "Crypto" }, { value: "stocks", label: "Stocks" }]} />
@@ -77,8 +79,10 @@ export function QuickLists({ myList, onListChange }: { myList: Row[] | undefined
         </div>
       )}
 
+      </div>
+      <div className="space-y-2">
       {bar("mine", <Star className="size-4 text-accent-2" />, "My list", myList?.length ? `${myList.length} stock${myList.length > 1 ? "s" : ""} & coins you follow` : "Your own stocks and crypto")}
-      {open === "mine" && (
+      {shown.mine && (
         <div className="fade-up rounded-xl border border-line px-3 py-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
@@ -103,6 +107,7 @@ export function QuickLists({ myList, onListChange }: { myList: Row[] | undefined
           <div className="mt-1 flex justify-end"><Link href="/discover?tab=watchlist" className="text-[11px] text-accent-2">Manage lists</Link></div>
         </div>
       )}
+      </div>
     </div>
   );
 }
