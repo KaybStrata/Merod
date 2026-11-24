@@ -7,6 +7,7 @@ import {
   Radio, GraduationCap, Percent, Brain, KeyRound, Globe2,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
+import { RightRail } from "./RightRail";
 import { PromptBar } from "./PromptBar";
 import { Logo } from "./Logo";
 import { ToastProvider, useToast, cx, Badge } from "@/components/ui";
@@ -31,34 +32,6 @@ const NAV = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-/**
- * Sidebar panel with a curved ("warped") right edge and a soft green glow line.
- * Drawn as a stretched SVG behind the nav; the stroke keeps a constant width at any height.
- */
-function CurvedSidebarBackground() {
-  // Right edge sweeps between x=90 and x=100 (of 100) so it never cuts into the menu items.
-  const edge = "M92,0 C100,40 100,120 97,220 C93,360 90,470 91,560 C92,690 100,800 99,880 C98,940 94,980 92,1000";
-  return (
-    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 100 1000" preserveAspectRatio="none" aria-hidden>
-      <defs>
-        <linearGradient id="sidebarGlow" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.2" />
-          <stop offset="35%" stopColor="var(--accent)" stopOpacity="0.95" />
-          <stop offset="70%" stopColor="var(--accent-orange)" stopOpacity="0.75" />
-          <stop offset="100%" stopColor="var(--accent-orange)" stopOpacity="0.95" />
-        </linearGradient>
-        <linearGradient id="sidebarFill" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="var(--bg-2)" stopOpacity="0.96" />
-          <stop offset="100%" stopColor="var(--panel)" stopOpacity="0.92" />
-        </linearGradient>
-      </defs>
-      <path d={`M0,0 L92,0 ${edge.slice(edge.indexOf("C"))} L0,1000 Z`} fill="url(#sidebarFill)" />
-      <path d={edge} fill="none" stroke="url(#sidebarGlow)" strokeWidth="6" vectorEffect="non-scaling-stroke" opacity="0.25" />
-      <path d={edge} fill="none" stroke="url(#sidebarGlow)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
-
 export function Shell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
   return (
     <ToastProvider>
@@ -76,7 +49,9 @@ function Frame({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const toast = useToast();
   const me = useApi<any>("/api/auth/me", { refreshMs: 30000 });
-  useEffect(() => { try { setCollapsed(localStorage.getItem("merod-nav") === "1"); } catch {} }, []);
+  const [railOpen, setRailOpen] = useState(true);
+  useEffect(() => { try { setCollapsed(localStorage.getItem("merod-nav") === "1"); setRailOpen(localStorage.getItem("merod-rail") !== "0"); } catch {} }, []);
+  const toggleRail = () => setRailOpen((o) => { try { localStorage.setItem("merod-rail", o ? "0" : "1"); } catch {} return !o; });
   useEffect(() => setMobileOpen(false), [pathname]);
   useRealtime((e) => {
     if (e.type === "fill") toast(`${e.payload.paper ? "[Paper] " : ""}${e.payload.side === "buy" ? "Bought" : "Sold"} ${Number(e.payload.quantity).toPrecision(4)} ${e.payload.symbol}`, e.payload.side === "buy" ? "up" : "neutral");
@@ -90,30 +65,30 @@ function Frame({ children }: { children: React.ReactNode }) {
   ];
 
   const sidebar = (
-    <nav className={cx("relative flex h-full flex-col gap-0.5 overflow-y-auto p-3", !collapsed && "lg:pr-6")}>
-      <div className={cx("mb-4 flex items-center px-2 pt-1", collapsed ? "justify-center" : "justify-between")}>
-        <Link href="/"><Logo compact={collapsed} /></Link>
+    <nav className="relative flex h-full flex-col gap-0.5 overflow-y-auto p-3">
+      <div className={cx("mb-4 flex items-center px-2 pt-1", "justify-between")}>
+        <Link href="/"><Logo /></Link>
       </div>
       {nav.map((n) => {
         const active = n.href === "/" ? pathname === "/" : pathname === n.href || (pathname.startsWith(n.href + "/") && !(n.href === "/admin" && pathname.startsWith("/admin/integrations")));
         return (
-          <Link key={n.href} href={n.href} title={collapsed ? n.label : undefined}
-            className={cx("flex shrink-0 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors", collapsed && "justify-center px-2",
+          <Link key={n.href} href={n.href} 
+            className={cx("flex shrink-0 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
               active ? "bg-accent-soft text-text shadow-[inset_0_0_0_1px_rgba(56,189,248,.35)]" : "text-muted hover:bg-panel-2 hover:text-text")}>
             <n.icon className={cx("size-[18px] shrink-0", active && "text-accent-2")} />
-            {!collapsed && <span className="truncate">{n.label}</span>}
+            <span className="truncate">{n.label}</span>
           </Link>
         );
       })}
       <div className="mt-auto space-y-2">
-        {!collapsed && (
+        {(
           <div className="rounded-xl border border-warn/25 bg-warn-soft p-3 text-xs text-warn">
             <div className="font-semibold">Paper trading mode</div>
             <div className="mt-0.5 text-warn/80">Virtual funds. Real money only after an admin turns it on.</div>
           </div>
         )}
         <button onClick={toggle} className="hidden w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-faint hover:text-text lg:flex">
-          {collapsed ? <PanelLeftOpen className="size-4" /> : <><PanelLeftClose className="size-4" /> Collapse</>}
+          <PanelLeftClose className="size-4" /> Hide menu
         </button>
       </div>
     </nav>
@@ -121,8 +96,7 @@ function Frame({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="app-glow min-h-screen">
-      <aside className={cx("fixed inset-y-0 left-0 z-30 hidden lg:block transition-[width]", collapsed ? "w-[72px]" : "w-60")}>
-        <CurvedSidebarBackground />
+      <aside aria-hidden={collapsed} className={cx("fixed inset-y-0 left-0 z-30 hidden w-60 border-r border-line bg-bg-2 transition-transform duration-300 lg:block", collapsed && "-translate-x-full")}>
         {sidebar}
       </aside>
       {mobileOpen && (
@@ -130,11 +104,18 @@ function Frame({ children }: { children: React.ReactNode }) {
           <aside className="h-full w-64 border-r border-line bg-bg-2" onClick={(e) => e.stopPropagation()}>{sidebar}</aside>
         </div>
       )}
-      <div className={cx("transition-[padding]", collapsed ? "lg:pl-[72px]" : "lg:pl-60")}>
+      {collapsed && (
+        <button onClick={toggle} title="Show menu" aria-label="Show menu"
+          className="fade-up fixed left-0 top-1/2 z-30 hidden -translate-y-1/2 rounded-r-xl border border-l-0 border-line bg-bg-2 px-1 py-4 text-muted shadow-lg hover:text-accent-2 lg:block">
+          <PanelLeftOpen className="size-4" />
+        </button>
+      )}
+      <RightRail open={railOpen} onToggle={toggleRail} />
+      <div className={cx("transition-[padding]", collapsed ? "lg:pl-0" : "lg:pl-60", railOpen ? "xl:pr-72" : "xl:pr-0")}>
         <TopBar onMenu={() => setMobileOpen(true)} unread={me.data?.unread ?? 0} connected={connected} />
         <main className="mx-auto max-w-[1600px] px-4 pb-48 pt-4 sm:px-6">{children}</main>
       </div>
-      <PromptBar />
+      <PromptBar leftCollapsed={collapsed} railOpen={railOpen} />
     </div>
   );
 }

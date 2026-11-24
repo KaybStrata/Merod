@@ -20,8 +20,8 @@ export function ShortcutIcon({ name, className }: { name: string; className?: st
 }
 
 /** Custom one-click trading buttons. Every click previews through the trading engine before anything executes. */
-export function ShortcutBar({ placement, assetId }: { placement: "terminal" | "dashboard"; assetId?: string }) {
-  const { data, loading } = useApi<any>(`/api/shortcuts?placement=${placement}`);
+export function ShortcutBar({ placement, assetId, rail = false }: { placement?: "terminal" | "dashboard"; assetId?: string; rail?: boolean }) {
+  const { data, loading } = useApi<any>(placement ? `/api/shortcuts?placement=${placement}` : "/api/shortcuts");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [preview, setPreview] = useState<any | null>(null);
   const [results, setResults] = useState<any | null>(null);
@@ -61,7 +61,7 @@ export function ShortcutBar({ placement, assetId }: { placement: "terminal" | "d
 
   const list: any[] = data?.shortcuts ?? [];
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className={cx("flex flex-wrap items-center gap-2", rail && "gap-1.5 [&>a]:h-8 [&>a]:text-xs [&>button]:h-8 [&>button]:text-xs")}>
       {loading && <span className="text-xs text-faint">Loading shortcuts…</span>}
       {!loading && list.length === 0 && <span className="text-xs text-muted">No shortcuts here yet.</span>}
       {list.map((s) => {
