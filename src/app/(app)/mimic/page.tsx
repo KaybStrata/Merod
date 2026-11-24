@@ -1,6 +1,5 @@
 "use client";
-import { SectionTabs } from "@/components/SectionTabs";
-import { Repeat, Copy } from "lucide-react";
+import { Repeat } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { CopyBotsPanel } from "@/components/CopyBots";
 import { Card, Empty } from "@/components/ui";
@@ -11,10 +10,9 @@ export default function MimicTradingPage() {
   if (user.role !== "super_admin") return <Empty icon={<Repeat className="size-6" />} title="Mimic trading is for the platform owner">Ask the owner if you'd like access.</Empty>;
   return (
     <div className="space-y-4">
-      <SectionTabs tabs={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }]} />
       <div>
         <h1 className="flex items-center gap-2 text-xl font-semibold"><Repeat className="size-6 text-accent-2" /> Mimic Trading</h1>
-        <p className="mt-1 max-w-3xl text-sm text-muted">Mimic bots repeat every trade a trader or public wallet makes, at the same dollar size (capped by your per-trade and daily limits), and sell when they sell. Use Copy Trading instead if you want a fixed amount per trade.</p>
+        <p className="mt-1 max-w-3xl text-sm text-muted">Mimic bots repeat every trade a trader or public wallet makes, at the same dollar size (capped by your daily limit), and sell when they sell. You can also start one from the prompt box, e.g. “mimic trade the top ROI earner for Solana meme coins this week”.</p>
       </div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Card title="On Merod">

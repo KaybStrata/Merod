@@ -11,6 +11,8 @@ import { trainingNotes } from "../learning/materials";
 import { aiAvailable, llmInterpret, llmResearch, type AIProvider } from "./llm";
 import type { Instruction, TradeLeg } from "./schema";
 import { promptDefaults } from "../training/trainer";
+import { parseMimicRequest, topRoiLeaders } from "../copy/leaders";
+import { createFollow, type MimicScope } from "../copy/service";
 
 /**
  * Prompt-to-trade orchestrator:
@@ -26,7 +28,9 @@ export type PlanCard =
   | { type: "confirm_action"; action: "cancel_all_orders" | "resume_all_bots"; detail: string }
   | { type: "executed"; detail: string; orderId?: string; status?: string }
   | { type: "research"; text: string }
-  | { type: "clarify"; question: string; suggestions: string[] };
+  | { type: "clarify"; question: string; suggestions: string[] }
+  | { type: "mimic"; handle: string; displayName: string; roi: number; pnl: number; invested: number; trades: number; scope: MimicScope; windowLabel: string;
+      settings: { percent: number; maxDailyUsd: number }; alternatives: { handle: string; roi: number; trades: number }[] };
 
 /** Give the rule parser the live asset catalog so tickers and company names work in any letter case (refreshed every 5 min). */
 let catalogAt = 0;
@@ -127,6 +131,20 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const orig = await one<{ content: string }>("SELECT content FROM trading_prompts WHERE conversation_id=$1 AND role='user' AND created_at < $2 ORDER BY created_at DESC LIMIT 1", [convId, last.created_at]);
       if (orig) originText = `${orig.content} → ${text}`;
     }
+  }
+  // "Mimic the top ROI earner for Solana meme coins this week" → find the trader, propose a mimic bot (owner only).
+  const mimicReq = !instruction ? parseMimicRequest(text) : null;
+  if (mimicReq) {
+    const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role;
+    if (role !== "super_admin") return reply("Mimic trading is only available on the platform owner's account.", null, "info", null);
+    const ranked = await topRoiLeaders(userId, mimicReq, 4);
+    if (!ranked.length) return reply(`I couldn't find a trader to mimic for ${mimicReq.scope.label} ${mimicReq.windowLabel}. Only Merod traders who allow copying are ranked, and they need at least one closed trade in that window. Try a longer window, e.g. "this month".`,
+      { type: "clarify", question: "Try a different window or market?", suggestions: [`Mimic the top ROI earner for ${mimicReq.scope.label} this month`, "Mimic the top ROI trader this week"] }, "clarify", null);
+    const [top, ...rest] = ranked;
+    const card: PlanCard = { type: "mimic", handle: top.handle, displayName: top.displayName, roi: top.roi, pnl: top.pnl, invested: top.invested, trades: top.trades,
+      scope: mimicReq.scope, windowLabel: mimicReq.windowLabel, settings: { percent: 100, maxDailyUsd: 1000 },
+      alternatives: rest.map((l) => ({ handle: l.handle, roi: l.roi, trades: l.trades })) };
+    return reply(`Top ROI for ${mimicReq.scope.label} ${mimicReq.windowLabel}: @${top.handle}, ${(top.roi * 100).toFixed(1)}% on ${top.trades} trade${top.trades === 1 ? "" : "s"}. Approve to start a mimic bot that repeats their ${mimicReq.scope.label === "all markets" ? "" : mimicReq.scope.label + " "}trades at the same size.`, card, "needs_approval", null);
   }
   if (!instruction) ({ instruction, usedProvider, usedModel, fallbackReason } = await interpret(userId, { ...input, text }, screen?.symbol ?? null));
   if (!perms?.allow_ai_prompts && !["research", "portfolio_question", "clarify", "pause_all_bots"].includes(instruction.kind))
@@ -272,7 +290,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
 }
 
 /** Human approval of an assistant plan card. Runs through the engine with userConfirmed=true. */
-export async function approvePlan(userId: string, messageId: string, overrides?: { config?: Partial<BotConfig> }) {
+export async function approvePlan(userId: string, messageId: string, overrides?: { config?: Partial<BotConfig>; mimic?: { percent?: number; maxDailyUsd?: number } }) {
   const m = await one<any>("SELECT * FROM trading_prompts WHERE id=$1 AND user_id=$2 AND role='assistant'", [messageId, userId]);
   if (!m?.plan) throw new HttpError(404, "Plan not found");
   if (m.status !== "needs_approval") throw new HttpError(409, `This plan is already ${m.status}`);
@@ -285,6 +303,14 @@ export async function approvePlan(userId: string, messageId: string, overrides?:
   } else if (card.type === "bot") {
     const bot = await createBot(userId, { ...card.config, ...(overrides?.config ?? {}) } as BotConfig, "ai");
     result = { botId: bot.id, status: bot.status };
+  } else if (card.type === "mimic") {
+    if ((await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role !== "super_admin") throw new HttpError(403, "Mimic trading is only available on the platform owner's account");
+    const pct = Math.min(1000, Math.max(0.1, Number(overrides?.mimic?.percent ?? card.settings.percent) || 100));
+    const daily = Math.min(1_000_000, Math.max(1, Number(overrides?.mimic?.maxDailyUsd ?? card.settings.maxDailyUsd) || 1000));
+    const followId = await createFollow(userId, { kind: "user", handle: card.handle },
+      { accountId: null, sizing: "percent", fixedUsd: 50, percent: pct, maxTradeUsd: 1_000_000, maxDailyUsd: daily, copySells: true, includeExternal: true, includePaper: true },
+      "copy", card.scope.label === "all markets" ? null : card.scope);
+    result = { followId, handle: card.handle };
   } else if (card.type === "confirm_action") {
     result = card.action === "cancel_all_orders" ? { cancelled: (await cancelAll(userId)).length } : { resumed: await resumeAllBots(userId) };
   } else throw new HttpError(400, "Nothing to approve");

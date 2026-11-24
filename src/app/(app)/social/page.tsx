@@ -68,9 +68,6 @@ export default function SocialPage() {
         <Card title="Popular traders" icon={<Flame className="size-4 text-down" />}>
           {board.data?.popular?.length ? board.data.popular.map((p: any) => <TraderRow key={p.handle} p={p} />) : <Empty icon={<Users className="size-5" />} title="No other traders yet" />}
         </Card>
-        <Card title="Copy trading">
-          <p className="text-sm text-muted">Copy-trading infrastructure exists but is <span className="font-medium text-warn">disabled until compliance approval</span> (feature flag <code className="text-xs">copy_trading</code>).</p>
-        </Card>
       </aside>
     </div>
     </div>

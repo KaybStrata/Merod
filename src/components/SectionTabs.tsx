@@ -4,12 +4,12 @@ import { usePathname } from "next/navigation";
 import { cx } from "@/components/ui";
 
 /** Buttons that switch between the pages of one menu section (e.g. Bots | Shortcut buttons). */
-export function SectionTabs({ tabs }: { tabs: { href: string; label: string; icon?: any }[] }) {
+export function SectionTabs({ tabs }: { tabs: { href: string; label: string; icon?: any; exact?: boolean }[] }) {
   const pathname = usePathname();
   return (
     <div className="flex w-full gap-1 rounded-xl border border-line bg-panel/80 p-1 sm:w-fit">
       {tabs.map((t) => {
-        const active = pathname === t.href || pathname.startsWith(t.href + "/");
+        const active = pathname === t.href || (!t.exact && pathname.startsWith(t.href + "/"));
         return (
           <Link key={t.href} href={t.href}
             className={cx("flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors sm:flex-none",

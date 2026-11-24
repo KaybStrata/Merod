@@ -4,7 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Maximize2 } from "lucide-react";
 import { useApi } from "@/lib/api";
-import { CheckCircle2, XCircle, AlertTriangle, Bot, ShieldCheck } from "lucide-react";
+import { CheckCircle2, XCircle, AlertTriangle, Bot, ShieldCheck, Repeat } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge, Button, PaperBadge, SourceBadge, cx, useToast } from "@/components/ui";
 import { price, usd, qty } from "@/lib/format";
@@ -52,14 +52,15 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
   const [busy, setBusy] = useState<"approve" | "dismiss" | null>(null);
   const [status, setStatus] = useState<string>(message.status);
   const [result, setResult] = useState<any>(card?.result ?? null);
+  const [mimic, setMimic] = useState({ percent: card?.settings?.percent ?? 100, maxDailyUsd: card?.settings?.maxDailyUsd ?? 1000 });
   if (!card) return null;
 
   async function approve() {
     setBusy("approve");
     try {
-      const r = await api(`/api/ai/plans/${message.id}`, { method: "POST" });
+      const r = await api(`/api/ai/plans/${message.id}`, { method: "POST", ...(card.type === "mimic" ? { json: { mimic } } : {}) });
       setResult(r.result); setStatus("approved");
-      toast(card.type === "bot" ? "Bot activated" : card.type === "order" ? `Order ${r.result.status}` : "Done", "up");
+      toast(card.type === "bot" ? "Bot activated" : card.type === "mimic" ? `Mimicking @${card.handle}` : card.type === "order" ? `Order ${r.result.status}` : "Done", "up");
       onDone?.();
     } catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }
   }
@@ -143,6 +144,38 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
         <p className="mt-2 flex gap-1 text-[11px] text-muted"><ShieldCheck className="size-3 shrink-0" /> Runs on Merod's servers (not your browser). Every order passes the trading engine's risk checks. Profit is not guaranteed.</p>
         <Actions status={status} actionable={actionable} busy={busy} onApprove={approve} onDismiss={dismiss} label="Activate bot"
           result={result?.botId && <Link className="underline" href={`/bots/${result.botId}`}>Bot {result.status} — open activity log</Link>} />
+      </div>
+    );
+  }
+
+  if (card.type === "mimic") {
+    const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`;
+    return (
+      <div className="mt-2 rounded-xl border border-line bg-bg-2/70 p-3 text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 font-semibold"><Repeat className="size-4 text-accent-2" /> Mimic @{card.handle}</div>
+          <Badge tone={card.roi >= 0 ? "up" : "down"}>{pct(card.roi)} ROI</Badge>
+        </div>
+        <div className="mt-1 text-xs text-muted">Top ROI earner · {card.scope.label} · {card.windowLabel}</div>
+        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+          <Field k="Profit" v={usd(card.pnl)} />
+          <Field k="Put into buys" v={usd(card.invested)} />
+          <Field k="Trades" v={String(card.trades)} />
+          <Field k="Copies" v={card.scope.label === "all markets" ? "All their trades" : `Only ${card.scope.label}`} />
+          <Field k="Sells" v="Mirrored" />
+        </div>
+        {actionable && (
+          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+            <label className="space-y-1"><span className="text-muted">Size vs their trades (%)</span>
+              <input type="number" min={0.1} value={mimic.percent} onChange={(e) => setMimic((m) => ({ ...m, percent: Number(e.target.value) }))} className="w-full rounded-lg border border-line bg-panel px-2 py-1 text-text" /></label>
+            <label className="space-y-1"><span className="text-muted">Max $ per day</span>
+              <input type="number" min={1} value={mimic.maxDailyUsd} onChange={(e) => setMimic((m) => ({ ...m, maxDailyUsd: Number(e.target.value) }))} className="w-full rounded-lg border border-line bg-panel px-2 py-1 text-text" /></label>
+          </div>
+        )}
+        {card.alternatives?.length > 0 && <div className="mt-2 text-[11px] text-muted">Next best: {card.alternatives.map((a: any) => `@${a.handle} ${pct(a.roi)}`).join(" · ")}</div>}
+        <p className="mt-2 flex gap-1 text-[11px] text-muted"><ShieldCheck className="size-3 shrink-0" /> Only their new trades are mimicked, through the normal risk checks. Ranked from Merod traders who allow copying. Past ROI doesn't guarantee future results.</p>
+        <Actions status={status} actionable={actionable} busy={busy} onApprove={approve} onDismiss={dismiss} label="Start mimic bot"
+          result={result?.followId && <Link className="underline" href="/mimic">Mimic bot running — open Mimic Trading</Link>} />
       </div>
     );
   }

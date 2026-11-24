@@ -29,14 +29,17 @@ export interface FollowSettings {
 }
 type Follow = { id: string; follower_id: string; kind: "user" | "wallet"; leader_user_id: string | null; wallet_network: string | null; wallet_address: string | null; label: string;
   account_id: string | null; sizing: string; fixed_usd: string; percent: string; max_trade_usd: string; max_daily_usd: string; copy_sells: boolean; include_external: boolean;
-  include_paper: boolean; status: string; cursor: Record<string, any>; created_at: string; mode: "copy" | "watch" };
+  include_paper: boolean; status: string; cursor: Record<string, any>; created_at: string; mode: "copy" | "watch"; scope?: MimicScope | null };
 type LeaderTrade = { ref: string; origin: "merod" | "broker" | "onchain"; venue: string; side: "buy" | "sell"; symbol?: string; assetId?: string | null; mint?: string;
   qty: number; price: number | null; at: Date; leaderPositionAfter?: number | null };
 
 const SOL_ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /* ───────────────────────── Follows ───────────────────────── */
-export async function createFollow(followerId: string, target: { kind: "user"; handle: string } | { kind: "wallet"; network: "solana"; address: string }, s: FollowSettings, mode: "copy" | "watch" = "copy") {
+/** Limit a mimic bot to part of the market (set by prompt-made bots, e.g. "Solana meme coins"). */
+export type MimicScope = { label: string; assetClasses?: string[]; venue?: string; meme?: boolean; symbol?: string };
+
+export async function createFollow(followerId: string, target: { kind: "user"; handle: string } | { kind: "wallet"; network: "solana"; address: string }, s: FollowSettings, mode: "copy" | "watch" = "copy", scope: MimicScope | null = null) {
   await validateAccount(followerId, s.accountId);
   if (target.kind === "user") {
     const leader = await one<{ user_id: string; handle: string; display_name: string; allow_copy_trading: boolean }>(
@@ -45,12 +48,12 @@ export async function createFollow(followerId: string, target: { kind: "user"; h
     if (leader.user_id === followerId) throw new HttpError(400, "You can't copy yourself");
     if (!leader.allow_copy_trading) throw new HttpError(403, `@${leader.handle} hasn't allowed copy trading. They can turn it on in Settings → Privacy.`);
     const row = await one<{ id: string }>(
-      `INSERT INTO copy_follows (follower_id, kind, leader_user_id, label, account_id, sizing, fixed_usd, percent, max_trade_usd, max_daily_usd, copy_sells, include_external, include_paper)
-       VALUES ($1,'user',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `INSERT INTO copy_follows (follower_id, kind, leader_user_id, label, account_id, sizing, fixed_usd, percent, max_trade_usd, max_daily_usd, copy_sells, include_external, include_paper, scope)
+       VALUES ($1,'user',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT (follower_id, leader_user_id) WHERE kind = 'user' DO UPDATE SET status='active', mode='copy',
          sizing=EXCLUDED.sizing, fixed_usd=EXCLUDED.fixed_usd, percent=EXCLUDED.percent, max_trade_usd=EXCLUDED.max_trade_usd, max_daily_usd=EXCLUDED.max_daily_usd,
-         copy_sells=EXCLUDED.copy_sells, include_external=EXCLUDED.include_external, include_paper=EXCLUDED.include_paper, account_id=EXCLUDED.account_id RETURNING id`,
-      [followerId, leader.user_id, `@${leader.handle}`, s.accountId ?? null, s.sizing, s.fixedUsd, s.percent, s.maxTradeUsd, s.maxDailyUsd, s.copySells, s.includeExternal, s.includePaper]);
+         copy_sells=EXCLUDED.copy_sells, include_external=EXCLUDED.include_external, include_paper=EXCLUDED.include_paper, account_id=EXCLUDED.account_id, scope=EXCLUDED.scope RETURNING id`,
+      [followerId, leader.user_id, `@${leader.handle}`, s.accountId ?? null, s.sizing, s.fixedUsd, s.percent, s.maxTradeUsd, s.maxDailyUsd, s.copySells, s.includeExternal, s.includePaper, scope ? JSON.stringify(scope) : null]);
     await notify(leader.user_id, "copy", "Someone is copying your trades", "A trader started copy trading you. You can turn copy trading off any time in Settings → Privacy.", "/settings?tab=privacy").catch(() => {});
     await audit({ actorType: "user", actorId: followerId, userId: followerId, action: "copy.follow", target: row!.id, data: { leader: leader.user_id } });
     return row!.id;
@@ -260,6 +263,20 @@ async function mirror(f: Follow, t: LeaderTrade) {
 }
 
 /** Worker loop: check every active follow for new leader trades and mirror them. */
+/** Keep only the trades inside a bot's scope; a trade whose asset Merod can't identify is skipped. */
+async function inScope(trades: LeaderTrade[], scope: MimicScope) {
+  const ids = [...new Set(trades.map((t) => t.assetId).filter(Boolean))] as string[];
+  const assets = new Map((ids.length ? await q<any>("SELECT id, symbol, asset_class, venue, categories FROM assets WHERE id = ANY($1::uuid[])", [ids]) : []).map((a) => [a.id, a]));
+  return trades.filter((t) => { const a = t.assetId ? assets.get(t.assetId) : null; return !!a && assetInScope(a, scope); });
+}
+export function assetInScope(a: { symbol: string; asset_class: string; venue: string; categories?: string[] | null }, scope: MimicScope) {
+  if (scope.symbol && a.symbol.toUpperCase() !== scope.symbol.toUpperCase()) return false;
+  if (scope.assetClasses?.length && !scope.assetClasses.includes(a.asset_class)) return false;
+  if (scope.venue && a.venue.toLowerCase() !== scope.venue) return false;
+  if (scope.meme && !(a.categories ?? []).some((c) => /meme/i.test(c))) return false;
+  return true;
+}
+
 export async function processCopyTrading() {
   const follows = await q<Follow>(
     `SELECT f.* FROM copy_follows f LEFT JOIN user_profiles p ON p.user_id=f.leader_user_id JOIN users fu ON fu.id=f.follower_id AND fu.role='super_admin'
@@ -273,7 +290,7 @@ export async function processCopyTrading() {
     try {
       const trades = f.kind === "wallet" ? await walletTrades(f, since)
         : [...await merodTrades(f, since), ...(f.include_external ? await brokerTrades(f, since) : [])].sort((a, b) => +a.at - +b.at);
-      for (const t of trades) { await mirror(f, t); copied++; }
+      for (const t of f.scope ? await inScope(trades, f.scope) : trades) { await mirror(f, t); copied++; }
       if (f.kind === "wallet") await q("UPDATE copy_follows SET last_error=NULL WHERE id=$1", [f.id]);
     } catch (e: any) {
       await q("UPDATE copy_follows SET last_error=$2 WHERE id=$1", [f.id, String(e?.message ?? e).slice(0, 300)]);
