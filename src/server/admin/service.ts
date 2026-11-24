@@ -89,7 +89,9 @@ export async function setFlag(adminId: string, key: string, enabled: boolean, ap
   if (!f) throw new HttpError(404, "Flag not initialised — run the seed");
   const isHalt = key === "global_trading_halt";
   // Engaging the emergency halt must never be blocked by paperwork.
-  const needsControls = !(isHalt && enabled) && (f.requires_approval || isHalt);
+  // Switching a real-money feature OFF is always allowed instantly (safety first); turning it on needs the controls.
+  const disablingRealMoney = !enabled && REAL_MONEY_FLAGS.includes(key as FlagKey);
+  const needsControls = !(isHalt && enabled) && !disablingRealMoney && (f.requires_approval || isHalt);
   if (needsControls) {
     if (enabled && REAL_MONEY_FLAGS.includes(key as FlagKey) && process.env.MEROD_ALLOW_LIVE_FLAGS !== "true")
       throw new HttpError(403, "Real-money features are locked for this deployment. Set MEROD_ALLOW_LIVE_FLAGS=true on the server only after broker/legal approvals are complete.");

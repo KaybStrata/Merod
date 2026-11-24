@@ -4,12 +4,14 @@ import Link from "next/link";
 import { Shield, Server, Users, Activity, Scale, ScrollText, Plug, AlertOctagon, CheckCircle2, XCircle, Search, ArrowRight } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { ago, usd } from "@/lib/format";
+import { useShell } from "@/components/shell/context";
 import { Badge, Button, Card, Empty, Input, Modal, PaperBadge, Pills, Select, Skeleton, StatusPill, Toggle, cx, useToast } from "@/components/ui";
 
 type Tab = "overview" | "users" | "trading" | "compliance" | "audit";
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("overview");
+  const { user } = useShell();
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -19,6 +21,7 @@ export default function AdminPage() {
         </div>
         <Link href="/admin/integrations"><Button variant="outline"><Plug className="size-4" /> API Integration Center <ArrowRight className="size-4" /></Button></Link>
       </div>
+      {user.role === "super_admin" && <RealMoneyPanel />}
       <Pills value={tab} onChange={setTab} options={[
         { value: "overview", label: "System" }, { value: "users", label: "Users" }, { value: "trading", label: "Trading activity" },
         { value: "compliance", label: "Compliance & flags" }, { value: "audit", label: "Audit log" },
@@ -29,6 +32,71 @@ export default function AdminPage() {
       {tab === "compliance" && <Compliance />}
       {tab === "audit" && <Audit />}
     </div>
+  );
+}
+
+/* ───────── Real-money trading (owner) ───────── */
+const RM_LABEL: Record<string, { title: string; note: string }> = {
+  live_crypto_trading: { title: "Real-money crypto trading", note: "Trades in connected exchanges and wallets use real money" },
+  live_brokerage_trading: { title: "Real-money stock trading", note: "Trades in connected brokerage accounts use real money" },
+  automated_real_money: { title: "Automated real-money trades", note: "Bots, mimic/copy and auto trading may place real orders without asking you first" },
+};
+function RealMoneyPanel() {
+  const { data, refresh } = useApi<any>("/api/admin/real-money");
+  const toast = useToast();
+  const [pending, setPending] = useState<{ key: string; enabled: boolean } | null>(null);
+  const [ref, setRef] = useState(""); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false);
+  if (!data) return <Skeleton className="h-40" />;
+  const flags: any[] = ["live_crypto_trading", "live_brokerage_trading", "automated_real_money"].map((k) => data.flags.find((f: any) => f.key === k)).filter(Boolean);
+  const anyOn = flags.some((f) => f.enabled && f.key !== "automated_real_money");
+  const steps = [
+    { ok: data.envUnlocked, text: "Server unlock", help: "MEROD_ALLOW_LIVE_FLAGS=true on the Railway web and worker services (a deliberate safety lock)." },
+    { ok: data.twoFactor, text: "Two-factor authentication on your account", help: <>Turn it on in <Link href="/settings?tab=security" className="text-accent-2 underline">Settings → Security</Link>. Every real-money switch asks for a 2FA code.</> },
+    { ok: data.liveAccounts.length > 0, text: "A connected real account", help: data.liveAccounts.length ? data.liveAccounts.map((a: any) => a.label).join(", ") : <>Connect a broker or exchange in <Link href="/wallet" className="text-accent-2 underline">Wallet & funding</Link> (e.g. Alpaca, Coinbase, Kraken).</> },
+  ];
+  async function submit() {
+    if (!pending) return;
+    setBusy(true);
+    try { await api("/api/admin/flags", { method: "POST", json: { key: pending.key, enabled: pending.enabled, approvalReference: ref || undefined, code } }); toast(`${RM_LABEL[pending.key].title} ${pending.enabled ? "ON" : "OFF"}`, "up"); setPending(null); setRef(""); setCode(""); refresh(); }
+    catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
+  }
+  return (
+    <section className={cx("rounded-2xl border p-4", anyOn ? "border-down/60 bg-down-soft/30" : "border-line bg-panel/80")}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-base font-semibold"><AlertOctagon className={cx("size-5", anyOn ? "text-down" : "text-accent-2")} /> Real-money trading: {anyOn ? "ON" : "OFF"}</h2>
+          <p className="mt-0.5 max-w-2xl text-xs text-muted">Turn real-money trading on here. Paper trading always stays available. Every switch is recorded in the audit log, and every real order still passes the risk checks and your limits.</p>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className="space-y-2">
+          {flags.map((f) => (
+            <div key={f.key} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-bg/40 px-3 py-2.5">
+              <div className="min-w-0"><div className="text-sm font-medium">{RM_LABEL[f.key].title}</div><div className="text-[11px] text-muted">{RM_LABEL[f.key].note}</div></div>
+              <Toggle checked={f.enabled} disabled={!f.enabled && !data.envUnlocked} onChange={(v) => setPending({ key: f.key, enabled: v })} />
+            </div>
+          ))}
+        </div>
+        <div className="rounded-xl border border-line bg-bg/40 p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">Needed before switching on</div>
+          <ul className="space-y-2">{steps.map((st, i) => (
+            <li key={i} className="flex gap-2 text-xs">
+              {st.ok ? <CheckCircle2 className="mt-px size-4 shrink-0 text-up" /> : <XCircle className="mt-px size-4 shrink-0 text-down" />}
+              <span><span className="font-medium text-text">{st.text}</span><span className="block text-muted">{st.help}</span></span>
+            </li>))}</ul>
+        </div>
+      </div>
+      <Modal open={!!pending} onClose={() => setPending(null)} title={pending ? `${pending.enabled ? "Turn on" : "Turn off"}: ${RM_LABEL[pending.key].title}` : ""}>
+        <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="space-y-3">
+          {pending?.enabled && <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">Real money. Orders in connected real accounts will move real funds. You can switch this off at any time.</p>}
+          {pending?.enabled ? <>
+            <Input label="Approval reference" required value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. broker agreement or license ID" hint="Stored with the change in the compliance records." />
+            <Input label="2FA code" required inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+          </> : <p className="text-sm text-muted">Real-money trading of this kind stops right away. Paper trading is unaffected.</p>}
+          <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setPending(null)}>Cancel</Button><Button type="submit" variant={pending?.enabled ? "danger" : "primary"} loading={busy}>Confirm</Button></div>
+        </form>
+      </Modal>
+    </section>
   );
 }
 
