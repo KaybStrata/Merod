@@ -18,8 +18,8 @@ const NAV: { href: string; label: string; icon: any; also?: string[] }[] = [
   { href: "/discover", label: "Discover", icon: Compass },
   { href: "/bots", label: "Bots & Shortcut Buttons", icon: Bot, also: ["/shortcuts"] },
   { href: "/activity", label: "Live & World Activity", icon: Radio, also: ["/world"] },
-  { href: "/learning", label: "AI Learning & Auto-Training", icon: Brain, also: ["/training"] },
-  { href: "/social", label: "Social & Community Chat", icon: Users, also: ["/chat"] },
+  { href: "/learning", label: "Auto-Training", icon: Brain, also: ["/training"] },
+  { href: "/social", label: "Social", icon: Users, also: ["/chat"] },
   { href: "/portfolio", label: "Portfolio & Wallet", icon: PieChart, also: ["/wallet"] },
   { href: "/broker-keys", label: "Broker & AI Keys", icon: KeyRound, also: ["/ai-keys"] },
   { href: "/alerts", label: "Alerts", icon: Bell },
@@ -64,9 +64,13 @@ function Frame({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", k);
   }); // eslint-disable-line react-hooks/exhaustive-deps
   const isAdmin = user.role === "admin" || user.role === "super_admin";
-  const nav = [...NAV,
+  const owner = user.role === "super_admin";
+  const main = NAV.flatMap((n) => n.href === "/bots" && owner
+    ? [n, { href: "/mimic", label: "Mimic Trading", icon: Repeat }, { href: "/copy", label: "Copy Trading", icon: Copy }]
+    : [n]);
+  const nav = [...main,
     ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }, { href: "/admin/integrations", label: "Integrations", icon: Plug }] : []),
-    ...(user.role === "super_admin" ? [{ href: "/copy", label: "Copy Trading", icon: Copy }, { href: "/mimic", label: "Mimic Trading", icon: Repeat }, { href: "/admin/fees", label: "Fees (Super admin)", icon: Percent }] : []),
+    ...(user.role === "super_admin" ? [{ href: "/admin/fees", label: "Fees (Super admin)", icon: Percent }] : []),
   ] as { href: string; label: string; icon: any; also?: string[] }[];
 
   const sidebar = (
