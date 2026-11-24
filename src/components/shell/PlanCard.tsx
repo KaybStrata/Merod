@@ -1,0 +1,131 @@
+"use client";
+import { useState } from "react";
+import Link from "next/link";
+import { CheckCircle2, XCircle, AlertTriangle, Bot, ShieldCheck } from "lucide-react";
+import { api } from "@/lib/api";
+import { Badge, Button, PaperBadge, SourceBadge, cx, useToast } from "@/components/ui";
+import { price, usd, qty } from "@/lib/format";
+
+/** Renders an assistant plan: order preview with every engine check, bot config, confirmations, clarifications. */
+export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: () => void; onChip?: (t: string) => void }) {
+  const card = message.plan;
+  const toast = useToast();
+  const [busy, setBusy] = useState<"approve" | "dismiss" | null>(null);
+  const [status, setStatus] = useState<string>(message.status);
+  const [result, setResult] = useState<any>(card?.result ?? null);
+  if (!card) return null;
+
+  async function approve() {
+    setBusy("approve");
+    try {
+      const r = await api(`/api/ai/plans/${message.id}`, { method: "POST" });
+      setResult(r.result); setStatus("approved");
+      toast(card.type === "bot" ? "Bot activated" : card.type === "order" ? `Order ${r.result.status}` : "Done", "up");
+      onDone?.();
+    } catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }
+  }
+  async function dismiss() {
+    setBusy("dismiss");
+    try { await api(`/api/ai/plans/${message.id}`, { method: "DELETE" }); setStatus("dismissed"); } finally { setBusy(null); }
+  }
+  const actionable = status === "needs_approval";
+
+  if (card.type === "clarify")
+    return card.suggestions?.length ? (
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {card.suggestions.map((s: string) => <button key={s} onClick={() => onChip?.(s)} className="rounded-full border border-accent/40 px-3 py-1 text-xs text-accent-2 hover:bg-accent-soft">{s}</button>)}
+      </div>
+    ) : null;
+
+  if (card.type === "executed")
+    return (
+      <div className="mt-2 flex items-center gap-2 rounded-xl border border-up/30 bg-up-soft px-3 py-2 text-xs text-up">
+        <CheckCircle2 className="size-4" /> {card.detail} {card.orderId && <Link className="underline" href="/portfolio">View</Link>}
+      </div>
+    );
+
+  if (card.type === "order") {
+    const p = card.plan;
+    const failed = p.checks.filter((c: any) => !c.ok);
+    return (
+      <div className="mt-2 rounded-xl border border-line bg-bg-2/70 p-3 text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="font-semibold">
+            <span className={p.intent.side === "buy" ? "text-up" : "text-down"}>{p.intent.side.toUpperCase()}</span> {qty(p.quantity)} {p.asset.symbol}
+            <span className="ml-1 text-xs font-normal text-muted">on {p.asset.venue}</span>
+          </div>
+          <div className="flex gap-1.5"><PaperBadge paper={p.isPaper} /><SourceBadge source={p.price?.source} /></div>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+          <Field k="Est. price" v={price(p.quote?.price ?? p.price?.value)} />
+          <Field k="Notional" v={usd(p.notionalUsd)} />
+          <Field k="Est. fees" v={usd(p.quote?.feeUsd ?? 0)} />
+          <Field k="Slippage" v={`${p.quote?.slippageBps ?? "—"} bps`} />
+          <Field k="Route" v={p.quote?.route ?? p.providerId} />
+          <Field k="Account" v={p.account.label} />
+          <Field k="Order" v={p.intent.orderType} />
+          <Field k="Price age" v={p.price ? `${p.price.ageSec}s` : "—"} />
+        </div>
+        {p.risks?.length > 0 && <ul className="mt-2 space-y-0.5 text-[11px] text-warn">{p.risks.map((r: string) => <li key={r} className="flex gap-1"><AlertTriangle className="mt-px size-3 shrink-0" />{r}</li>)}</ul>}
+        <details className="mt-2 text-[11px] text-muted">
+          <summary className="cursor-pointer select-none">{p.checks.length - failed.length}/{p.checks.length} engine checks passed</summary>
+          <ul className="mt-1 space-y-0.5">{p.checks.map((c: any) => <li key={c.name} className={cx("flex gap-1", c.ok ? "text-muted" : c.severity === "warn" ? "text-warn" : "text-down")}>{c.ok ? <CheckCircle2 className="size-3 shrink-0 text-up" /> : <XCircle className="size-3 shrink-0" />}{c.message}</li>)}</ul>
+        </details>
+        <div className="mt-2 text-xs text-muted">{p.decisionReason}</div>
+        <Actions status={status} actionable={actionable && p.decision !== "rejected"} busy={busy} onApprove={approve} onDismiss={dismiss} label="Approve order" result={result && `Order ${result.status}${result.reason ? ` — ${result.reason}` : ""}`} />
+      </div>
+    );
+  }
+
+  if (card.type === "bot") {
+    const c = card.config;
+    return (
+      <div className="mt-2 rounded-xl border border-line bg-bg-2/70 p-3 text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 font-semibold"><Bot className="size-4 text-accent-2" /> {c.name}</div>
+          <PaperBadge paper={c.isPaper} />
+        </div>
+        <div className="mt-1 text-xs text-muted">{card.strategyName} · {card.assetLabel}</div>
+        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
+          {Object.entries(c.params ?? {}).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => <Field key={k} k={k.replace(/_/g, " ")} v={String(v)} />)}
+          <Field k="Budget" v={usd(c.budgetUsd)} />
+          <Field k="Max daily spend" v={usd(c.maxDailySpendUsd)} />
+          <Field k="Max daily loss" v={usd(c.maxDailyLossUsd)} />
+          <Field k="Max trades/day" v={String(c.maxTradesPerDay)} />
+          <Field k="Checks every" v={c.schedule.replace("every_", "")} />
+          <Field k="Approval per trade" v={c.approvalRequired ? "Yes" : "No"} />
+        </div>
+        <p className="mt-2 flex gap-1 text-[11px] text-muted"><ShieldCheck className="size-3 shrink-0" /> Runs on Merod's servers (not your browser). Every order passes the trading engine's risk checks. Profit is not guaranteed.</p>
+        <Actions status={status} actionable={actionable} busy={busy} onApprove={approve} onDismiss={dismiss} label="Activate bot"
+          result={result?.botId && <Link className="underline" href={`/bots/${result.botId}`}>Bot {result.status} — open activity log</Link>} />
+      </div>
+    );
+  }
+
+  if (card.type === "confirm_action")
+    return (
+      <div className="mt-2 rounded-xl border border-line bg-bg-2/70 p-3 text-sm">
+        <div className="text-xs text-muted">{card.detail}</div>
+        <Actions status={status} actionable={actionable} busy={busy} onApprove={approve} onDismiss={dismiss} label="Confirm" danger result={result && JSON.stringify(result)} />
+      </div>
+    );
+
+  if (card.type === "alert") return <div className="mt-2"><Badge tone="accent">Alert: {card.created.symbol} {card.created.direction} {card.created.price}</Badge></div>;
+  return null;
+}
+
+function Field({ k, v }: { k: string; v: string }) {
+  return <div className="min-w-0"><span className="text-faint">{k}: </span><span className="num truncate text-text">{v}</span></div>;
+}
+function Actions({ status, actionable, busy, onApprove, onDismiss, label, danger, result }: any) {
+  if (status === "approved") return <div className="mt-2 flex items-center gap-1 text-xs text-up"><CheckCircle2 className="size-3.5" /> Approved {result && <>· {result}</>}</div>;
+  if (status === "dismissed") return <div className="mt-2 text-xs text-faint">Dismissed</div>;
+  if (status === "rejected") return <div className="mt-2 text-xs text-down">Blocked by risk checks</div>;
+  if (!actionable) return null;
+  return (
+    <div className="mt-3 flex gap-2">
+      <Button size="sm" variant={danger ? "danger" : "primary"} loading={busy === "approve"} onClick={onApprove}>{label}</Button>
+      <Button size="sm" variant="ghost" loading={busy === "dismiss"} onClick={onDismiss}>Dismiss</Button>
+    </div>
+  );
+}

@@ -1,0 +1,44 @@
+# ── dependencies / build output ──
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# ── environment & secrets: NEVER commit ──
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.keystore
+secrets/
+credentials*.json
+service-account*.json
+
+# ── wallet material: NEVER commit ──
+id.json
+*keypair*.json
+*wallet*.json
+*.mnemonic
+mnemonic*.txt
+seed*.txt
+
+# ── hosting CLIs ──
+.vercel/
+.railway/
+
+# ── local tooling ──
+.DS_Store
+*.log
+npm-debug.log*
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.claude/settings.local.json

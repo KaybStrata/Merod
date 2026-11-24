@@ -1,0 +1,55 @@
+{
+  "name": "merod",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "dev:worker": "tsx watch worker/index.ts",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3000}",
+    "worker": "tsx worker/index.ts",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "db:setup": "npm run db:migrate && npm run db:seed",
+    "release": "npm run db:migrate && npm run db:seed",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
+    "security:check": "tsx scripts/security-check.ts",
+    "verify": "npm run typecheck && npm run test && npm run security:check && npm run build",
+    "admin:promote-owner": "tsx scripts/promote-owner.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.13.0",
+    "bullmq": "^6.7.8",
+    "clsx": "^2.1.1",
+    "ioredis": "^6.1.0",
+    "lightweight-charts": "^5.3.0",
+    "lucide-react": "^1.79.0",
+    "next": "^16.4.6",
+    "openai": "^7.63.0",
+    "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "snaptrade-typescript-sdk": "^13.4.9",
+    "ws": "^8.23.0",
+    "zod": "^4.6.7",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.5",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "postcss": "^8.5.33",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}

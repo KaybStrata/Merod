@@ -1,0 +1,270 @@
+import "@/lib/server-only-shim";
+import { one, q } from "../db";
+import { audit } from "../audit";
+import { HttpError } from "../errors";
+import { preview, place, resolveAsset, cancelAll } from "../engine/engine";
+import type { OrderIntent } from "../engine/types";
+import { createBot, type BotConfig } from "../bots/service";
+import { pauseAllBots, resumeAllBots } from "../bots/runner";
+import { parsePrompt, mergeClarification } from "./parser";
+import { aiAvailable, llmInterpret, llmResearch, type AIProvider } from "./llm";
+import type { Instruction, TradeLeg } from "./schema";
+import { promptDefaults } from "../training/trainer";
+
+/**
+ * Prompt-to-trade orchestrator:
+ *  1 prompt → 2 interpret (AI structured output, or rule parser) → 3 resolve asset → 4 execution plan
+ *  → 5 engine validation → 6 show price/fees/risks → 7 approval when required → 8 route → 9 confirm → 10 portfolio.
+ * The AI never calls the engine directly; this module turns a validated instruction into engine intents.
+ */
+export interface PromptInput { text: string; conversationId?: string; screenAssetId?: string | null; provider?: AIProvider; model?: string }
+export type PlanCard =
+  | { type: "order"; intent: OrderIntent; plan: any }
+  | { type: "bot"; config: BotConfig; strategyName: string; assetLabel: string }
+  | { type: "alert"; created: { symbol: string; direction: string; price: number } }
+  | { type: "confirm_action"; action: "cancel_all_orders" | "resume_all_bots"; detail: string }
+  | { type: "executed"; detail: string; orderId?: string; status?: string }
+  | { type: "research"; text: string }
+  | { type: "clarify"; question: string; suggestions: string[] };
+
+async function userAI(userId: string, input: PromptInput) {
+  const p = await one<{ ai_provider: AIProvider; ai_model: string }>("SELECT ai_provider, ai_model FROM user_profiles WHERE user_id=$1", [userId]);
+  return { provider: input.provider ?? p?.ai_provider ?? "anthropic", model: input.model ?? p?.ai_model ?? "claude-opus-5-5" };
+}
+
+async function interpret(userId: string, input: PromptInput, screenSymbol: string | null) {
+  const { provider, model } = await userAI(userId, input);
+  let usedProvider: string = "merod", usedModel = "deterministic", fallbackReason: string | null = null;
+  let instruction: Instruction;
+  if (provider !== "merod" && (await aiAvailable(provider))) {
+    try {
+      const holdings = (await q<{ symbol: string }>("SELECT DISTINCT a.symbol FROM positions p JOIN assets a ON a.id=p.asset_id WHERE p.user_id=$1 AND p.quantity>0", [userId])).map((r) => r.symbol);
+      instruction = await llmInterpret(provider, model, input.text, { screenAsset: screenSymbol, holdings });
+      usedProvider = provider; usedModel = model;
+    } catch (e: any) {
+      fallbackReason = `${provider} unavailable (${e.message}); used Merod rule parser`;
+      instruction = parsePrompt(input.text);
+    }
+  } else {
+    if (provider !== "merod") fallbackReason = `${provider === "anthropic" ? "Claude" : "OpenAI"} is not connected — using Merod's rule parser`;
+    instruction = parsePrompt(input.text);
+  }
+  return { instruction, usedProvider, usedModel, fallbackReason };
+}
+
+async function legAsset(leg: TradeLeg, screenAssetId: string | null | undefined) {
+  if (!leg.symbol && !leg.contract_address) {
+    if (!screenAssetId) return { error: "Which asset? Open an asset or name it (e.g. SOL, NVDA)." };
+    return { asset: await resolveAsset({ assetId: screenAssetId }) };
+  }
+  try { return { asset: await resolveAsset({ symbol: leg.symbol ?? undefined, identifier: leg.contract_address ?? undefined, venue: normVenue(leg.network) }) }; }
+  catch (e: any) {
+    // Try resolving a spelled-out name ("Solana") against the asset table
+    if (leg.symbol) {
+      const byName = await q<any>("SELECT id FROM assets WHERE lower(name)=lower($1) AND NOT ('demo_data'=ANY(risk_flags)) ORDER BY market_cap DESC NULLS LAST LIMIT 2", [leg.symbol]);
+      if (byName.length === 1) return { asset: await resolveAsset({ assetId: byName[0].id }) };
+    }
+    return { error: e.message as string };
+  }
+}
+const normVenue = (n: string | null) => {
+  if (!n) return undefined;
+  const m: Record<string, string> = { nasdaq: "XNAS", nyse: "XNYS", "bnb chain": "bsc", bnb: "bsc", eth: "ethereum", sol: "solana" };
+  return m[n.toLowerCase()] ?? n.toLowerCase();
+};
+
+function legToIntent(leg: TradeLeg, assetId: string, price: number | null): OrderIntent {
+  const sizing = leg.amount_type === "usd" ? { notionalUsd: leg.amount! } : leg.amount_type === "percent_position" ? { percentOfPosition: leg.amount! } : { quantity: leg.amount! };
+  const tp = leg.take_profit_pct && price ? { takeProfit: +(price * (1 + leg.take_profit_pct / 100)).toPrecision(8) } : {};
+  const sl = leg.stop_loss_pct && price ? { stopLoss: +(price * (1 - leg.stop_loss_pct / 100)).toPrecision(8) } : {};
+  return {
+    asset: { assetId }, side: leg.side, orderType: leg.order_type === "trailing_stop" ? "market" : leg.order_type, timeInForce: "gtc", ...sizing,
+    ...(leg.limit_price ? { limitPrice: leg.limit_price } : {}), ...(leg.stop_price ? { stopPrice: leg.stop_price } : {}), ...tp, ...sl,
+  } as OrderIntent;
+}
+
+const AMOUNT_CHIPS = ["$25", "$50", "$100", "$250"];
+
+export async function handlePrompt(userId: string, input: PromptInput) {
+  const text = input.text.trim().slice(0, 2000);
+  if (!text) throw new HttpError(400, "Empty prompt");
+  const perms = await one<any>("SELECT * FROM trading_permissions WHERE user_id=$1", [userId]);
+
+  let convId = input.conversationId;
+  if (convId) { if (!(await one("SELECT 1 FROM ai_conversations WHERE id=$1 AND user_id=$2", [convId, userId]))) convId = undefined; }
+  if (!convId) convId = (await one<{ id: string }>("INSERT INTO ai_conversations (user_id, title) VALUES ($1,$2) RETURNING id", [userId, text.slice(0, 60)]))!.id;
+
+  const screen = input.screenAssetId ? await one<any>("SELECT id, symbol FROM assets WHERE id=$1", [input.screenAssetId]) : null;
+  const userMsg = await one<{ id: string }>("INSERT INTO trading_prompts (user_id, conversation_id, role, content) VALUES ($1,$2,'user',$3) RETURNING id", [userId, convId, text]);
+
+  // Clarification follow-up: merge the answer into the pending instruction.
+  const last = await one<any>("SELECT * FROM trading_prompts WHERE conversation_id=$1 AND role='assistant' ORDER BY created_at DESC LIMIT 1", [convId]);
+  let instruction: Instruction | null = null, usedProvider = "merod", usedModel = "deterministic", fallbackReason: string | null = null;
+  let originText = text;
+  if (last?.status === "clarify" && last.interpretation) {
+    instruction = mergeClarification(last.interpretation, text);
+    if (instruction) {
+      // Record the user's original instruction (not just the clarification answer) on anything we create.
+      const orig = await one<{ content: string }>("SELECT content FROM trading_prompts WHERE conversation_id=$1 AND role='user' AND created_at < $2 ORDER BY created_at DESC LIMIT 1", [convId, last.created_at]);
+      if (orig) originText = `${orig.content} → ${text}`;
+    }
+  }
+  if (!instruction) ({ instruction, usedProvider, usedModel, fallbackReason } = await interpret(userId, { ...input, text }, screen?.symbol ?? null));
+  if (!perms?.allow_ai_prompts && !["research", "portfolio_question", "clarify", "pause_all_bots"].includes(instruction.kind))
+    return reply("AI prompt trading is disabled in your automation permissions (Settings → Automation).", { type: "clarify", question: "Enable AI prompt trading in Settings to continue.", suggestions: [] }, "info");
+
+  async function reply(message: string, card: PlanCard | null, status: string, interp: Instruction | null = instruction) {
+    const row = await one<any>(
+      `INSERT INTO trading_prompts (user_id, conversation_id, role, content, ai_provider, ai_model, interpretation, plan, status) VALUES ($1,$2,'assistant',$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [userId, convId, message, usedProvider, usedModel, interp ? JSON.stringify(interp) : null, card ? JSON.stringify(card) : null, status]);
+    await audit({ actorType: "ai", actorId: usedProvider, userId, action: "ai.prompt", target: row.id, data: { kind: interp?.kind, status, fallback: !!fallbackReason } });
+    return { conversationId: convId!, message: row, userMessageId: userMsg!.id, fallbackReason, provider: usedProvider, model: usedModel };
+  }
+
+  const ins = instruction;
+  const leg = ins.trades[0];
+  switch (ins.kind) {
+    case "clarify":
+      return reply(ins.clarification_question ?? "Could you clarify?", { type: "clarify", question: ins.clarification_question ?? "", suggestions: /how much/i.test(ins.clarification_question ?? "") ? AMOUNT_CHIPS : [] }, "clarify");
+
+    case "trade": {
+      if (!leg) return reply("I couldn't find a trade in that request.", null, "info");
+      if (!leg.amount || !leg.amount_type) return reply(`How much should I ${leg.side}?`, { type: "clarify", question: `How much should I ${leg.side}?`, suggestions: leg.side === "buy" ? AMOUNT_CHIPS : ["25%", "50%", "100%"] }, "clarify");
+      const r = await legAsset(leg, input.screenAssetId);
+      if (!r.asset) return reply(r.error!, { type: "clarify", question: r.error!, suggestions: [] }, "clarify");
+      const intent = legToIntent(leg, r.asset.id, r.asset.last_price);
+      // Auto-training: apply learned protective defaults (risk-reducing only).
+      const learned = await promptDefaults(userId);
+      const trainingNotes: string[] = [];
+      if (learned?.default_stop_loss_pct && intent.side === "buy" && !intent.stopLoss && r.asset.last_price) {
+        intent.stopLoss = +(r.asset.last_price * (1 - Number(learned.default_stop_loss_pct) / 100)).toPrecision(8);
+        trainingNotes.push(`Auto-training added a ${learned.default_stop_loss_pct}% stop-loss`);
+      }
+      const ctx = { userId, source: "prompt" as const, sourceRef: userMsg!.id, idempotencyKey: `prompt:${userMsg!.id}`, actor: { type: "ai" as const, id: usedProvider } };
+      const plan = await preview(intent, ctx);
+      if (plan.decision === "execute" && learned?.max_prompt_order_usd && plan.notionalUsd > Number(learned.max_prompt_order_usd)) {
+        plan.decision = "pending_approval";
+        plan.decisionReason = `Auto-training: prompt orders above $${learned.max_prompt_order_usd} need your approval`;
+      }
+      if (trainingNotes.length) plan.risks = [...trainingNotes, ...plan.risks];
+      if (plan.decision === "execute") {
+        const { order } = await place(intent, ctx);
+        return reply(`${ins.summary} — ${order.status === "filled" ? "executed" : order.status}. ${plan.decisionReason}.`, { type: "executed", detail: plan.decisionReason, orderId: order.id, status: order.status }, "executed");
+      }
+      return reply(plan.decision === "rejected" ? `I can't place this: ${plan.decisionReason}` : `${ins.summary}. Review and approve below.`, { type: "order", intent, plan }, plan.decision === "rejected" ? "rejected" : "needs_approval");
+    }
+
+    case "swing_loop":
+    case "recurring_buy":
+    case "conditional_trade": {
+      if (!leg) return reply("Which asset should this apply to?", { type: "clarify", question: "Which asset?", suggestions: [] }, "clarify");
+      if (ins.kind !== "conditional_trade" && (!leg.amount || leg.amount_type === "percent_position")) {
+        const qn = ins.kind === "swing_loop" ? "How much should each buy cycle spend?" : "How much should each recurring purchase be?";
+        return reply(qn, { type: "clarify", question: qn, suggestions: AMOUNT_CHIPS }, "clarify");
+      }
+      if (ins.kind === "conditional_trade" && !leg.amount) return reply(`How much should I ${leg.side}?`, { type: "clarify", question: `How much should I ${leg.side}?`, suggestions: leg.side === "sell" ? ["25%", "50%", "100%"] : AMOUNT_CHIPS }, "clarify");
+      const r = await legAsset(leg, input.screenAssetId);
+      if (!r.asset) return reply(r.error!, { type: "clarify", question: r.error!, suggestions: [] }, "clarify");
+      const a = r.asset;
+      const amountUsd = leg.amount_type === "usd" ? leg.amount! : leg.amount_type === "quantity" && a.last_price ? leg.amount! * a.last_price : null;
+      const user = await one<any>("SELECT trading_mode FROM users WHERE id=$1", [userId]);
+      const base = { description: ins.summary, assetIds: [a.id], markets: [], isPaper: user?.trading_mode !== "live", createdFromPrompt: originText, start: true,
+        budgetUsd: Math.max((amountUsd ?? 100) * 3, 100), maxPositionUsd: Math.max(amountUsd ?? 100, 1), maxDailySpendUsd: Math.max((amountUsd ?? 100) * 4, 100),
+        maxDailyLossUsd: Math.max((amountUsd ?? 100), 50), maxTradesPerDay: 20, minLiquidityUsd: 0, maxSlippageBps: 100, maxPriceDeviationPct: 5,
+        schedule: "every_1m" as const, approvalRequired: perms?.mode === "manual", notify: { trades: true, errors: true } };
+      let config: BotConfig;
+      if (ins.kind === "swing_loop") {
+        config = { ...base, name: `${a.symbol} dip ${ins.swing!.dip_pct}% → +${ins.swing!.take_profit_pct}%${ins.swing!.repeat ? " loop" : ""}`, strategyId: "dip_rebound_loop", schedule: "every_15s",
+          params: { amount_usd: amountUsd, dip_pct: ins.swing!.dip_pct, take_profit_pct: ins.swing!.take_profit_pct, stop_loss_pct: ins.swing!.stop_loss_pct, repeat: ins.swing!.repeat, max_cycles: ins.swing!.max_cycles } } as BotConfig;
+      } else if (ins.kind === "recurring_buy") {
+        config = { ...base, name: `${a.symbol} ${ins.schedule!.frequency} buy $${amountUsd}`, strategyId: "recurring_buy", schedule: "every_5m",
+          params: { amount_usd: amountUsd, frequency: ins.schedule!.frequency, weekday: ins.schedule!.weekday } } as BotConfig;
+      } else {
+        config = { ...base, name: `${a.symbol} conditional ${leg.side}`, strategyId: "price_trigger",
+          params: { condition: ins.condition!.type, value: ins.condition!.value, side: leg.side, amount_usd: leg.amount_type === "usd" ? leg.amount : amountUsd, percent: leg.amount_type === "percent_position" ? leg.amount : null } } as BotConfig;
+      }
+      const strategyName = { swing_loop: "Dip-buy / take-profit loop", recurring_buy: "Recurring purchase", conditional_trade: "Price-triggered order" }[ins.kind];
+      return reply(`${ins.summary}. I've prepared a ${config.isPaper ? "paper-trading " : ""}bot — review its limits and activate it.`, { type: "bot", config, strategyName, assetLabel: `${a.symbol} · ${a.venue}` }, "needs_approval");
+    }
+
+    case "create_bot": {
+      const b = ins.bot!;
+      const config: BotConfig = { name: b.name, description: ins.summary, strategyId: b.strategy === "dip_rebound_loop" ? "dip_rebound_loop" : b.strategy, params: b.min_liquidity_usd ? { min_liquidity_usd: b.min_liquidity_usd } : {},
+        assetIds: input.screenAssetId && !["watchlist_monitor", "meme_discovery"].includes(b.strategy) ? [input.screenAssetId] : [], markets: b.strategy === "meme_discovery" ? ["solana", "solana-demo"] : [],
+        isPaper: true, budgetUsd: 500, maxPositionUsd: 50, maxDailySpendUsd: 200, maxDailyLossUsd: 100, maxTradesPerDay: 10, minLiquidityUsd: b.min_liquidity_usd ?? 50000,
+        maxSlippageBps: 150, maxPriceDeviationPct: 5, schedule: "every_1m", approvalRequired: true, notify: { trades: true, errors: true }, createdFromPrompt: originText, start: true } as BotConfig;
+      return reply(`${ins.summary}. Review and activate below.`, { type: "bot", config, strategyName: b.strategy.replace(/_/g, " "), assetLabel: config.assetIds.length ? "Asset on screen" : "Your watchlist / new launches" }, "needs_approval");
+    }
+
+    case "price_alert": {
+      const r = leg ? await legAsset(leg, input.screenAssetId) : { error: "Which asset?" } as any;
+      if (!r.asset) return reply(r.error, { type: "clarify", question: r.error, suggestions: [] }, "clarify");
+      let price = ins.condition?.value ?? null;
+      if (price == null) price = (await one<any>("SELECT wi.target_price FROM watchlist_items wi JOIN watchlists w ON w.id=wi.watchlist_id WHERE w.user_id=$1 AND wi.asset_id=$2 AND wi.target_price IS NOT NULL", [userId, r.asset.id]))?.target_price ?? null;
+      if (price == null) return reply(`You don't have a saved target price for ${r.asset.symbol}. What price should I alert you at?`, { type: "clarify", question: "What price?", suggestions: [] }, "clarify");
+      const direction = ins.condition?.type === "price_above" ? "above" : "below";
+      await q("INSERT INTO price_alerts (user_id, asset_id, direction, price) VALUES ($1,$2,$3,$4)", [userId, r.asset.id, direction, price]);
+      return reply(`Alert set: I'll notify you when ${r.asset.symbol} goes ${direction} ${price}.`, { type: "alert", created: { symbol: r.asset.symbol, direction, price } }, "executed");
+    }
+
+    case "pause_all_bots": {
+      const n = await pauseAllBots(userId, "ai");
+      return reply(`Paused ${n} running bot${n === 1 ? "" : "s"}.`, { type: "executed", detail: `Paused ${n} bots` }, "executed");
+    }
+    case "resume_all_bots":
+      return reply("Resume all paused paper bots?", { type: "confirm_action", action: "resume_all_bots", detail: "Paused paper bots will start trading again." }, "needs_approval");
+    case "cancel_all_orders": {
+      const n = (await one<any>("SELECT count(*)::int AS n FROM orders WHERE user_id=$1 AND status IN ('pending_approval','validated','submitted','partially_filled')", [userId]))?.n ?? 0;
+      if (!n) return reply("You have no open orders.", null, "info");
+      return reply(`Cancel all ${n} open orders?`, { type: "confirm_action", action: "cancel_all_orders", detail: `${n} open orders will be cancelled.` }, "needs_approval");
+    }
+
+    case "portfolio_question": {
+      const s = await one<any>(`SELECT COALESCE(SUM(p.quantity*a.last_price),0) AS invested, COALESCE(SUM(p.quantity*(a.last_price-p.avg_cost)),0) AS upnl, COUNT(*) FILTER (WHERE p.quantity>0) AS n
+                                  FROM positions p JOIN assets a ON a.id=p.asset_id WHERE p.user_id=$1 AND p.quantity>0`, [userId]);
+      const cash = await one<any>("SELECT COALESCE(SUM(cash_balance),0) AS c FROM trading_accounts WHERE user_id=$1 AND kind='paper'", [userId]);
+      const t = `You hold ${s.n} positions worth $${Number(s.invested).toLocaleString(undefined, { maximumFractionDigits: 2 })} with unrealized P&L of $${Number(s.upnl).toFixed(2)}. Paper cash: $${Number(cash.c).toLocaleString(undefined, { maximumFractionDigits: 2 })}.`;
+      return reply(t, { type: "research", text: t }, "info");
+    }
+
+    case "research":
+    default: {
+      const query = ins.research_query ?? text;
+      const asset = leg ? await legAsset(leg, input.screenAssetId).then((r) => r.asset) : screen ? await resolveAsset({ assetId: screen.id }) : null;
+      const data = asset ? `symbol=${asset.symbol} venue=${asset.venue} price=${asset.last_price} change_24h_pct=${asset.change_24h} market_cap=${asset.market_cap} volume_24h=${asset.volume_24h} liquidity_usd=${asset.liquidity_usd} price_source=${asset.price_source}` : "none";
+      const { provider, model } = await userAI(userId, input);
+      if (provider !== "merod" && (await aiAvailable(provider))) {
+        try { const t = await llmResearch(provider, model, query, data); usedProvider = provider; usedModel = model; return reply(t, { type: "research", text: t }, "info"); }
+        catch (e: any) { fallbackReason = `Research model failed: ${e.message}`; }
+      }
+      const t = asset
+        ? `${asset.name} (${asset.symbol}) is at ${asset.last_price} (${Number(asset.change_24h ?? 0).toFixed(2)}% 24h, source: ${asset.price_source}). Connect Claude or OpenAI in the Integration Center for AI research and summaries.`
+        : "AI research needs Claude or OpenAI to be connected in the Integration Center. I can still execute trading instructions with the built-in parser.";
+      return reply(t, { type: "research", text: t }, "info");
+    }
+  }
+}
+
+/** Human approval of an assistant plan card. Runs through the engine with userConfirmed=true. */
+export async function approvePlan(userId: string, messageId: string, overrides?: { config?: Partial<BotConfig> }) {
+  const m = await one<any>("SELECT * FROM trading_prompts WHERE id=$1 AND user_id=$2 AND role='assistant'", [messageId, userId]);
+  if (!m?.plan) throw new HttpError(404, "Plan not found");
+  if (m.status !== "needs_approval") throw new HttpError(409, `This plan is already ${m.status}`);
+  const card = m.plan as PlanCard;
+  let result: any;
+  if (card.type === "order") {
+    const { order } = await place(card.intent, { userId, source: "prompt", sourceRef: m.id, idempotencyKey: `prompt-approve:${m.id}`, actor: { type: "user", id: userId }, userConfirmed: true });
+    result = { orderId: order.id, status: order.status, reason: order.status_reason };
+  } else if (card.type === "bot") {
+    const bot = await createBot(userId, { ...card.config, ...(overrides?.config ?? {}) } as BotConfig, "ai");
+    result = { botId: bot.id, status: bot.status };
+  } else if (card.type === "confirm_action") {
+    result = card.action === "cancel_all_orders" ? { cancelled: (await cancelAll(userId)).length } : { resumed: await resumeAllBots(userId) };
+  } else throw new HttpError(400, "Nothing to approve");
+  await q("UPDATE trading_prompts SET status='approved', plan = plan || jsonb_build_object('result',$2::jsonb) WHERE id=$1", [m.id, JSON.stringify(result)]);
+  await audit({ actorType: "user", actorId: userId, userId, action: "ai.plan_approved", target: m.id, data: result });
+  return result;
+}
+export async function rejectPlan(userId: string, messageId: string) {
+  await q("UPDATE trading_prompts SET status='dismissed' WHERE id=$1 AND user_id=$2 AND status='needs_approval'", [messageId, userId]);
+}
