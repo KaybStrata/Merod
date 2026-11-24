@@ -87,7 +87,7 @@ export default function ActivityPage() {
       </div>
 
       {scope === "mine" ? (
-        <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_360px]">
           <Card title="Activity stream" action={<Pills size="sm" value={kind} onChange={setKind} options={KINDS as any} />}>
             {events.length === 0 ? (
               <Empty icon={<Radio className="size-6" />} title="Nothing yet">Place a trade, run a shortcut or start a bot — events stream here live.</Empty>

@@ -76,7 +76,7 @@ function AIPage() {
 
   const perms = models.data?.permissions;
   return (
-    <div className="grid gap-5 xl:grid-cols-[260px_1fr_300px]">
+    <div className="grid grid-cols-1 gap-5 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
       {/* History */}
       <div className="space-y-4">
         <Button variant="primary" className="w-full" onClick={() => { setCid(null); setMessages([]); router.replace("/ai"); }}><Plus className="size-4" /> New conversation</Button>
@@ -98,11 +98,11 @@ function AIPage() {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
           <div className="flex items-center gap-2"><Sparkles className="size-4 text-accent-2" /><h1 className="font-semibold">AI Trade</h1>
             {screenAsset && <Badge tone="accent">Context: {screenAsset.symbol}</Badge>}</div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Select value={provider} onChange={(e) => { const p = providers.find((x) => x.id === e.target.value); savePreference(e.target.value, p?.models[0]?.id ?? ""); }} className="w-40">
               {providers.map((p) => <option key={p.id} value={p.id}>{p.name}{p.connected ? "" : " (not connected)"}</option>)}
             </Select>
-            <Select value={model} onChange={(e) => savePreference(provider, e.target.value)} className="w-52">
+            <Select value={model} onChange={(e) => savePreference(provider, e.target.value)} className="w-full sm:w-52">
               {(current?.models ?? []).map((m: any) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </Select>
           </div>

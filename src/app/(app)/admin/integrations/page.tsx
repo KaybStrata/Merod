@@ -101,13 +101,13 @@ export default function IntegrationsPage() {
       </div>
 
       {error && <p className="rounded-xl bg-down-soft px-4 py-3 text-sm text-down">{error}</p>}
-      {loading && !data && <div className="grid gap-3 lg:grid-cols-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-40" />)}</div>}
+      {loading && !data && <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-40" />)}</div>}
       {data && groups.length === 0 && <Empty icon={<Plug className="size-6" />} title="No providers match this filter" />}
 
       {groups.map(([phase, providers]) => (
         <section key={phase} className="space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-faint">Phase {phase} · {PHASE[phase] ?? ""}</h2>
-          <div className="grid gap-3 xl:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
             {providers.map((p) => <ProviderCard key={p.id} p={p} onChange={refresh} />)}
           </div>
         </section>

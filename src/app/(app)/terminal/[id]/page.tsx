@@ -100,7 +100,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
       <ShortcutBar placement="terminal" assetId={id} />
       <LiveSuggestions assetId={id} title={a ? `Live suggestions for ${a.symbol}` : "Live suggestions"} compact />
 
-      <div className="grid gap-4 xl:grid-cols-12">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="space-y-4 xl:col-span-9">
           <Card pad={false}>
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3">
@@ -143,7 +143,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
             {bars.data?.source === "simulated" && <p className="px-4 pb-3 text-[11px] text-faint">Chart uses Merod's simulated price feed (paper trading). Connect a licensed market-data provider for real history.</p>}
           </Card>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card title="Position" icon={<Activity className="size-4 text-accent-2" />}>
               {!position ? <p className="text-sm text-muted">No open position.</p> : (
                 <div className="grid grid-cols-2 gap-3 text-sm">
@@ -260,7 +260,7 @@ function AssetInfo({ d }: { d: any }) {
         <KV k="Venue (exchange / blockchain)" v={a.venue} />
         <div><div className="text-xs text-faint">Identifier</div>
           <div className="flex items-center gap-2 font-mono text-xs break-all">{a.identifier}
-            <button onClick={() => { navigator.clipboard.writeText(a.identifier); toast("Copied"); }} className="text-faint hover:text-text" aria-label="Copy"><Copy className="size-3.5" /></button>
+            <button onClick={() => { (navigator.clipboard?.writeText(a.identifier) ?? Promise.reject()).then(() => toast("Copied"), () => toast("Copy failed — select and copy manually", "down")); }} className="text-faint hover:text-text" aria-label="Copy"><Copy className="size-3.5" /></button>
             {explorer && <a href={explorer} target="_blank" rel="noreferrer" className="text-faint hover:text-text"><ExternalLink className="size-3.5" /></a>}</div></div>
         <div><div className="text-xs text-faint">Other identifiers</div>{d.identifiers.map((i: any) => <div key={i.scheme + i.value} className="font-mono text-xs text-muted">{i.scheme}: {i.value}</div>)}</div>
       </div>

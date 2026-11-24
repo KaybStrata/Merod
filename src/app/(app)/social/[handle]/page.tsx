@@ -68,7 +68,7 @@ export default function ProfilePage({ params }: { params: Promise<{ handle: stri
       )}
 
       {tab === "performance" && (perf ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {(["live", "paper"] as const).map((k) => (
             <Card key={k} title={k === "live" ? "Live (real money)" : "Paper (simulated)"} icon={<BarChart3 className="size-4 text-accent-2" />} action={<PaperBadge paper={k === "paper"} />}>
               {perf[k] ? (
@@ -87,7 +87,7 @@ export default function ProfilePage({ params }: { params: Promise<{ handle: stri
 
       {tab === "strategies" && (
         data.strategies.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {data.strategies.map((s: any, i: number) => (
               <Card key={i} title={s.name} icon={<Bot className="size-4 text-accent-2" />} action={<div className="flex gap-1"><PaperBadge paper={s.is_paper} /><Badge>{s.status}</Badge></div>}>
                 <div className="text-sm text-muted">{s.strategy_name}</div>

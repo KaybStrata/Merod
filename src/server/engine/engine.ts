@@ -383,7 +383,8 @@ async function route(orderId: string) {
     await q("UPDATE orders SET status='pending_approval', status_reason='Awaiting wallet signature', provider_order_id=$2, unsigned_tx=$3, updated_at=now() WHERE id=$1",
       [o.id, result.providerOrderId, JSON.stringify({ tx: result.unsignedTx, network: result.signingNetwork, instructions: result.instructions })]);
   } else {
-    await q("UPDATE orders SET provider_order_id=$2, status_reason='Working at provider', updated_at=now() WHERE id=$1", [o.id, result.providerOrderId]);
+    await q("UPDATE orders SET provider_order_id=$2, status_reason=$3, updated_at=now() WHERE id=$1",
+      [o.id, result.providerOrderId, o.provider_id === "paper" ? "Resting (simulated) — fills when price reaches your level" : "Working at provider"]);
   }
   const fresh = await one<any>("SELECT * FROM orders WHERE id=$1", [o.id]);
   await publish(`user:${o.user_id}`, "order", { id: o.id, status: fresh.status });

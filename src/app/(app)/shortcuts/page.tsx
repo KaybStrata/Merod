@@ -104,7 +104,7 @@ export default function ShortcutsPage() {
         <Button variant="primary" onClick={() => setDraft(blank())}><Plus className="size-4" /> New shortcut</Button>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[240px_1fr]">
         <div className="space-y-4">
           <Card title="Folders" icon={<Folder className="size-4 text-accent-2" />}>
             <div className="space-y-1">

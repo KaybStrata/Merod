@@ -38,7 +38,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-12">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <Card className="xl:col-span-8" pad={false}>
           <div className="flex flex-wrap items-start justify-between gap-4 px-5 pt-4">
             <div>
@@ -68,7 +68,7 @@ export default function Dashboard() {
         <div className="mt-4"><LiveSuggestions title="Suggested for you right now" /></div>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <Card title="Holdings" icon={<Wallet className="size-4 text-accent-2" />} action={<Link href="/portfolio" className="flex items-center gap-1 text-xs text-accent-2 hover:underline">View all <ArrowRight className="size-3" /></Link>}>
           {!s ? <Skeleton className="h-40" /> : s.holdings.length === 0 ? (
             <Empty title="No positions yet" action={<button onClick={() => openPrompt("Buy $100 of SOL")} className="text-xs text-accent-2 hover:underline">Try “Buy $100 of SOL”</button>}>Place a paper trade from the terminal, a shortcut, or the prompt bar.</Empty>

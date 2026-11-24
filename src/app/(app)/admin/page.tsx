@@ -58,7 +58,7 @@ function Overview() {
           </div>
         ))}
       </div>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card title="Workers" icon={<Server className="size-4 text-accent-2" />}>
           {data.heartbeats.length === 0 ? (
             <Empty title="No worker heartbeat yet">Start the persistent worker (<code>npm run worker</code> / Railway worker service). Bots, price feeds and reconciliation do not run without it.</Empty>
@@ -182,7 +182,7 @@ function Trading() {
   const pl = data.paperLive ?? {};
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <div className="rounded-2xl border border-line bg-panel/70 p-4"><div className="text-xs text-muted">Paper orders (7d)</div><div className="num mt-1 text-2xl font-semibold">{pl.paper ?? 0}</div><div className="text-[11px] text-faint">{usd(pl.paper_volume, { compact: true })} simulated volume</div></div>
         <div className="rounded-2xl border border-line bg-panel/70 p-4"><div className="text-xs text-muted">Live orders (7d)</div><div className="num mt-1 text-2xl font-semibold">{pl.live ?? 0}</div><div className="text-[11px] text-faint">{usd(pl.live_volume, { compact: true })} volume</div></div>
         <Card title="By status" className="md:col-span-1"><div className="flex flex-wrap gap-1">{data.byStatus.map((s: any) => <span key={s.status} className="inline-flex items-center gap-1 text-xs"><StatusPill status={s.status} /><span className="num text-muted">{s.n}</span></span>)}</div></Card>

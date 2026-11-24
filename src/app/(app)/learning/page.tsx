@@ -17,7 +17,7 @@ export default function LearningPage() {
           <Link href="/training" className="flex items-center gap-1.5 rounded-xl border border-line bg-panel-2 px-3 py-2 hover:border-line-2"><GraduationCap className="size-4" /> Auto-training</Link>
         </div>
       </div>
-      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
         <LearningFeed />
         <Card title="How learning works">
           <ol className="list-decimal space-y-2 pl-4 text-sm text-muted">

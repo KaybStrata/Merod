@@ -19,7 +19,7 @@ export default function SocialPage() {
   useRealtime((e) => { if (e.channel === "social" && e.type === "post") posts.refresh(); });
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-w-0 space-y-4">
         <div>
           <h1 className="text-2xl font-semibold">Social Trading</h1>

@@ -66,7 +66,7 @@ function DepositTab({ data, paper, wallets, brokers, run, busy }: any) {
   }, [accountId]); // eslint-disable-line
   const banks = data.banks.filter((b: any) => b.account_id === accountId);
   return (
-    <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
       <Select label="Deposit into" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
         {paper.length > 0 && <optgroup label="Paper trading">{paper.map((a: any) => <option key={a.id} value={a.id}>{a.label} · {usd(a.cash_balance)}</option>)}</optgroup>}
         {wallets.length > 0 && <optgroup label="Crypto wallets">{wallets.map((a: any) => <option key={a.id} value={a.id}>{a.label} ({a.network})</option>)}</optgroup>}
@@ -131,7 +131,7 @@ function WithdrawTab({ data, paper, brokers, run, busy }: any) {
   const acct = [...paper, ...brokers].find((a: any) => a.id === accountId);
   const banks = data.banks.filter((b: any) => b.account_id === accountId && b.status === "approved");
   return (
-    <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
       <Select label="Withdraw from" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
         {paper.length > 0 && <optgroup label="Paper trading">{paper.map((a: any) => <option key={a.id} value={a.id}>{a.label} · {usd(a.cash_balance)}</option>)}</optgroup>}
         {brokers.length > 0 && <optgroup label="Stock brokerage">{brokers.map((a: any) => <option key={a.id} value={a.id}>{a.label}</option>)}</optgroup>}

@@ -66,7 +66,7 @@ function PortfolioInner() {
   const positions = useMemo(() => (data?.positions ?? []).filter((p: any) => Number(p.quantity) > 0 && p.is_paper === (book === "paper")
     && (cls === "all" || (cls === "stocks" ? ["stock", "etf", "option"].includes(p.asset_class) : p.asset_class === "crypto"))), [data, cls, book]);
 
-  if (loading && !data) return <div className="grid gap-4 lg:grid-cols-3"><Skeleton className="h-40 lg:col-span-2" /><Skeleton className="h-40" /><Skeleton className="h-72 lg:col-span-3" /></div>;
+  if (loading && !data) return <div className="grid grid-cols-1 gap-4 lg:grid-cols-3"><Skeleton className="h-40 lg:col-span-2" /><Skeleton className="h-40" /><Skeleton className="h-72 lg:col-span-3" /></div>;
   if (error) return <Empty title="Couldn't load portfolio">{error}</Empty>;
   const s = data[book];
 
@@ -130,7 +130,7 @@ function PortfolioInner() {
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card className="xl:col-span-2" title="My portfolio" icon={<Activity className="size-4 text-accent-2" />}>
           <div className="num text-4xl font-semibold tracking-tight">{usd(s.total)}</div>
           <div className={cx("num mt-1 text-sm", tone(s.lifetimePnl))}>{usd(s.lifetimePnl, { sign: true })} lifetime{s.starting ? ` (${pct((s.lifetimePnl / s.starting) * 100)})` : ""}</div>
@@ -168,7 +168,7 @@ function PortfolioInner() {
       )}
 
       {tab === "overview" && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card title="Active automated strategies" icon={<Bot className="size-4 text-accent-2" />} action={<Link href="/bots" className="text-xs text-accent-2">Manage →</Link>}>
             {data.bots.length ? data.bots.map((b: any) => (
               <Link key={b.id} href={`/bots/${b.id}`} className="flex items-center justify-between border-b border-line/60 py-2 text-sm last:border-0">
@@ -215,7 +215,7 @@ function PortfolioInner() {
       )}
 
       {tab === "performance" && (
-        <div className="grid gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <Card title="By asset">{perfTable(data.performance.byAsset, "symbol", "Asset")}</Card>
           <Card title="By provider">{perfTable(data.performance.byProvider, "provider_id", "Provider")}</Card>
           <Card title="By trading method">{perfTable(data.performance.bySource, "source", "Method")}</Card>

@@ -43,7 +43,7 @@ export default function TrainingPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card title="What it adjusts" icon={<ShieldCheck className="size-4 text-up" />} className="lg:col-span-2">
           <ul className="grid gap-2 text-sm text-muted sm:grid-cols-2">
             <li>• <b className="text-text">Dip loops:</b> wait for a deeper dip after a losing cycle; add / tighten the stop-loss</li>
@@ -87,7 +87,7 @@ export default function TrainingPage() {
         )}
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card title="Bots" icon={<Bot className="size-4 text-accent-2" />}>
           {data.bots.length === 0 ? <Empty title="No bots yet"><Link href="/bots" className="text-accent-2">Create a bot</Link></Empty> : (
             <div className="divide-y divide-line">
