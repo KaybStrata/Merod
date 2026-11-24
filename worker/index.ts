@@ -12,6 +12,7 @@ import { Queue, Worker } from "bullmq";
 import { pool, q, one } from "@/server/db";
 import { tickSimulated, refreshLivePrices, discoverLaunches, syncBrokerCatalog } from "@/server/market/prices";
 import { runAutoTrading } from "@/server/auto/engine";
+import { masterKeyInfo } from "@/server/crypto";
 import { ensureRealData, backfillRealHistory, simulationOn } from "@/server/market/real-data";
 import { processPaperTriggers, reconcileLiveOrders, notify } from "@/server/engine/engine";
 import { tickDueBots, backtest } from "@/server/bots/runner";
@@ -136,6 +137,9 @@ if (REDIS_URL) {
   bt = new Worker("backtests", async (job) => backtest(job.data.strategyId, job.data.assetId, job.data.params, job.data.opts), { connection, concurrency: 2 });
   bt.on("failed", (job, err) => console.error("[backtest] failed", job?.id, err.message));
 }
+
+/* ───────── Encryption key check (logs a fingerprint to compare with the web service) ───────── */
+try { masterKeyInfo(); } catch (e: any) { console.error("[merod] encryption key:", e.message); }
 
 /* ───────── Real market data only (unless simulated prices are explicitly turned on for testing) ───────── */
 ensureRealData().then((r) => r && console.log(`✔ real data only: removed ${r.barsDeleted} simulated candles, cleared ${r.pricesCleared} simulated prices`))

@@ -145,18 +145,8 @@ async function accountFor(userId: string, accountId: string | null) {
     : await one<any>("SELECT id, kind FROM trading_accounts WHERE user_id=$1 AND kind='paper' ORDER BY created_at LIMIT 1", [userId]);
 }
 
-/** Close theory/real trades that hit take-profit, stop-loss, a reversed signal or 24h. */
-async function manageOpen(userId: string, cfg: any) {
-  const open = await q<any>("SELECT * FROM auto_trades WHERE user_id=$1 AND status='open' ORDER BY created_at", [userId]);
-  let closed = 0;
-  for (const t of open) {
-    const px = await livePrice(t.asset_id);
-    if (!px || !t.entry_price) continue;
-    const ret = (px / Number(t.entry_price) - 1) * 100;
-    const ageH = (Date.now() - new Date(t.created_at).getTime()) / 3_600_000;
-    const reason = ret >= Number(cfg.take_profit_pct) ? `take-profit (+${cfg.take_profit_pct}%) reached`
-      : ret <= -Number(cfg.stop_loss_pct) ? `stop-loss (−${cfg.stop_loss_pct}%) reached` : ageH >= 24 ? "24-hour time limit" : null;
-    if (!reason) continue;
+/** Close one open auto trade at the live price (selling the real position if it is a real trade). Returns false if it couldn't close yet. */
+export async function closeTrade(userId: string, t: any, px: number, reason: string): Promise<boolean> {
     let exitOrder: string | null = null, exitPx = px, during = "";
     if (t.mode === "real" && t.order_id) {
       const o = await one<any>("SELECT account_id, filled_quantity FROM orders WHERE id=$1", [t.order_id]);
@@ -166,8 +156,8 @@ async function manageOpen(userId: string, cfg: any) {
             { userId, source: "auto", sourceRef: t.id, idempotencyKey: `auto-exit:${t.id}`, actor: { type: "system", id: "auto-trading" }, userConfirmed: (await accountFor(userId, o.account_id))?.kind === "paper" } as any);
           exitOrder = order.id; exitPx = Number(order.avg_fill_price) || px;
           during = ` Sell order ${order.status}${order.status_reason ? ` (${order.status_reason})` : ""}.`;
-          if (!["filled", "partially_filled", "submitted"].includes(order.status)) continue; // try again next minute
-        } catch (e: any) { await q("UPDATE auto_trades SET explain_during = COALESCE(explain_during,'') || $2 WHERE id=$1", [t.id, `\nExit failed: ${e.message}`]); continue; }
+          if (!["filled", "partially_filled", "submitted"].includes(order.status)) return false; // try again next minute
+        } catch (e: any) { await q("UPDATE auto_trades SET explain_during = COALESCE(explain_during,'') || $2 WHERE id=$1", [t.id, `\nExit failed: ${e.message}`]); return false; }
       }
     }
     const finalRet = (exitPx / Number(t.entry_price) - 1) * 100;
@@ -178,10 +168,38 @@ async function manageOpen(userId: string, cfg: any) {
     await q("UPDATE auto_trades SET status='closed', exit_price=$2, return_pct=$3, exit_order_id=$4, explain_after=$5, closed_at=now() WHERE id=$1", [t.id, exitPx, finalRet, exitOrder, after]);
     await publish(`user:${userId}`, "auto", { id: t.id, phase: "after", symbol: t.symbol });
     if (t.mode === "real") await notify(userId, "auto", `Auto trade closed: ${t.symbol} ${pctTxt(finalRet)}`, after, "/auto").catch(() => {});
-    closed++;
+    return true;
+}
+
+/** Close theory/real trades that hit take-profit, stop-loss or 24h. */
+async function manageOpen(userId: string, cfg: any) {
+  const open = await q<any>("SELECT * FROM auto_trades WHERE user_id=$1 AND status='open' ORDER BY created_at", [userId]);
+  let closed = 0;
+  for (const t of open) {
+    const px = await livePrice(t.asset_id);
+    if (!px || !t.entry_price) continue;
+    const ret = (px / Number(t.entry_price) - 1) * 100;
+    const ageH = (Date.now() - new Date(t.created_at).getTime()) / 3_600_000;
+    const reason = ret >= Number(cfg.take_profit_pct) ? `take-profit (+${cfg.take_profit_pct}%) reached`
+      : ret <= -Number(cfg.stop_loss_pct) ? `stop-loss (−${cfg.stop_loss_pct}%) reached` : ageH >= 24 ? "24-hour time limit" : null;
+    if (reason && await closeTrade(userId, t, px, reason)) closed++;
   }
   if (closed) await learn(userId);
   return closed;
+}
+
+/** Close open trades matching a filter (used by scheduled tasks). */
+export async function sweep(userId: string, which: "winners" | "losers", reason: string) {
+  const open = await q<any>("SELECT * FROM auto_trades WHERE user_id=$1 AND status='open'", [userId]);
+  let n = 0;
+  for (const t of open) {
+    const px = await livePrice(t.asset_id);
+    if (!px || !t.entry_price) continue;
+    const ret = (px / Number(t.entry_price) - 1) * 100;
+    if ((which === "winners" ? ret > 0 : ret < 0) && await closeTrade(userId, t, px, reason)) n++;
+  }
+  if (n) await learn(userId);
+  return n;
 }
 
 /** Re-weight each data point by how often it pointed the right way (theoretical and real results). */
@@ -197,6 +215,23 @@ export async function learn(userId: string) {
   }
   await q("UPDATE auto_trading SET weights=$2 WHERE user_id=$1", [userId, JSON.stringify(w)]);
   return w;
+}
+
+/** How each strategy leans on the data points (multiplies the learned weights). */
+export const STRATEGY_KINDS: Record<string, { label: string; lean: Partial<Weights>; note: string }> = {
+  multi_asset: { label: "Multi-Asset Officer", lean: {}, note: "All five data points, as learned" },
+  momentum: { label: "Momentum Pro", lean: { momentum: 2, backtest: 1.5 }, note: "Rides assets already moving, confirmed by the backtest" },
+  rotation: { label: "Crypto Rotation", lean: { momentum: 1.5, merod: 1.5, thirdParty: 1.5 }, note: "Rotates into the coins traders are moving into" },
+  breakout: { label: "Breakout Hunter", lean: { backtest: 2, momentum: 1.5 }, note: "Waits for a fresh trend signal on real price history" },
+  ai_swing: { label: "AI Swing", lean: { modo: 2.5 }, note: "Follows Modo's ideas most of all" },
+};
+
+async function strategyCandidates(userId: string) {
+  return q<any>(
+    `SELECT a.*, s.id AS strategy_id, s.kind AS strategy_kind, s.name AS strategy_name FROM auto_strategies s
+       JOIN assets a ON a.id = ANY(s.asset_ids)
+      WHERE s.user_id=$1 AND s.enabled AND a.last_price IS NOT NULL AND a.price_source IS NOT NULL AND a.price_source <> 'simulated'
+        AND a.price_updated_at > now() - interval '15 minutes' AND a.tradability IN ('paper_tradable','live_tradable')`, [userId]);
 }
 
 async function candidates(userId: string, markets: string) {
@@ -227,10 +262,19 @@ export async function runFor(userId: string) {
   const spent = Number((await one<{ s: string }>(
     `SELECT COALESCE(sum(o.notional_usd),0) AS s FROM auto_trades t JOIN orders o ON o.id=t.order_id WHERE t.user_id=$1 AND t.mode='real' AND t.created_at > now() - interval '24 hours'`, [userId]))?.s ?? 0);
   let made = 0;
-  for (const a of await candidates(userId, cfg.markets)) {
-    if (openAssets.has(a.id)) continue;
+  // Strategy assets first (each with its own lean), then hand-picked assets, then Merod's own picks.
+  const strat = await strategyCandidates(userId);
+  const picked = (cfg.asset_ids ?? []).length ? await q<any>(
+    `SELECT * FROM assets WHERE id = ANY($1::uuid[]) AND last_price IS NOT NULL AND price_source IS NOT NULL AND price_source <> 'simulated' AND price_updated_at > now() - interval '15 minutes'`, [cfg.asset_ids]) : [];
+  const pool = [...strat, ...picked, ...(strat.length || picked.length ? [] : await candidates(userId, cfg.markets))];
+  const seen = new Set<string>();
+  for (const a of pool) {
+    if (openAssets.has(a.id) || seen.has(a.id)) continue;
+    seen.add(a.id);
     const s = await collectSignals(userId, a);
-    const sc = scoreSignals(s, w);
+    const lean = STRATEGY_KINDS[a.strategy_kind ?? "multi_asset"]?.lean ?? {};
+    const wl = Object.fromEntries((Object.keys(w) as (keyof Weights)[]).map((k) => [k, w[k] * (lean[k] ?? 1)])) as Weights;
+    const sc = scoreSignals(s, wl);
     if (sc.score <= 0 || sc.confidence < Number(cfg.min_confidence)) continue; // opens are buys only; no shorting
     const px = await livePrice(a.id);
     if (!px) continue;
@@ -241,10 +285,10 @@ export async function runFor(userId: string) {
         ? `building the theoretical record first (${record.wins}/${record.trades} wins; needs ${cfg.min_theory_trades}+ trades at ${Math.round(Number(cfg.min_theory_win_rate) * 100)}%+ before real orders).`
         : `real-trade limits reached (max ${cfg.max_open} open / ${money(Number(cfg.max_daily_usd))} a day), so testing it theoretically.`;
     const mode = canReal ? "real" : "theory";
-    const before = explainBefore(a.symbol, "buy", s, w, sc, mode, why);
+    const before = (a.strategy_name ? `[${a.strategy_name}] ` : "") + explainBefore(a.symbol, "buy", s, wl, sc, mode, why);
     const row = await one<{ id: string }>(
-      `INSERT INTO auto_trades (user_id, asset_id, symbol, side, mode, status, signals, score, confidence, entry_price, explain_before)
-       VALUES ($1,$2,$3,'buy',$4,'open',$5,$6,$7,$8,$9) RETURNING id`, [userId, a.id, a.symbol, mode, JSON.stringify(s), sc.score, sc.confidence, px, before]);
+      `INSERT INTO auto_trades (user_id, asset_id, symbol, side, mode, status, signals, score, confidence, entry_price, explain_before, strategy_id)
+       VALUES ($1,$2,$3,'buy',$4,'open',$5,$6,$7,$8,$9,$10) RETURNING id`, [userId, a.id, a.symbol, mode, JSON.stringify(s), sc.score, sc.confidence, px, before, a.strategy_id ?? null]);
     made++;
     if (mode === "real") {
       const account = await accountFor(userId, cfg.account_id);

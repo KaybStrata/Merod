@@ -35,7 +35,8 @@ export function UserApiKeys({ categories, providers, sections, title = "My API k
 function ProviderKeys({ p, keys, onChange }: { p: any; keys: any[]; onChange: () => void }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [env, setEnv] = useState<string>(p.environments.includes("sandbox") && p.userKeys === "personal_account" ? "sandbox" : p.environments[p.environments.length - 1]);
+  // Open on the environment the user already saved keys for, so "Test my keys" is ready to press.
+  const [env, setEnv] = useState<string>(keys[0]?.environment ?? (p.environments.includes("sandbox") && p.userKeys === "personal_account" ? "sandbox" : p.environments[p.environments.length - 1]));
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<any>(null);

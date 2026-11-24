@@ -87,7 +87,7 @@ if (dbUrl) {
 if (process.env.MEROD_ENV === "production") {
   const mk = process.env.MEROD_MASTER_KEY ?? "";
   const len = /^[0-9a-f]{64}$/i.test(mk) ? 32 : Buffer.from(mk, "base64").length;
-  check("MEROD_MASTER_KEY is 32 bytes", len === 32, len ? `${len} bytes` : "missing");
+  check("MEROD_MASTER_KEY is 32 bytes (or a 32+ character passphrase)", len === 32 || mk.trim().length >= 32, mk ? (len === 32 ? "32 bytes" : `passphrase, ${mk.trim().length} chars`) : "missing");
   check("REALTIME_SECRET set", (process.env.REALTIME_SECRET ?? "").length >= 32, "length >= 32");
   check("demo data off in production", process.env.MEROD_DEMO_DATA !== "true", `MEROD_DEMO_DATA=${process.env.MEROD_DEMO_DATA ?? "unset"}`);
   check("live flags not unlocked", process.env.MEROD_ALLOW_LIVE_FLAGS !== "true", `MEROD_ALLOW_LIVE_FLAGS=${process.env.MEROD_ALLOW_LIVE_FLAGS ?? "unset"}`);
