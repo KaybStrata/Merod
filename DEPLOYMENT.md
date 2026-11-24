@@ -53,6 +53,13 @@ Set `SUPER_ADMIN_EMAILS` to your owner email and `SUPER_ADMIN_SETUP_CODE` to the
 
 The super admin can do everything an admin can, plus set the **platform fee** at `/admin/fees`. The default is **7% performance fee** (7% of realized profit on closing trades, nothing on losses); a commission-per-trade mode is also available. The role can't be granted, removed or suspended from the admin panel. Because email ownership isn't verified at sign-up, the setup code is what protects the reserved email.
 
+**Set `SUPER_ADMIN_EMAILS` before your first public deploy.** If someone registers the owner email first, they get only a normal account, but you can't claim the address. To recover it, run this once from your computer with the database URL:
+
+```bash
+DATABASE_URL="<public postgres url>" SUPER_ADMIN_EMAILS="<owner email>" OWNER_NEW_PASSWORD="<new password>" npm run admin:promote-owner
+```
+It promotes the account, resets the password, and revokes all sessions and 2FA, which locks out whoever registered it.
+
 ## 1. Push to GitHub
 
 ```bash
