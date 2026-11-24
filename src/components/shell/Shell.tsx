@@ -16,7 +16,6 @@ import { api, useApi } from "@/lib/api";
 const NAV: { href: string; label: string; icon: any; also?: string[] }[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/discover", label: "Discover", icon: Compass },
-  { href: "/news", label: "Articles & News", icon: Newspaper },
   { href: "/bots", label: "Bots & Shortcut Buttons", icon: Bot, also: ["/shortcuts"] },
   { href: "/activity", label: "Live & World Activity", icon: Radio, also: ["/world"] },
   { href: "/learning", label: "Auto-Training", icon: Brain, also: ["/training"] },
