@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { User, ShieldCheck, CandlestickChart, Gauge, Bot, Bell, Link2, Sparkles, KeyRound, Eye, OctagonX, Monitor } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { ago } from "@/lib/format";
-import { Badge, Button, Card, Empty, Input, Select, Skeleton, Toggle, cx, useToast } from "@/components/ui";
+import { Badge, Button, Card, Empty, Input, Modal, Select, Skeleton, Toggle, cx, useToast } from "@/components/ui";
 import { UserApiKeys } from "@/components/UserApiKeys";
 
 const TABS = [
@@ -77,8 +77,8 @@ function AccountTab({ data, refresh }: any) {
   return (
     <Card title="Account information">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Input label="Email" value={data.user.email} disabled />
-        <Input label="Handle" value={`@${data.profile.handle}`} disabled />
+        <ChangeField kind="email" label="Email" current={data.user.email} needs2fa={data.user.totp_enabled} onDone={refresh} />
+        <ChangeField kind="handle" label="Username" current={data.profile.handle} needs2fa={false} onDone={refresh} />
         <Input label="Display name" value={v.display_name} onChange={(e) => setV({ ...v, display_name: e.target.value })} />
         <Input label="Country (ISO code, e.g. US)" maxLength={2} value={v.country} onChange={(e) => setV({ ...v, country: e.target.value.toUpperCase() })} hint="Used for jurisdiction rules on live features" />
         <label className="block sm:col-span-2"><span className="mb-1 block text-xs font-medium text-muted">Bio</span>
@@ -86,6 +86,67 @@ function AccountTab({ data, refresh }: any) {
         <label className="flex items-center gap-3 text-sm"><input type="color" value={v.avatar_color} onChange={(e) => setV({ ...v, avatar_color: e.target.value })} className="h-9 w-12 rounded-lg border border-line bg-transparent" /> Avatar color</label>
       </div>
       <div className="mt-4 flex justify-end"><Button variant="primary" loading={busy} onClick={() => save("account", v)}>Save</Button></div>
+    </Card>
+  );
+}
+
+/** Email or username with a "Change" button (email needs your password, and 2FA code when on). */
+function ChangeField({ kind, label, current, needs2fa, onDone }: { kind: "email" | "handle"; label: string; current: string; needs2fa: boolean; onDone: () => void }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState(""); const [pw, setPw] = useState(""); const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    setBusy(true);
+    try {
+      await api("/api/me/account", { method: "PATCH", json: kind === "email" ? { kind, newEmail: val, password: pw, code: code || undefined } : { kind, handle: val.replace(/^@/, "") } });
+      toast(kind === "email" ? "Email changed. Other devices were signed out." : "Username changed", "up");
+      setOpen(false); setVal(""); setPw(""); setCode(""); onDone();
+    } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
+  }
+  return (
+    <div>
+      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
+      <div className="flex gap-2">
+        <div className="flex h-10 min-w-0 flex-1 items-center truncate rounded-xl border border-line bg-bg-2 px-3 text-sm">{kind === "handle" ? `@${current}` : current}</div>
+        <Button onClick={() => setOpen(true)}>Change</Button>
+      </div>
+      <Modal open={open} onClose={() => setOpen(false)} title={kind === "email" ? "Change email" : "Change username"}>
+        <div className="space-y-3">
+          <Input label={kind === "email" ? "New email" : "New username"} value={val} onChange={(e) => setVal(e.target.value)} placeholder={kind === "email" ? "you@example.com" : "new_username"} autoComplete="off" />
+          {kind === "handle" && <p className="text-[11px] text-muted">3–20 letters, numbers or underscores. Links to your old profile address will stop working.</p>}
+          {kind === "email" && <Input label="Current password" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />}
+          {kind === "email" && needs2fa && <Input label="2FA code" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} />}
+          {kind === "email" && <p className="text-[11px] text-muted">You'll sign in with the new email from now on. Other devices are signed out.</p>}
+          <div className="flex justify-end"><Button variant="primary" loading={busy} disabled={!val.trim() || (kind === "email" && !pw)} onClick={save}>Save</Button></div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function ChangePassword({ needs2fa }: { needs2fa: boolean }) {
+  const toast = useToast();
+  const [v, setV] = useState({ current: "", next: "", confirm: "", code: "" });
+  const [busy, setBusy] = useState(false);
+  async function save() {
+    if (v.next !== v.confirm) return toast("The new passwords don't match", "down");
+    setBusy(true);
+    try {
+      await api("/api/me/account", { method: "PATCH", json: { kind: "password", currentPassword: v.current, newPassword: v.next, code: v.code || undefined } });
+      toast("Password changed. Other devices were signed out.", "up"); setV({ current: "", next: "", confirm: "", code: "" });
+    } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
+  }
+  return (
+    <Card title="Change password">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Input label="Current password" type="password" autoComplete="current-password" value={v.current} onChange={(e) => setV({ ...v, current: e.target.value })} />
+        <div className="hidden sm:block" />
+        <Input label="New password (10+ characters)" type="password" autoComplete="new-password" value={v.next} onChange={(e) => setV({ ...v, next: e.target.value })} />
+        <Input label="Confirm new password" type="password" autoComplete="new-password" value={v.confirm} onChange={(e) => setV({ ...v, confirm: e.target.value })} />
+        {needs2fa && <Input label="2FA code" inputMode="numeric" maxLength={6} value={v.code} onChange={(e) => setV({ ...v, code: e.target.value })} />}
+      </div>
+      <div className="mt-4 flex justify-end"><Button variant="primary" loading={busy} disabled={!v.current || v.next.length < 10} onClick={save}>Change password</Button></div>
     </Card>
   );
 }
@@ -101,6 +162,7 @@ function SecurityTab({ data, refresh }: any) {
   async function disable() { setBusy(true); try { await api("/api/auth/2fa", { method: "DELETE", json: { code } }); toast("2FA disabled"); setCode(""); refresh(); } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); } }
   return (
     <div className="space-y-4">
+      <ChangePassword needs2fa={!!data.user.totp_enabled} />
       <Card title="Two-factor authentication" action={data.user.totp_enabled ? <Badge tone="up">Enabled</Badge> : <Badge tone="warn">Not enabled</Badge>}>
         {data.user.totp_enabled ? (
           <div className="flex flex-wrap items-end gap-3">

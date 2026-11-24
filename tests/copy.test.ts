@@ -37,6 +37,7 @@ test("copy bot mirrors a consenting trader's buys and sells into the follower's 
 
 test("copy bots respect the daily limit and stop when the trader withdraws consent", async () => {
   const leader = await newUser(), me = await newUser(); await freshPrices();
+  await q("UPDATE users SET role='super_admin' WHERE id=$1", [me]);
   await q("UPDATE user_profiles SET allow_copy_trading=true WHERE user_id=$1", [leader]);
   const handle = (await one<{ handle: string }>("SELECT handle FROM user_profiles WHERE user_id=$1", [leader]))!.handle;
   const followId = await createFollow(me, { kind: "user", handle }, SETTINGS);
@@ -53,4 +54,15 @@ test("copy bots respect the daily limit and stop when the trader withdraws conse
   await place({ asset: { symbol: "SOL" }, side: "buy", orderType: "market", notionalUsd: 20, timeInForce: "gtc" }, ctx(leader));
   await processCopyTrading();
   assert.equal((await q("SELECT 1 FROM copy_trade_events WHERE follow_id=$1", [followId])).length, 3);
+});
+
+test("copy & mimic trading only run for the super admin", async () => {
+  const leader = await newUser(), someone = await newUser(); await freshPrices();
+  await q("UPDATE user_profiles SET allow_copy_trading=true WHERE user_id=$1", [leader]);
+  const handle = (await one<{ handle: string }>("SELECT handle FROM user_profiles WHERE user_id=$1", [leader]))!.handle;
+  const followId = await createFollow(someone, { kind: "user", handle }, SETTINGS);
+  await q("UPDATE copy_follows SET created_at = now() - interval '1 minute' WHERE id=$1", [followId]);
+  await place({ asset: { symbol: "SOL" }, side: "buy", orderType: "market", notionalUsd: 20, timeInForce: "gtc" }, ctx(leader));
+  await processCopyTrading();
+  assert.equal((await q("SELECT 1 FROM copy_trade_events WHERE follow_id=$1", [followId])).length, 0);
 });

@@ -262,7 +262,7 @@ async function mirror(f: Follow, t: LeaderTrade) {
 /** Worker loop: check every active follow for new leader trades and mirror them. */
 export async function processCopyTrading() {
   const follows = await q<Follow>(
-    `SELECT f.* FROM copy_follows f LEFT JOIN user_profiles p ON p.user_id=f.leader_user_id
+    `SELECT f.* FROM copy_follows f LEFT JOIN user_profiles p ON p.user_id=f.leader_user_id JOIN users fu ON fu.id=f.follower_id AND fu.role='super_admin'
       WHERE f.status='active' AND (f.kind='wallet' OR p.allow_copy_trading) AND (f.last_checked_at IS NULL OR f.last_checked_at < now() - interval '8 seconds')
       ORDER BY f.last_checked_at NULLS FIRST LIMIT 20`);
   let copied = 0;

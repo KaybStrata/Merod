@@ -76,5 +76,26 @@ if (process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
     await q("UPDATE users SET role='admin' WHERE id=$1", [exists.id]);
   }
 }
+/* ───── Owner handover (opt-in): OWNER_EMAIL names the ONE super-admin account. ─────
+   Every other super admin becomes a regular admin, and their copy/mimic bots are paused
+   (copy & mimic trading are owner-only). The email lives in the environment, never in code. */
+{
+  const ownerEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
+  if (ownerEmail) {
+    const owner = await one<{ id: string; role: string }>("SELECT id, role FROM users WHERE lower(email)=$1", [ownerEmail]);
+    if (owner) {
+      const demoted = await q<{ id: string }>("UPDATE users SET role='admin', updated_at=now() WHERE role='super_admin' AND id<>$1 RETURNING id", [owner.id]);
+      if (owner.role !== "super_admin") await q("UPDATE users SET role='super_admin', status='active', updated_at=now() WHERE id=$1", [owner.id]);
+      await q("UPDATE copy_follows SET status='paused' WHERE follower_id<>$1 AND status='active'", [owner.id]).catch(() => {});
+      const { audit } = await import("@/server/audit");
+      await audit({ actorType: "system", actorId: "owner-handover", userId: owner.id, action: "auth.owner_set", data: { demoted: demoted.length } });
+      console.log(`✔ owner account is the only super admin (${demoted.length} other super admin(s) moved to admin)`);
+    } else {
+      console.log("• OWNER_EMAIL has no account yet: sign up with that email and the super-admin setup code");
+    }
+  }
+}
+
 await pool.end();
 console.log("Seed complete");
+
