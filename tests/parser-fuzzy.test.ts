@@ -55,3 +55,11 @@ test("a bare ticker asks what to do; English words are never mistaken for ticker
   assert.equal(parsePrompt("buy all of it").trades[0]?.symbol ?? null, null); // "all" / "it" are words here
   assert.equal(normalize("Buy 2K of Sol"), "buy 2000 of sol");
 });
+
+test("dollar profit targets on a dollar buy become a take-profit %", () => {
+  const r = parsePrompt("buy 10 dollars of sui and sell at 50 cents profit");
+  assert.equal(r.kind, "trade");
+  assert.equal(r.trades[0].amount, 10);
+  assert.equal(r.trades[0].take_profit_pct, 5);
+  assert.equal(parsePrompt("buy $200 of sol and sell at $10 profit").trades[0].take_profit_pct, 5);
+});

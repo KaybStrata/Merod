@@ -1,10 +1,49 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
+import { Maximize2 } from "lucide-react";
+import { useApi } from "@/lib/api";
 import { CheckCircle2, XCircle, AlertTriangle, Bot, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge, Button, PaperBadge, SourceBadge, cx, useToast } from "@/components/ui";
 import { price, usd, qty } from "@/lib/format";
+
+const CandleChart = dynamic(() => import("@/components/terminal/charts").then((m) => m.CandleChart), { ssr: false, loading: () => <div className="h-[190px] animate-pulse rounded-lg bg-panel-2" /> });
+
+/**
+ * Mini chart of the coin/stock with exactly where this trade happened: an arrow on the candle at the fill
+ * (or the planned entry for an unapproved order), a line at the trade price, and the take-profit / stop-loss levels.
+ */
+function TradeChart({ assetId, symbol, side, price: px, at, filled, takeProfit, stopLoss, limitPrice }: {
+  assetId: string; symbol: string; side: "buy" | "sell"; price: number | null; at: string | null; filled: boolean; takeProfit?: number | null; stopLoss?: number | null; limitPrice?: number | null;
+}) {
+  const [tf, setTf] = useState<"5m" | "1h">("5m");
+  const bars = useApi<any>(`/api/assets/${assetId}/bars?tf=${tf}&limit=${tf === "5m" ? 144 : 168}`);
+  const list = (bars.data?.bars ?? []).map((b: any) => ({ time: Number(b.time), open: +b.open, high: +b.high, low: +b.low, close: +b.close, volume: +b.volume }));
+  const t = Math.floor(new Date(at ?? Date.now()).getTime() / 1000);
+  const entry = limitPrice ?? px;
+  const lines = [
+    entry ? { price: entry, color: side === "buy" ? "#22c55e" : "#f0506e", title: `${filled ? (side === "buy" ? "Bought" : "Sold") : limitPrice ? "Limit" : "Entry"} ${price(entry)}` } : null,
+    takeProfit ? { price: takeProfit, color: "#38bdf8", title: `Take profit ${price(takeProfit)}${entry ? ` (${((takeProfit / entry - 1) * 100).toFixed(1)}%)` : ""}`, dashed: true } : null,
+    stopLoss ? { price: stopLoss, color: "#f5b84a", title: `Stop loss ${price(stopLoss)}`, dashed: true } : null,
+  ].filter(Boolean) as any[];
+  return (
+    <div className="mt-2 overflow-hidden rounded-lg border border-line bg-bg/60">
+      <div className="flex items-center justify-between px-2 py-1 text-[11px] text-muted">
+        <span>{symbol} · {filled ? "where your trade filled" : "where this trade would happen"}</span>
+        <span className="flex items-center gap-1">
+          {(["5m", "1h"] as const).map((x) => <button key={x} onClick={() => setTf(x)} className={cx("rounded px-1.5 py-0.5", tf === x ? "bg-panel-2 text-text" : "hover:text-text")}>{x}</button>)}
+          <Link href={`/terminal/${assetId}`} className="ml-1 rounded p-0.5 hover:text-text" title="Open full chart"><Maximize2 className="size-3" /></Link>
+        </span>
+      </div>
+      {list.length > 1
+        ? <CandleChart bars={list} indicators={[]} height={190} compact priceLines={lines}
+            markers={[{ time: Math.max(t, list[0].time), side, kind: "mine", label: `${side === "buy" ? "BUY" : "SELL"} ${entry ? price(entry) : ""}` }]} />
+        : <div className="flex h-[120px] items-center justify-center text-xs text-faint">{bars.loading ? "Loading chart…" : "No price history for this asset yet."}</div>}
+    </div>
+  );
+}
 
 /** Renders an assistant plan: order preview with every engine check, bot config, confirmations, clarifications. */
 export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: () => void; onChip?: (t: string) => void }) {
@@ -56,6 +95,12 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
           </div>
           <div className="flex gap-1.5"><PaperBadge paper={p.isPaper} /><SourceBadge source={p.price?.source} /></div>
         </div>
+        {p.asset?.id && (
+          <TradeChart assetId={p.asset.id} symbol={p.asset.symbol} side={p.intent.side}
+            price={result?.fillPrice ?? p.quote?.price ?? p.price?.value ?? null} at={result?.at ?? null} filled={!!result?.fillPrice}
+            takeProfit={p.intent.takeProfit ?? null} stopLoss={p.intent.stopLoss ?? null}
+            limitPrice={p.intent.orderType === "limit" ? p.intent.limitPrice ?? null : null} />
+        )}
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
           <Field k="Est. price" v={price(p.quote?.price ?? p.price?.value)} />
           <Field k="Notional" v={usd(p.notionalUsd)} />

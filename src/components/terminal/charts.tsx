@@ -35,7 +35,10 @@ function boll(v: number[], n = 20, m = 2) {
 }
 
 /** Candles + volume + optional indicators. `live` updates the last candle in place. */
-export function CandleChart({ bars, indicators, live, height = 420, markers = [] }: { bars: Bar[]; indicators: Indicator[]; live?: { price: number; time: number } | null; height?: number; markers?: ChartMarker[] }) {
+/** A horizontal level drawn across the chart, e.g. your fill price or a take-profit target. */
+export interface PriceLine { price: number; color: string; title: string; dashed?: boolean }
+
+export function CandleChart({ bars, indicators, live, height = 420, markers = [], priceLines = [], compact = false }: { bars: Bar[]; indicators: Indicator[]; live?: { price: number; time: number } | null; height?: number; markers?: ChartMarker[]; priceLines?: PriceLine[]; compact?: boolean }) {
   const el = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const candles = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -45,16 +48,23 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
 
   useEffect(() => {
     if (!el.current) return;
-    const c = createChart(el.current, { ...baseOptions(height), width: el.current.clientWidth });
+    const c = createChart(el.current, { ...baseOptions(height), width: el.current.clientWidth, ...(compact ? { handleScroll: false, handleScale: false, timeScale: { borderColor: cssVar("--line", "#1e2640"), timeVisible: true, secondsVisible: false, rightOffset: 4 } } : {}) });
     chart.current = c;
     const up = cssVar("--up", "#22c993"), down = cssVar("--down", "#f0506e");
-    const cs = c.addSeries(CandlestickSeries, { upColor: up, downColor: down, borderVisible: false, wickUpColor: up, wickDownColor: down });
+    const levels = priceLines.map((l) => l.price).filter((x) => x > 0);
+    const cs = c.addSeries(CandlestickSeries, { upColor: up, downColor: down, borderVisible: false, wickUpColor: up, wickDownColor: down,
+      // Keep marked levels (entry, take-profit, stop-loss) inside the visible price range.
+      ...(levels.length ? { autoscaleInfoProvider: (original: () => any) => {
+        const r = original(); if (!r?.priceRange) return r;
+        return { ...r, priceRange: { minValue: Math.min(r.priceRange.minValue, ...levels), maxValue: Math.max(r.priceRange.maxValue, ...levels) } };
+      } } : {}) });
     candles.current = cs;
     const vol = c.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "vol" });
     c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     const data = bars.map((b) => ({ time: b.time as UTCTimestamp, open: +b.open, high: +b.high, low: +b.low, close: +b.close }));
     cs.setData(data);
     markerApi.current = createSeriesMarkers(cs, []);
+    for (const pl of priceLines) if (pl.price > 0) cs.createPriceLine({ price: pl.price, color: pl.color, lineWidth: 1, lineStyle: pl.dashed ? 2 : 0, axisLabelVisible: true, title: pl.title });
     vol.setData(bars.map((b) => ({ time: b.time as UTCTimestamp, value: +b.volume, color: (+b.close >= +b.open ? up : down) + "55" })));
     const closes = bars.map((b) => +b.close);
     const line = (vals: (number | null)[], color: string, width = 1.5) => {
@@ -70,14 +80,14 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
     const ro = new ResizeObserver(() => el.current && c.applyOptions({ width: el.current.clientWidth }));
     ro.observe(el.current);
     return () => { ro.disconnect(); c.remove(); chart.current = null; candles.current = null; markerApi.current = null; };
-  }, [bars, indicators, height]);
+  }, [bars, indicators, height, JSON.stringify(priceLines)]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Trade markers snapped to candle buckets. Ghost = hypothetical strategy trades (never real orders).
   useEffect(() => {
     if (!markerApi.current || !bars.length) return;
     const step = tfSec.current, first = bars[0].time;
     const style: Record<ChartMarker["kind"], { buy: string; sell: string; shape: "arrowUp" | "arrowDown" | "circle" | "square" }> = {
-      mine: { buy: "#22c993", sell: "#f0506e", shape: "arrowUp" },
+      mine: { buy: "#22c55e", sell: "#f0506e", shape: "arrowUp" },
       bot: { buy: "#4aa8ff", sell: "#7cc4ff", shape: "square" },
       ghost: { buy: "#22c99399", sell: "#f0506e99", shape: "circle" },
       others: { buy: "#8b93ad88", sell: "#8b93ad88", shape: "circle" },
@@ -92,7 +102,7 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
           color: m.side === "buy" ? s.buy : s.sell,
           shape: m.kind === "mine" ? (m.side === "buy" ? "arrowUp" : "arrowDown") : s.shape,
           text: m.label,
-          size: m.kind === "others" ? 0.5 : 1,
+          size: m.kind === "others" ? 0.5 : m.kind === "mine" ? 2 : 1,
         } as SeriesMarker<Time>;
       })
       .sort((a, b) => Number(a.time) - Number(b.time));

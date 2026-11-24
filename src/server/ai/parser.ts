@@ -42,7 +42,7 @@ const PHRASES: [RegExp, string][] = [
   [/\bonce it\b/g, "when it"],
 ];
 /** Common English words that also happen to be tickers. Never read these as assets unless written $LIKE or in caps. */
-const ENGLISH = new Set(["a", "i", "all", "am", "an", "are", "at", "be", "by", "can", "do", "for", "go", "has", "have", "he", "hi", "how", "if", "in", "is", "it", "low", "me", "my", "new", "no", "now", "of", "on", "one", "or", "out", "see", "so", "the", "to", "two", "up", "us", "we", "well", "you", "big", "cat", "key", "real", "open", "true", "fast", "love", "life", "run", "play", "very", "good", "get", "coin", "and", "then", "when", "some", "any", "more", "less", "next", "best", "sure", "fun", "car", "hot", "own", "nice", "safe", "grow", "pump", "moon", "dip", "buy", "sell", "loop", "stop", "half", "max", "min", "am", "pm", "day", "week", "net", "fee", "tax", "cash", "gold", "bond", "rent", "it's", "lets", "let", "want", "need", "like", "just", "please", "much", "many", "ok", "okay"]);
+const ENGLISH = new Set(["ema", "sma", "rsi", "macd", "vwap", "atr", "ath", "atl", "ipo", "ceo", "eps", "etf", "otc", "dca", "fomo", "hodl", "a", "i", "all", "am", "an", "are", "at", "be", "by", "can", "do", "for", "go", "has", "have", "he", "hi", "how", "if", "in", "is", "it", "low", "me", "my", "new", "no", "now", "of", "on", "one", "or", "out", "see", "so", "the", "to", "two", "up", "us", "we", "well", "you", "big", "cat", "key", "real", "open", "true", "fast", "love", "life", "run", "play", "very", "good", "get", "coin", "and", "then", "when", "some", "any", "more", "less", "next", "best", "sure", "fun", "car", "hot", "own", "nice", "safe", "grow", "pump", "moon", "dip", "buy", "sell", "loop", "stop", "half", "max", "min", "am", "pm", "day", "week", "net", "fee", "tax", "cash", "gold", "bond", "rent", "it's", "lets", "let", "want", "need", "like", "just", "please", "much", "many", "ok", "okay"]);
 
 let CATALOG: { symbols: Set<string>; names: Map<string, string> } = { symbols: new Set(), names: new Map() };
 /** Feed the live asset catalog (symbols + company/coin names) to the parser. Called by the server before parsing. */
@@ -130,7 +130,7 @@ export function extractAsset(text: string): { symbol: string | null; contract: s
     if (CATALOG.names.has(w)) return { symbol: CATALOG.names.get(w)!, contract: null, network };
     if (!ENGLISH.has(w) && !STOP_WORDS.has(w) && !VOCAB_SET.has(w) && CATALOG.symbols.has(w.toUpperCase())) return { symbol: w.toUpperCase(), contract: null, network };
   }
-  const upper = text.match(/\b[A-Z]{2,6}\b/g)?.filter((w) => !["USD", "AND", "THE", "ETF", "TP", "SL", "OK", "AM", "PM"].includes(w));
+  const upper = text.match(/\b[A-Z]{2,6}\b/g)?.filter((w) => !["USD", "AND", "THE", "ETF", "TP", "SL", "OK", "AM", "PM"].includes(w) && !ENGLISH.has(w.toLowerCase()));
   if (upper?.length) return { symbol: upper[0], contract: null, network };
   return { symbol: null, contract: null, network };
 }
@@ -231,8 +231,18 @@ export function parsePrompt(raw: string): Instruction {
     const lim = t.match(/\b(limit|at)\s*\$?\s?(\d[\d,]*(?:\.\d+)?)(?!\s*%)/);
     const tpM = t.match(/take-profit (?:of |at )?\+?(\d+(?:\.\d+)?)\s*%/) ?? (side === "buy" ? t.match(/\b(?:sell|close)\b[^%]{0,25}?\+?(\d+(?:\.\d+)?)\s*%\s*(?:profit|gain|up|increase|higher|rise)/) ?? t.match(/\+?(\d+(?:\.\d+)?)\s*%\s*(?:profit|gain)\b/) : null);
     const slM = t.match(/stop-loss (?:of |at )?-?(\d+(?:\.\d+)?)\s*%/) ?? (side === "buy" ? t.match(/-?(\d+(?:\.\d+)?)\s*%\s*(?:loss|down|drop)\b/) : null);
-    const tp = tpM ? [tpM[0], null, tpM[1]] as const : null, sl = slM ? [slM[0], null, slM[1]] as const : null;
+    let tp: readonly [string, null, string] | null = tpM ? [tpM[0], null, tpM[1]] as const : null;
+    const sl = slM ? [slM[0], null, slM[1]] as const : null;
     let a = amt;
+    // "sell at 50 cents profit" / "sell at $5 profit": a dollar profit on a dollar-sized buy → take-profit %.
+    if (!tp && side === "buy") {
+      const cash = t.match(/\b(?:sell|close|take-profit)\b[^%]{0,30}?(?:\$\s?(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(cents?|dollars?))\s*(?:of\s+)?(?:profit|gain|up|in profit)\b/);
+      if (cash) {
+        const dollars = cash[1] ? num(cash[1]) : cash[3]?.startsWith("cent") ? num(cash[2]) / 100 : num(cash[2]);
+        const spend = amt.type === "usd" && amt.value ? amt.value : null;
+        if (spend && dollars > 0) tp = [cash[0], null, String(+((dollars / spend) * 100).toFixed(2))] as const;
+      }
+    }
     if (side === "sell" && /\bclose\b/.test(t)) a = { type: "percent_position", value: 100 };
     if (!a.value) return base("clarify", `${side} ${asset.symbol ?? ""}`.trim(), { clarification_question: side === "buy" ? `How much${asset.symbol ? ` ${asset.symbol}` : ""} should I buy? (e.g. $100 or 2 shares)` : `How much${asset.symbol ? ` ${asset.symbol}` : ""} should I sell? (e.g. 25% or 10 shares)`,
       trades: [leg({ side, symbol: asset.symbol, network: asset.network, contract_address: asset.contract, take_profit_pct: tp ? num(tp[2]) : null, stop_loss_pct: sl ? num(sl[2]) : null })] });

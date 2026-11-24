@@ -10,6 +10,7 @@ import { usd, price, pct, qty, ago, compact, tone } from "@/lib/format";
 import { ShortcutBar } from "@/components/ShortcutBar";
 import { ProgressPanel } from "@/components/ProgressPanel";
 import { QuickLists } from "@/components/QuickLists";
+import { DraggableBoard, type Block } from "@/components/DraggableBoard";
 import { LiveSuggestions } from "@/components/LiveSuggestions";
 
 const ValueChart = dynamic(() => import("@/components/terminal/charts").then((m) => m.ValueChart), { ssr: false, loading: () => <Skeleton className="h-[180px]" /> });
@@ -26,26 +27,18 @@ export default function Dashboard() {
   useRealtime((e) => { if (e.type === "fill" || e.type === "order") d.refresh(); }, undefined);
 
   const s = d.data;
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Good to see you, {user.displayName.split(" ")[0]}</h1>
-          <p className="text-sm text-muted">Your unified overview across stocks and crypto.</p>
-        </div>
-        {s?.pendingApprovals > 0 && (
-          <Link href="/portfolio?tab=orders" className="flex items-center gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2 text-sm text-warn">
-            <AlertTriangle className="size-4" /> {s.pendingApprovals} order{s.pendingApprovals > 1 ? "s" : ""} awaiting your approval
-          </Link>
-        )}
-      </div>
-
-      <QuickLists myList={s?.watchlist} onListChange={d.refresh} />
-
+  const blocks: Block[] = [
+    { id: "lists", title: "Trending & My list", size: "half", node: (
+      <QuickLists part="lists" myList={s?.watchlist} recent={s?.recentOrders} onListChange={d.refresh} />
+    ) },
+    { id: "history", title: "Recent trading history", size: "half", node: (
+      <QuickLists part="history" myList={s?.watchlist} recent={s?.recentOrders} onListChange={d.refresh} />
+    ) },
+    { id: "progress", title: "Progress", size: "full", node: (
       <ProgressPanel compact />
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <Card className="xl:col-span-8" pad={false}>
+    ) },
+    { id: "portfolio", title: "Portfolio value", size: "wide", node: (
+        <Card pad={false}>
           <div className="flex flex-wrap items-start justify-between gap-4 px-5 pt-4">
             <div>
               <div className="flex items-center gap-2 text-sm text-muted">Total portfolio value <PaperBadge /></div>
@@ -63,18 +56,19 @@ export default function Dashboard() {
             <Mini label="Lifetime P&L" value={`${usd(s?.lifetimePnl, { sign: true })} (${pct(s?.lifetimePct)})`} cls={tone(s?.lifetimePnl)} />
           </div>
         </Card>
-
-        <Card className="xl:col-span-4" title="Allocation" icon={<PieChart className="size-4 text-accent-2" />}>
+    ) },
+    { id: "allocation", title: "Allocation", size: "third", node: (
+        <Card title="Allocation" icon={<PieChart className="size-4 text-accent-2" />}>
           {s ? <Allocation a={s.allocation} total={s.total} /> : <Skeleton className="h-40" />}
         </Card>
-      </div>
-
+    ) },
+    { id: "shortcuts", title: "Shortcuts", size: "full", node: (
       <Card title="Shortcuts" icon={<Sparkles className="size-4 text-accent-2" />} action={<Link href="/shortcuts" className="text-xs text-accent-2 hover:underline">Manage</Link>}>
         <ShortcutBar placement="dashboard" />
         <div className="mt-4"><LiveSuggestions title="Suggested for you right now" /></div>
       </Card>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+    ) },
+    { id: "holdings", title: "Holdings", size: "third", node: (
         <Card title="Holdings" icon={<Wallet className="size-4 text-accent-2" />} action={<Link href="/portfolio" className="flex items-center gap-1 text-xs text-accent-2 hover:underline">View all <ArrowRight className="size-3" /></Link>}>
           {!s ? <Skeleton className="h-40" /> : s.holdings.length === 0 ? (
             <Empty title="No positions yet" action={<button onClick={() => openPrompt("Buy $100 of SOL")} className="text-xs text-accent-2 hover:underline">Try “Buy $100 of SOL”</button>}>Place a paper trade from the terminal, a shortcut, or the prompt bar.</Empty>
@@ -91,15 +85,18 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
-
+    ) },
+    { id: "trending", title: "Trending", size: "third", node: (
         <Card title="Trending" icon={<TrendingUp className="size-4 text-up" />} action={<Pills size="sm" value={trendClass} onChange={setTrendClass} options={[{ value: "crypto", label: "Crypto" }, { value: "stocks", label: "Stocks" }]} />}>
           <AssetRows rows={trending.data?.assets} />
         </Card>
-
+    ) },
+    { id: "movers", title: "Market movers", size: "third", node: (
         <Card title="Market movers" icon={<Flame className="size-4 text-warn" />} action={<Link href="/discover?tab=volume" className="text-xs text-accent-2 hover:underline">Discover</Link>}>
           <AssetRows rows={movers.data?.assets} showVolume />
         </Card>
-
+    ) },
+    { id: "launches", title: "New launches", size: "third", node: (
         <Card title="New launches" icon={<Rocket className="size-4 text-accent-2" />} action={<Link href="/discover?tab=new" className="text-xs text-accent-2 hover:underline">All new tokens</Link>}>
           {!launches.data ? <Skeleton className="h-40" /> : launches.data.assets.length === 0 ? (
             <Empty title="No launch data">Connect Helius and DEX Screener in the Integration Center to stream newly launched tokens.</Empty>
@@ -118,7 +115,8 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
-
+    ) },
+    { id: "watchlist", title: "Watchlist", size: "third", node: (
         <Card title="Watchlist" icon={<Star className="size-4 text-warn" />} action={<Link href="/discover" className="text-xs text-accent-2 hover:underline">Add assets</Link>}>
           {!s ? <Skeleton className="h-40" /> : s.watchlist.length === 0 ? <Empty title="Watchlist is empty">Star assets in Discover or the terminal.</Empty> : (
             <div className="space-y-1">
@@ -133,24 +131,8 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
-
-        <Card title="Recent trades" icon={<History className="size-4 text-accent-2" />} action={<Link href="/portfolio?tab=history" className="text-xs text-accent-2 hover:underline">History</Link>}>
-          {!s ? <Skeleton className="h-40" /> : s.recentOrders.length === 0 ? <Empty title="No trades yet" /> : (
-            <div className="space-y-1.5">
-              {s.recentOrders.map((o: any) => (
-                <Link key={o.id} href={`/terminal/${o.asset_id}`} className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1 text-sm hover:bg-panel-2">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Badge tone={o.side === "buy" ? "up" : "down"}>{o.side.toUpperCase()}</Badge>
-                    <span className="font-semibold">{o.symbol}</span>
-                    <span className="truncate text-xs text-faint">{o.source}</span>
-                  </span>
-                  <span className="flex items-center gap-2"><span className="num text-xs text-muted">{o.filled_quantity > 0 ? `${qty(o.filled_quantity)} @ ${price(o.avg_fill_price)}` : usd(o.notional_usd)}</span><StatusPill status={o.status} /></span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
-
+    ) },
+    { id: "bots", title: "Active bots", size: "third", node: (
         <Card title="Active bots" icon={<Bot className="size-4 text-accent-2" />} action={<Link href="/bots" className="text-xs text-accent-2 hover:underline">Agents & Bots</Link>}>
           {!s ? <Skeleton className="h-32" /> : s.bots.length === 0 ? (
             <Empty title="No active bots" action={<button onClick={() => openPrompt("Buy at a 3% dip and sell at 5% increase, then rinse and repeat")} className="text-xs text-accent-2 hover:underline">Create one with a prompt</button>} />
@@ -165,9 +147,11 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
-
+    ) },
+    { id: "ai", title: "AI summary", size: "third", node: (
         <AISummary s={s} trending={movers.data?.assets} onAsk={openPrompt} />
-
+    ) },
+    { id: "social", title: "Social activity", size: "third", node: (
         <Card title="Social activity" icon={<Users className="size-4 text-accent-2" />} action={<Link href="/social" className="text-xs text-accent-2 hover:underline">Feed</Link>}>
           {!s ? <Skeleton className="h-32" /> : s.posts.length === 0 ? <Empty title="No public posts yet">Share a trade from your portfolio or follow traders in Social.</Empty> : (
             <div className="space-y-2.5">
@@ -181,7 +165,24 @@ export default function Dashboard() {
             </div>
           )}
         </Card>
+    ) },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Good to see you, {user.displayName.split(" ")[0]}</h1>
+          <p className="text-sm text-muted">Your unified overview across stocks and crypto.</p>
+        </div>
+        {s?.pendingApprovals > 0 && (
+          <Link href="/portfolio?tab=orders" className="flex items-center gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2 text-sm text-warn">
+            <AlertTriangle className="size-4" /> {s.pendingApprovals} order{s.pendingApprovals > 1 ? "s" : ""} awaiting your approval
+          </Link>
+        )}
       </div>
+
+      <DraggableBoard storageKey={`merod-home-layout:${user.id}`} blocks={blocks} />
     </div>
   );
 }

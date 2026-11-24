@@ -20,6 +20,7 @@ import { runTraining } from "@/server/training/trainer";
 import { runLearning } from "@/server/learning/engine";
 import { getFlags } from "@/server/flags";
 import { startWorldStream, stopWorldStream, stockStreamStatus } from "@/server/market/world-stream";
+import { processQueuedMaterials } from "@/server/learning/materials";
 
 const WORKER_ID = `${hostname()}-${process.pid}`;
 const PORT = Number(process.env.PORT ?? process.env.REALTIME_PORT ?? 4001);
@@ -134,6 +135,7 @@ if (REDIS_URL) {
 
 /* ───────── Loops ───────── */
 const timers = [
+  every("teach_merod", 8000, () => processQueuedMaterials(3)),
   every("simulated_feed", 3000, async () => { if ((await getFlags()).paper_trading) await tickSimulated(); }),
   every("paper_triggers", 3000, processPaperTriggers),
   every("bots", 5000, () => tickDueBots(WORKER_ID)),
