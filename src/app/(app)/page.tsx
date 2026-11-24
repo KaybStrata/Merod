@@ -20,10 +20,6 @@ export default function Dashboard() {
   const d = useApi<any>("/api/dashboard", { refreshMs: 15000 });
   const [range, setRange] = useState<"1D" | "1W" | "1M" | "3M" | "1Y">("1M");
   const hist = useApi<any>(`/api/portfolio/history?range=${range}`);
-  const [trendClass, setTrendClass] = useState<"stocks" | "crypto">("crypto");
-  const trending = useApi<any>(`/api/assets?class=${trendClass}&sort=gainers&limit=6`, { refreshMs: 20000 });
-  const movers = useApi<any>("/api/assets?sort=volume&limit=6", { refreshMs: 20000 });
-  const launches = useApi<any>("/api/assets?new=1&sort=new&limit=6", { refreshMs: 30000 });
   useRealtime((e) => { if (e.type === "fill" || e.type === "order") d.refresh(); }, undefined);
 
   const s = d.data;
@@ -67,104 +63,6 @@ export default function Dashboard() {
         <ShortcutBar placement="dashboard" />
         <div className="mt-4"><LiveSuggestions title="Suggested for you right now" /></div>
       </Card>
-    ) },
-    { id: "holdings", title: "Holdings", size: "third", node: (
-        <Card title="Holdings" icon={<Wallet className="size-4 text-accent-2" />} action={<Link href="/portfolio" className="flex items-center gap-1 text-xs text-accent-2 hover:underline">View all <ArrowRight className="size-3" /></Link>}>
-          {!s ? <Skeleton className="h-40" /> : s.holdings.length === 0 ? (
-            <Empty title="No positions yet" action={<button onClick={() => openPrompt("Buy $100 of SOL")} className="text-xs text-accent-2 hover:underline">Try “Buy $100 of SOL”</button>}>Place a paper trade from the terminal, a shortcut, or the prompt bar.</Empty>
-          ) : (
-            <div className="space-y-1">
-              {s.holdings.slice(0, 6).map((h: any) => (
-                <Link key={h.asset_id} href={`/terminal/${h.asset_id}`} className="flex items-center gap-3 rounded-lg px-1.5 py-1.5 hover:bg-panel-2">
-                  <AssetIcon symbol={h.symbol} logo={h.logo_url} />
-                  <div className="min-w-0 flex-1"><div className="text-sm font-semibold">{h.symbol}</div><div className="num text-xs text-muted">{qty(h.quantity)} @ {price(h.avg_cost)}</div></div>
-                  <Sparkline data={(h.spark ?? []).map(Number)} width={64} height={24} />
-                  <div className="text-right"><div className="num text-sm">{usd(h.value)}</div><div className={cx("num text-xs", tone(h.unrealized))}>{usd(h.unrealized, { sign: true })}</div></div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
-    ) },
-    { id: "trending", title: "Trending", size: "third", node: (
-        <Card title="Trending" icon={<TrendingUp className="size-4 text-up" />} action={<Pills size="sm" value={trendClass} onChange={setTrendClass} options={[{ value: "crypto", label: "Crypto" }, { value: "stocks", label: "Stocks" }]} />}>
-          <AssetRows rows={trending.data?.assets} />
-        </Card>
-    ) },
-    { id: "movers", title: "Market movers", size: "third", node: (
-        <Card title="Market movers" icon={<Flame className="size-4 text-warn" />} action={<Link href="/discover?tab=volume" className="text-xs text-accent-2 hover:underline">Discover</Link>}>
-          <AssetRows rows={movers.data?.assets} showVolume />
-        </Card>
-    ) },
-    { id: "launches", title: "New launches", size: "third", node: (
-        <Card title="New launches" icon={<Rocket className="size-4 text-accent-2" />} action={<Link href="/discover?tab=new" className="text-xs text-accent-2 hover:underline">All new tokens</Link>}>
-          {!launches.data ? <Skeleton className="h-40" /> : launches.data.assets.length === 0 ? (
-            <Empty title="No launch data">Connect Helius and DEX Screener in the Integration Center to stream newly launched tokens.</Empty>
-          ) : (
-            <div className="space-y-1">
-              {launches.data.assets.map((a: any) => (
-                <Link key={a.id} href={`/terminal/${a.id}`} className="flex items-center gap-3 rounded-lg px-1.5 py-1.5 hover:bg-panel-2">
-                  <AssetIcon symbol={a.symbol} logo={a.logo_url} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 text-sm font-semibold">{a.symbol}{a.risk_flags?.includes("demo_data") && <Badge tone="warn">DEMO</Badge>}{a.lifecycle === "bonding_curve" && <Badge tone="accent">Curve</Badge>}</div>
-                    <div className="text-xs text-muted">{a.venue} · liq {usd(a.liquidity_usd, { compact: true })} · {ago(a.launched_at)}</div>
-                  </div>
-                  <div className="text-right"><div className="num text-sm">{price(a.last_price)}</div><ChangeText value={a.change_24h} className="text-xs" /></div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
-    ) },
-    { id: "watchlist", title: "Watchlist", size: "third", node: (
-        <Card title="Watchlist" icon={<Star className="size-4 text-warn" />} action={<Link href="/discover" className="text-xs text-accent-2 hover:underline">Add assets</Link>}>
-          {!s ? <Skeleton className="h-40" /> : s.watchlist.length === 0 ? <Empty title="Watchlist is empty">Star assets in Discover or the terminal.</Empty> : (
-            <div className="space-y-1">
-              {s.watchlist.map((w: any) => (
-                <Link key={w.id} href={`/terminal/${w.id}`} className="flex items-center gap-3 rounded-lg px-1.5 py-1.5 hover:bg-panel-2">
-                  <AssetIcon symbol={w.symbol} />
-                  <div className="min-w-0 flex-1"><div className="text-sm font-semibold">{w.symbol}</div><div className="truncate text-xs text-muted">{w.name}</div></div>
-                  <Sparkline data={(w.spark ?? []).map(Number)} width={64} height={24} />
-                  <div className="text-right"><div className="num text-sm">{price(w.last_price)}</div><ChangeText value={w.change_24h} className="text-xs" /></div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
-    ) },
-    { id: "bots", title: "Active bots", size: "third", node: (
-        <Card title="Active bots" icon={<Bot className="size-4 text-accent-2" />} action={<Link href="/bots" className="text-xs text-accent-2 hover:underline">Bots & Shortcut Buttons</Link>}>
-          {!s ? <Skeleton className="h-32" /> : s.bots.length === 0 ? (
-            <Empty title="No active bots" action={<button onClick={() => openPrompt("Buy at a 3% dip and sell at 5% increase, then rinse and repeat")} className="text-xs text-accent-2 hover:underline">Create one with a prompt</button>} />
-          ) : (
-            <div className="space-y-1.5">
-              {s.bots.map((b: any) => (
-                <Link key={b.id} href={`/bots/${b.id}`} className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 hover:bg-panel-2">
-                  <span className="min-w-0"><span className="block truncate text-sm font-semibold">{b.name}</span><span className="text-xs text-muted">{b.trades_today} trades today · tick {ago(b.last_tick_at)}</span></span>
-                  <span className="flex items-center gap-2"><span className={cx("num text-sm", tone(b.pnl_usd))}>{usd(b.pnl_usd, { sign: true })}</span><StatusPill status={b.status} /></span>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
-    ) },
-    { id: "ai", title: "AI summary", size: "third", node: (
-        <AISummary s={s} trending={movers.data?.assets} onAsk={openPrompt} />
-    ) },
-    { id: "social", title: "Social activity", size: "third", node: (
-        <Card title="Social activity" icon={<Users className="size-4 text-accent-2" />} action={<Link href="/social" className="text-xs text-accent-2 hover:underline">Feed</Link>}>
-          {!s ? <Skeleton className="h-32" /> : s.posts.length === 0 ? <Empty title="No public posts yet">Share a trade from your portfolio or follow traders in Social.</Empty> : (
-            <div className="space-y-2.5">
-              {s.posts.map((p: any) => (
-                <Link key={p.id} href={`/social/${p.handle}`} className="block rounded-lg px-1.5 py-1 hover:bg-panel-2">
-                  <div className="flex items-center gap-2 text-xs"><span className="font-semibold text-text">@{p.handle}</span><span className="text-faint">{ago(p.created_at)}</span>
-                    {p.verification === "verified_live" ? <Badge tone="up">Verified</Badge> : p.verification === "simulated" ? <Badge tone="warn">Simulated</Badge> : <Badge>{p.kind}</Badge>}</div>
-                  <p className="mt-0.5 line-clamp-2 text-sm text-muted">{p.body}</p>
-                </Link>
-              ))}
-            </div>
-          )}
-        </Card>
     ) },
   ];
 
