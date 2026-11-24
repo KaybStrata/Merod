@@ -29,14 +29,14 @@ export interface FollowSettings {
 }
 type Follow = { id: string; follower_id: string; kind: "user" | "wallet"; leader_user_id: string | null; wallet_network: string | null; wallet_address: string | null; label: string;
   account_id: string | null; sizing: string; fixed_usd: string; percent: string; max_trade_usd: string; max_daily_usd: string; copy_sells: boolean; include_external: boolean;
-  include_paper: boolean; status: string; cursor: Record<string, any>; created_at: string };
+  include_paper: boolean; status: string; cursor: Record<string, any>; created_at: string; mode: "copy" | "watch" };
 type LeaderTrade = { ref: string; origin: "merod" | "broker" | "onchain"; venue: string; side: "buy" | "sell"; symbol?: string; assetId?: string | null; mint?: string;
   qty: number; price: number | null; at: Date; leaderPositionAfter?: number | null };
 
 const SOL_ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /* ───────────────────────── Follows ───────────────────────── */
-export async function createFollow(followerId: string, target: { kind: "user"; handle: string } | { kind: "wallet"; network: "solana"; address: string }, s: FollowSettings) {
+export async function createFollow(followerId: string, target: { kind: "user"; handle: string } | { kind: "wallet"; network: "solana"; address: string }, s: FollowSettings, mode: "copy" | "watch" = "copy") {
   await validateAccount(followerId, s.accountId);
   if (target.kind === "user") {
     const leader = await one<{ user_id: string; handle: string; display_name: string; allow_copy_trading: boolean }>(
@@ -47,7 +47,9 @@ export async function createFollow(followerId: string, target: { kind: "user"; h
     const row = await one<{ id: string }>(
       `INSERT INTO copy_follows (follower_id, kind, leader_user_id, label, account_id, sizing, fixed_usd, percent, max_trade_usd, max_daily_usd, copy_sells, include_external, include_paper)
        VALUES ($1,'user',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       ON CONFLICT (follower_id, leader_user_id) WHERE kind = 'user' DO UPDATE SET status='active' RETURNING id`,
+       ON CONFLICT (follower_id, leader_user_id) WHERE kind = 'user' DO UPDATE SET status='active', mode='copy',
+         sizing=EXCLUDED.sizing, fixed_usd=EXCLUDED.fixed_usd, percent=EXCLUDED.percent, max_trade_usd=EXCLUDED.max_trade_usd, max_daily_usd=EXCLUDED.max_daily_usd,
+         copy_sells=EXCLUDED.copy_sells, include_external=EXCLUDED.include_external, include_paper=EXCLUDED.include_paper, account_id=EXCLUDED.account_id RETURNING id`,
       [followerId, leader.user_id, `@${leader.handle}`, s.accountId ?? null, s.sizing, s.fixedUsd, s.percent, s.maxTradeUsd, s.maxDailyUsd, s.copySells, s.includeExternal, s.includePaper]);
     await notify(leader.user_id, "copy", "Someone is copying your trades", "A trader started copy trading you. You can turn copy trading off any time in Settings → Privacy.", "/settings?tab=privacy").catch(() => {});
     await audit({ actorType: "user", actorId: followerId, userId: followerId, action: "copy.follow", target: row!.id, data: { leader: leader.user_id } });
@@ -56,10 +58,12 @@ export async function createFollow(followerId: string, target: { kind: "user"; h
   if (target.network !== "solana" || !SOL_ADDR.test(target.address.trim())) throw new HttpError(400, "Paste a valid Solana wallet address");
   const address = target.address.trim();
   const row = await one<{ id: string }>(
-    `INSERT INTO copy_follows (follower_id, kind, wallet_network, wallet_address, label, account_id, sizing, fixed_usd, percent, max_trade_usd, max_daily_usd, copy_sells, include_external, include_paper)
-     VALUES ($1,'wallet','solana',$2,$3,$4,$5,$6,$7,$8,$9,$10,false,false)
-     ON CONFLICT (follower_id, wallet_network, wallet_address) WHERE kind = 'wallet' DO UPDATE SET status='active' RETURNING id`,
-    [followerId, address, `Solana ${address.slice(0, 4)}…${address.slice(-4)}`, s.accountId ?? null, s.sizing, s.fixedUsd, s.percent, s.maxTradeUsd, s.maxDailyUsd, s.copySells]);
+    `INSERT INTO copy_follows (follower_id, kind, wallet_network, wallet_address, label, account_id, sizing, fixed_usd, percent, max_trade_usd, max_daily_usd, copy_sells, include_external, include_paper, mode)
+     VALUES ($1,'wallet','solana',$2,$3,$4,$5,$6,$7,$8,$9,$10,false,false,$11)
+     ON CONFLICT (follower_id, wallet_network, wallet_address) WHERE kind = 'wallet' DO UPDATE SET status='active', mode=EXCLUDED.mode,
+       sizing=EXCLUDED.sizing, fixed_usd=EXCLUDED.fixed_usd, percent=EXCLUDED.percent, max_trade_usd=EXCLUDED.max_trade_usd, max_daily_usd=EXCLUDED.max_daily_usd,
+       copy_sells=EXCLUDED.copy_sells, account_id=EXCLUDED.account_id RETURNING id`,
+    [followerId, address, `Solana ${address.slice(0, 4)}…${address.slice(-4)}`, s.accountId ?? null, s.sizing, s.fixedUsd, s.percent, s.maxTradeUsd, s.maxDailyUsd, s.copySells, mode]);
   await audit({ actorType: "user", actorId: followerId, userId: followerId, action: "copy.follow_wallet", target: row!.id, data: { address } });
   return row!.id;
 }
@@ -205,6 +209,12 @@ async function record(f: Follow, t: LeaderTrade, status: string, reason: string 
 
 async function mirror(f: Follow, t: LeaderTrade) {
   const asset = await resolveAssetFor(t);
+  if (f.mode === "watch") {
+    // Follow (watch-only): record and notify, never trade.
+    await record(f, t, "watched", null, { assetId: asset?.id ?? null, symbol: asset?.symbol ?? t.symbol ?? t.mint?.slice(0, 6) ?? null });
+    await notify(f.follower_id, "copy", `${f.label} ${t.side === "buy" ? "bought" : "sold"} ${asset?.symbol ?? t.symbol ?? "a token"}`, `${t.qty ? `${+t.qty.toPrecision(6)} ` : ""}on ${t.venue}`, "/copy").catch(() => {});
+    return;
+  }
   if (!asset) return record(f, t, "skipped", `${t.symbol ?? t.mint?.slice(0, 8) ?? "This asset"} isn't in Merod's catalog`);
   const account = f.account_id
     ? await one<any>("SELECT id, kind FROM trading_accounts WHERE id=$1 AND user_id=$2 AND status='active'", [f.account_id, f.follower_id])

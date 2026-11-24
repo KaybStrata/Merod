@@ -19,7 +19,9 @@ import { notify } from "../engine/engine";
  */
 
 export interface TrainingSettings { enabled: boolean; scope_bots: boolean; scope_shortcuts: boolean; scope_prompts: boolean; pause_after_losses: number; max_adjustments_per_day: number }
-export const DEFAULT_SETTINGS: TrainingSettings = { enabled: true, scope_bots: true, scope_shortcuts: true, scope_prompts: true, pause_after_losses: 3, max_adjustments_per_day: 10 };
+/** Not a user setting: a quiet safety net so a runaway loop can never make hundreds of changes in a day. */
+const SAFETY_CAP = 100;
+export const DEFAULT_SETTINGS: TrainingSettings = { enabled: true, scope_bots: true, scope_shortcuts: true, scope_prompts: true, pause_after_losses: 3, max_adjustments_per_day: 100 };
 
 export async function getTrainingSettings(userId: string): Promise<TrainingSettings> {
   return (await one<TrainingSettings>("SELECT enabled, scope_bots, scope_shortcuts, scope_prompts, pause_after_losses, max_adjustments_per_day FROM auto_training_settings WHERE user_id=$1", [userId])) ?? DEFAULT_SETTINGS;
@@ -115,7 +117,7 @@ async function trainBot(b: any, s: TrainingSettings) {
   const original = b.original_config ?? { params: b.params, max_position_usd: b.max_position_usd, max_daily_spend_usd: b.max_daily_spend_usd };
   if (!b.original_config) await q("UPDATE trading_bots SET original_config=$2 WHERE id=$1", [b.id, JSON.stringify(original)]);
   const tuned = tuneBotParams(b.strategy_id, b.params, original.params, ev);
-  if (tuned && (await adjustmentsToday(b.user_id)) < s.max_adjustments_per_day) {
+  if (tuned && (await adjustmentsToday(b.user_id)) < SAFETY_CAP) {
     const newMaxPos = tuned.params.amount_usd ? Math.min(Number(b.max_position_usd), Math.max(Number(tuned.params.amount_usd), 1)) : Number(b.max_position_usd);
     await q("UPDATE trading_bots SET params=$2, max_position_usd=$3, updated_at=now() WHERE id=$1", [b.id, JSON.stringify(tuned.params), newMaxPos]);
     const reason = `After ${ev.losses.length ? `${ev.losses.length} losing trade(s)` : "rejected orders"}: ${tuned.reasons.join("; ")}.`;
@@ -143,7 +145,7 @@ async function trainShortcut(sc: any, s: TrainingSettings) {
     [sc.user_id, since, String(sc.id)]);
   await q("UPDATE trading_shortcuts SET training_cursor=$2 WHERE id=$1", [sc.id, now]);
   if (!rejected.length && !losses.length) return;
-  if ((await adjustmentsToday(sc.user_id)) >= s.max_adjustments_per_day) return;
+  if ((await adjustmentsToday(sc.user_id)) >= SAFETY_CAP) return;
   const original = sc.original_config ?? { actions: sc.actions };
   if (!sc.original_config) await q("UPDATE trading_shortcuts SET original_config=$2 WHERE id=$1", [sc.id, JSON.stringify(original)]);
   const actions = (sc.actions as any[]).map((a) => ({ ...a }));
@@ -178,7 +180,7 @@ async function trainPrompts(userId: string, s: TrainingSettings) {
   const rejected = await q<any>("SELECT status_reason AS reason, notional_usd FROM orders WHERE user_id=$1 AND source='prompt' AND status='rejected' AND updated_at > $2", [userId, since]);
   await q(`INSERT INTO prompt_trading_defaults (user_id, training_cursor) VALUES ($1,$2) ON CONFLICT (user_id) DO UPDATE SET training_cursor=$2`, [userId, now]);
   if (!losses.length && !rejected.length) return;
-  if ((await adjustmentsToday(userId)) >= s.max_adjustments_per_day) return;
+  if ((await adjustmentsToday(userId)) >= SAFETY_CAP) return;
   const before = { default_stop_loss_pct: cur?.default_stop_loss_pct ?? null, max_prompt_order_usd: cur?.max_prompt_order_usd ?? null };
   const after = { ...before };
   const reasons: string[] = [], rules: string[] = [];

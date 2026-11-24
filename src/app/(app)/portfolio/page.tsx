@@ -1,8 +1,9 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { PieChart as PieIcon, Layers, ArrowLeftRight, Bot, RotateCcw, ListChecks, Activity, Wallet } from "lucide-react";
+import { PieChart as PieIcon, Layers, ArrowLeftRight, Bot, RotateCcw, ListChecks, Activity, Wallet, PieChart } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { usd, price, qty, pct, ago, tone } from "@/lib/format";
 import { AssetIcon, Badge, Button, Card, ChangeText, Empty, Input, Modal, PaperBadge, Pills, Skeleton, SourceBadge, Sparkline, Stat, StatusPill, cx, useToast } from "@/components/ui";
@@ -122,6 +123,7 @@ function PortfolioInner() {
 
   return (
     <div className="space-y-4">
+      <SectionTabs tabs={[{ href: "/portfolio", label: "Portfolio", icon: PieChart }, { href: "/wallet", label: "Wallet & funding", icon: Wallet }]} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3"><h1 className="text-xl font-semibold">Portfolio</h1><PaperBadge paper={book === "paper"} /></div>
         <div className="flex flex-wrap gap-2">

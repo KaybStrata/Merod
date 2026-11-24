@@ -1,6 +1,7 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
-import { KeyRound, ShieldCheck, Wallet, ArrowRight, Building2, Globe2, Bitcoin, Link2, Layers, Plug, Sparkles } from "lucide-react";
+import { KeyRound, ShieldCheck, Wallet, ArrowRight, Building2, Globe2, Bitcoin, Link2, Layers, Plug, Sparkles, Cpu } from "lucide-react";
 import { UserApiKeys } from "@/components/UserApiKeys";
 import { Card } from "@/components/ui";
 
@@ -17,6 +18,7 @@ const SECTIONS = [
 export default function BrokerKeysPage() {
   return (
     <div className="space-y-4">
+      <SectionTabs tabs={[{ href: "/broker-keys", label: "Broker keys", icon: KeyRound }, { href: "/ai-keys", label: "AI keys", icon: Cpu }]} />
       <div>
         <h1 className="flex items-center gap-2 text-xl font-semibold"><KeyRound className="size-5 text-accent-2" /> Broker API keys</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">Connect your own brokerage, exchange or swap accounts by pasting their API keys. Merod encrypts them and uses them only for <b className="text-text">your</b> account.</p>

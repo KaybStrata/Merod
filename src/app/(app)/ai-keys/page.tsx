@@ -1,6 +1,7 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import { useState } from "react";
-import { Sparkles, CheckCircle2, Circle, ExternalLink } from "lucide-react";
+import { Sparkles, CheckCircle2, Circle, ExternalLink, KeyRound, Cpu } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { UserApiKeys } from "@/components/UserApiKeys";
 import { Badge, Card, cx, useToast } from "@/components/ui";
@@ -38,6 +39,7 @@ export default function AIKeysPage() {
   const providers: any[] = (models.data?.providers ?? []).filter((p: any) => p.id in BRANDS);
   return (
     <div className="space-y-4">
+      <SectionTabs tabs={[{ href: "/broker-keys", label: "Broker keys", icon: KeyRound }, { href: "/ai-keys", label: "AI keys", icon: Cpu }]} />
       <div>
         <h1 className="flex items-center gap-2 text-xl font-semibold"><Sparkles className="size-6 text-accent-2" /> AI Keys</h1>
         <p className="mt-1 text-sm text-muted">Paste your own Claude or ChatGPT API key, then choose which model reads your prompts. Your key is encrypted and used only for your own prompts.</p>

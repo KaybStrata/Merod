@@ -6,6 +6,8 @@ import { useRealtime, useShell } from "@/components/shell/context";
 import { Badge, Card, Empty, Pills, Stat, cx } from "@/components/ui";
 import { CRYPTO_VENUES, useCryptoTape, type FeedState, type WorldTrade } from "@/components/world/useCryptoTape";
 import { compact, price, qty, usd } from "@/lib/format";
+import { WorldTraders } from "@/components/world/WorldTraders";
+import { CopyTradeHeaderButton } from "@/components/CopyBots";
 
 const DEFAULT_CRYPTO = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "AVAX", "LINK", "LTC", "PEPE", "SHIB", "BONK"];
 const MIN_SIZES = [{ value: "0", label: "Any size" }, { value: "1000", label: "$1K+" }, { value: "10000", label: "$10K+" }, { value: "100000", label: "$100K+" }] as const;
@@ -86,7 +88,6 @@ export default function WorldTradesPage() {
   }, [tick, market]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const biggest = useMemo(() => rows.reduce<WorldTrade | null>((m, r) => (Date.now() - r.t < WINDOW_MS * 5 && (!m || r.usd > m.usd) ? r : m), null), [rows, tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const buyPct = stats.buy + stats.sell > 0 ? (stats.buy / (stats.buy + stats.sell)) * 100 : 50;
 
   const addSymbol = () => {
     const s = adding.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
@@ -111,6 +112,7 @@ export default function WorldTradesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Pills value={market} onChange={setMarket} options={[{ value: "all", label: "All markets" }, { value: "crypto", label: "Crypto" }, { value: "stock", label: "Stocks" }]} />
           <button onClick={() => setPaused(!paused)} className="flex h-9 items-center gap-1.5 rounded-xl border border-line bg-panel-2 px-3 text-sm">{paused ? <><Play className="size-4" /> Resume</> : <><Pause className="size-4" /> Pause</>}</button>
+          <CopyTradeHeaderButton />
         </div>
       </div>
 
@@ -137,13 +139,7 @@ export default function WorldTradesPage() {
         <Card><Stat label="Biggest recent trade" value={<span className="num">{biggest ? usd(biggest.usd, { compact: true }) : "—"}</span>} sub={biggest ? `${biggest.side === "buy" ? "Buy" : "Sell"} ${biggest.sym} · ${biggest.venue}` : "waiting…"} /></Card>
       </div>
 
-      <Card pad>
-        <div className="mb-1.5 flex justify-between text-xs text-muted"><span className="text-up">Buy pressure {buyPct.toFixed(0)}%</span><span className="text-down">Sell pressure {(100 - buyPct).toFixed(0)}%</span></div>
-        <div className="flex h-2 overflow-hidden rounded-full bg-panel-2">
-          <div className="bg-up transition-[width] duration-700" style={{ width: `${buyPct}%` }} />
-          <div className="flex-1 bg-down" />
-        </div>
-      </Card>
+      <WorldTraders cryptoSymbols={cryptoSyms} />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
         <Card title={<span className="flex items-center gap-2">Live tape {paused && <Badge tone="warn">paused</Badge>}</span>}

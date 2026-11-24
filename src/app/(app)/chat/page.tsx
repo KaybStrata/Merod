@@ -1,7 +1,8 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { MessagesSquare, Send, Reply, Trash2, Flag, X, VolumeX, Loader2, ShieldCheck } from "lucide-react";
+import { MessagesSquare, Send, Reply, Trash2, Flag, X, VolumeX, Loader2, ShieldCheck, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useRealtime, useShell } from "@/components/shell/context";
 import { Badge, cx, useToast } from "@/components/ui";
@@ -111,6 +112,7 @@ export default function CommunityChatPage() {
 
   return (
     <div className="space-y-4">
+      <SectionTabs tabs={[{ href: "/social", label: "Social", icon: Users }, { href: "/chat", label: "Community chat", icon: MessagesSquare }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold"><MessagesSquare className="size-6 text-accent-2" /> Community Chat</h1>
@@ -124,7 +126,7 @@ export default function CommunityChatPage() {
         </div>
       </div>
 
-      <section className="flex h-[calc(100vh-300px)] min-h-[380px] flex-col overflow-hidden rounded-xl border border-line bg-panel/80">
+      <section className="flex h-[calc(100vh-350px)] min-h-[380px] flex-col overflow-hidden rounded-xl border border-line bg-panel/80">
         <div ref={list} onScroll={onScroll} className="relative flex-1 overflow-y-auto px-4 py-3">
           {older && msgs.length > 0 && <div className="mb-3 text-center"><button onClick={loadOlder} className="rounded-full border border-line px-3 py-1 text-xs text-muted hover:text-text">Load earlier messages</button></div>}
           {loading ? <div className="flex h-full items-center justify-center text-sm text-muted"><Loader2 className="mr-2 size-4 animate-spin" /> Loading chat…</div>

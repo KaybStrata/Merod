@@ -17,7 +17,7 @@ export const GET = route(async (req) => {
   if (scope === "platform") {
     const trades = await q(
       `SELECT e.id, e.executed_at AS ts, o.side, e.quantity, e.price, o.is_paper AS paper, o.source, a.symbol, a.id AS asset_id, a.venue,
-              CASE WHEN p.is_public AND p.share_performance THEN p.handle ELSE NULL END AS handle
+              CASE WHEN p.is_public AND p.share_performance THEN p.handle ELSE NULL END AS handle, CASE WHEN p.is_public AND p.share_performance THEN p.display_name END AS display_name, (p.is_public AND p.share_performance AND p.allow_copy_trading) AS copyable
          FROM executions e JOIN orders o ON o.id=e.order_id JOIN assets a ON a.id=o.asset_id JOIN user_profiles p ON p.user_id=o.user_id
         ORDER BY e.executed_at DESC LIMIT $1`, [limit]);
     const stats = await q(

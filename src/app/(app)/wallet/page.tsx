@@ -1,8 +1,9 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Wallet, Plus, Building2, KeyRound, ArrowDownToLine, ArrowUpFromLine, Receipt, RefreshCw, Unplug, Copy, ShieldAlert, Sparkles } from "lucide-react";
+import { Wallet, Plus, Building2, KeyRound, ArrowDownToLine, ArrowUpFromLine, Receipt, RefreshCw, Unplug, Copy, ShieldAlert, Sparkles, PieChart } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { usd, ago, qty } from "@/lib/format";
 import { Badge, Button, Card, Empty, Input, Modal, Select, Skeleton, StatusPill, useToast } from "@/components/ui";
@@ -38,6 +39,7 @@ function WalletInner() {
 
   return (
     <div className="space-y-4">
+      <SectionTabs tabs={[{ href: "/portfolio", label: "Portfolio", icon: PieChart }, { href: "/wallet", label: "Wallet & funding", icon: Wallet }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Wallet & Funding</h1>

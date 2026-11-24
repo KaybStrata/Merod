@@ -1,7 +1,8 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
 import { useState } from "react";
-import { GraduationCap, ShieldCheck, Undo2, Bot, Zap, Sparkles } from "lucide-react";
+import { GraduationCap, ShieldCheck, Undo2, Bot, Zap, Sparkles, Brain } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { useRealtime } from "@/components/shell/context";
 import { Badge, Button, Card, Empty, Select, Skeleton, Stat, StatusPill, Toggle, useToast } from "@/components/ui";
@@ -29,6 +30,7 @@ export default function TrainingPage() {
   const s = data.settings;
   return (
     <div className="space-y-5">
+      <SectionTabs tabs={[{ href: "/learning", label: "AI Learning", icon: Brain }, { href: "/training", label: "Auto-Training", icon: GraduationCap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold"><GraduationCap className="size-6 text-accent-2" /> Auto-Training</h1>
@@ -59,21 +61,18 @@ export default function TrainingPage() {
           <div className="grid grid-cols-3 gap-3">
             <Stat label="Active changes" value={data.stats?.active ?? 0} />
             <Stat label="Reverted" value={data.stats?.reverted ?? 0} />
-            <Stat label="Today" value={`${data.stats?.today ?? 0}/${s.max_adjustments_per_day}`} />
+            <Stat label="Today" value={data.stats?.today ?? 0} />
           </div>
         </Card>
       </div>
 
-      <Card title="Scope & limits">
+      <Card title="What auto-training can adjust">
         <div className="flex flex-wrap gap-6">
           <Toggle checked={s.scope_bots} disabled={!s.enabled} onChange={(v) => patch({ scope_bots: v })} label="Bots & agents" />
           <Toggle checked={s.scope_shortcuts} disabled={!s.enabled} onChange={(v) => patch({ scope_shortcuts: v })} label="Shortcut buttons" />
           <Toggle checked={s.scope_prompts} disabled={!s.enabled} onChange={(v) => patch({ scope_prompts: v })} label="Prompt-to-trade" />
           <Select label="Pause bot after consecutive losses" value={s.pause_after_losses} onChange={(e) => patch({ pause_after_losses: Number(e.target.value) })} className="w-56">
             {[1, 2, 3, 4, 5, 8, 10].map((n) => <option key={n} value={n}>{n}</option>)}
-          </Select>
-          <Select label="Max adjustments per day" value={s.max_adjustments_per_day} onChange={(e) => patch({ max_adjustments_per_day: Number(e.target.value) })} className="w-48">
-            {[3, 5, 10, 20, 50].map((n) => <option key={n} value={n}>{n}</option>)}
           </Select>
         </div>
         {data.defaults && (data.defaults.default_stop_loss_pct || data.defaults.max_prompt_order_usd) && (

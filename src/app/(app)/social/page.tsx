@@ -1,7 +1,8 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Users, Trophy, PenSquare, Flame, Info } from "lucide-react";
+import { Users, Trophy, PenSquare, Flame, Info, MessagesSquare } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { usd, tone } from "@/lib/format";
 import { Badge, Button, Card, Empty, Pills, Select, Skeleton, cx, useToast } from "@/components/ui";
@@ -19,6 +20,8 @@ export default function SocialPage() {
   useRealtime((e) => { if (e.channel === "social" && e.type === "post") posts.refresh(); });
 
   return (
+    <div className="space-y-4">
+    <SectionTabs tabs={[{ href: "/social", label: "Social", icon: Users }, { href: "/chat", label: "Community chat", icon: MessagesSquare }]} />
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div className="min-w-0 space-y-4">
         <div>
@@ -69,6 +72,7 @@ export default function SocialPage() {
           <p className="text-sm text-muted">Copy-trading infrastructure exists but is <span className="font-medium text-warn">disabled until compliance approval</span> (feature flag <code className="text-xs">copy_trading</code>).</p>
         </Card>
       </aside>
+    </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import { SectionTabs } from "@/components/SectionTabs";
 import Link from "next/link";
 import { Brain, GraduationCap, Radio } from "lucide-react";
 import { LearningFeed } from "@/components/LearningFeed";
@@ -8,6 +9,7 @@ import { Card } from "@/components/ui";
 export default function LearningPage() {
   return (
     <div className="space-y-5">
+      <SectionTabs tabs={[{ href: "/learning", label: "AI Learning", icon: Brain }, { href: "/training", label: "Auto-Training", icon: GraduationCap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold"><Brain className="size-6 text-accent-2" /> AI Learning</h1>

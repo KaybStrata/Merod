@@ -15,19 +15,13 @@ import { api, useApi } from "@/lib/api";
 
 const NAV: { href: string; label: string; icon: any; also?: string[] }[] = [
   { href: "/", label: "Home", icon: Home },
-  { href: "/progress", label: "Progress", icon: Gauge },
   { href: "/discover", label: "Discover", icon: Compass },
-  { href: "/terminal", label: "Trade", icon: CandlestickChart },
   { href: "/bots", label: "Bots & Shortcut Buttons", icon: Bot, also: ["/shortcuts"] },
   { href: "/activity", label: "Live & World Activity", icon: Radio, also: ["/world"] },
-  { href: "/learning", label: "AI Learning", icon: Brain },
-  { href: "/training", label: "Auto-Training", icon: GraduationCap },
-  { href: "/chat", label: "Community Chat", icon: MessagesSquare },
-  { href: "/social", label: "Social", icon: Users },
-  { href: "/portfolio", label: "Portfolio", icon: PieChart },
-  { href: "/wallet", label: "Wallet & Funding", icon: Wallet },
-  { href: "/broker-keys", label: "Broker Keys", icon: KeyRound },
-  { href: "/ai-keys", label: "AI Keys", icon: Cpu },
+  { href: "/learning", label: "AI Learning & Auto-Training", icon: Brain, also: ["/training"] },
+  { href: "/social", label: "Social & Community Chat", icon: Users, also: ["/chat"] },
+  { href: "/portfolio", label: "Portfolio & Wallet", icon: PieChart, also: ["/wallet"] },
+  { href: "/broker-keys", label: "Broker & AI Keys", icon: KeyRound, also: ["/ai-keys"] },
   { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Copy, Pause, Play, Trash2, Wallet, User, AlertTriangle, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { api, useApi } from "@/lib/api";
-import { useRealtime } from "@/components/shell/context";
+import { useRealtime, useShell } from "@/components/shell/context";
 import { Badge, Button, Card, Empty, Input, Modal, Pills, Select, Toggle, cx, useToast } from "@/components/ui";
 import { ago, price, qty, usd, tone } from "@/lib/format";
 
@@ -11,12 +11,19 @@ type Settings = { accountId: string | null; sizing: "fixed" | "percent"; fixedUs
 const DEFAULTS: Settings = { accountId: null, sizing: "fixed", fixedUsd: 50, percent: 10, maxTradeUsd: 250, maxDailyUsd: 1000, copySells: true, includeExternal: true, includePaper: true };
 
 /** Create a copy-trading bot: copy a Merod trader (incl. their outside-Merod broker/exchange trades, with consent) or any public Solana wallet. */
-export function CopyBotForm({ handle, onDone }: { handle?: string; onDone?: () => void }) {
+export type CopyPreset = "copy" | "mimic" | "watch";
+const PRESET: Record<CopyPreset, Partial<Settings>> = {
+  copy: { sizing: "fixed", fixedUsd: 50, copySells: true },
+  mimic: { sizing: "percent", percent: 100, maxTradeUsd: 500, copySells: true }, // same size as theirs (within your caps), sells too
+  watch: {},
+};
+export function CopyBotForm({ handle, wallet, preset = "copy", onDone }: { handle?: string; wallet?: string; preset?: CopyPreset; onDone?: () => void }) {
   const toast = useToast();
   const accounts = useApi<any>("/api/wallet/accounts");
-  const [kind, setKind] = useState<"user" | "wallet">(handle ? "user" : "user");
-  const [who, setWho] = useState(handle ?? "");
-  const [s, setS] = useState<Settings>(DEFAULTS);
+  const [kind, setKind] = useState<"user" | "wallet">(wallet ? "wallet" : "user");
+  const [who, setWho] = useState(handle ?? wallet ?? "");
+  const [s, setS] = useState<Settings>({ ...DEFAULTS, ...PRESET[preset] });
+  const watch = preset === "watch";
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setS((x) => ({ ...x, [k]: v }));
   const accts = (accounts.data?.accounts ?? []).filter((a: any) => a.status === "active" && a.kind !== "wallet");
@@ -26,15 +33,18 @@ export function CopyBotForm({ handle, onDone }: { handle?: string; onDone?: () =
     if (!who.trim()) return toast(kind === "user" ? "Enter the trader's @handle" : "Paste a Solana wallet address", "down");
     setBusy(true);
     try {
-      await api("/api/copy", { method: "POST", json: { target: kind === "user" ? { kind, handle: who.trim() } : { kind, network: "solana", address: who.trim() }, settings: s } });
-      toast("Copy bot is running. New trades will be copied automatically.", "up"); onDone?.();
+      await api("/api/copy", { method: "POST", json: { target: kind === "user" ? { kind, handle: who.trim() } : { kind, network: "solana", address: who.trim() }, settings: s, mode: watch ? "watch" : "copy" } });
+      toast(watch ? "Following. You'll be notified of every trade this wallet makes." : "Copy bot is running. New trades will be copied automatically.", "up"); onDone?.();
     } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
   }
 
   return (
     <div className="space-y-3 text-sm">
-      {!handle && <Pills value={kind} onChange={setKind} options={[{ value: "user", label: <span className="flex items-center gap-1"><User className="size-3.5" /> Merod trader</span> }, { value: "wallet", label: <span className="flex items-center gap-1"><Wallet className="size-3.5" /> Any Solana wallet</span> }]} />}
-      {!handle && <Input label={kind === "user" ? "Trader's @handle" : "Solana wallet address"} value={who} onChange={(e) => setWho(e.target.value)} placeholder={kind === "user" ? "@trader" : "e.g. 7xKX…"} />}
+      {watch && <p className="text-xs text-muted">Follow this wallet: you'll get a notification for every buy and sell it makes, and see them on the Copy Trading page. Nothing is traded for you. You can switch to Copy or Mimic any time.</p>}
+      {watch && <div className="flex justify-end"><Button variant="primary" loading={busy} onClick={create}>Follow wallet</Button></div>}
+      {!watch && <>
+      {!handle && !wallet && <Pills value={kind} onChange={setKind} options={[{ value: "user", label: <span className="flex items-center gap-1"><User className="size-3.5" /> Merod trader</span> }, { value: "wallet", label: <span className="flex items-center gap-1"><Wallet className="size-3.5" /> Any Solana wallet</span> }]} />}
+      {!handle && !wallet && <Input label={kind === "user" ? "Trader's @handle" : "Solana wallet address"} value={who} onChange={(e) => setWho(e.target.value)} placeholder={kind === "user" ? "@trader" : "e.g. 7xKX…"} />}
       <p className="text-[11px] text-muted">{kind === "user"
         ? "Copies the trades they make on Merod, plus the trades they make outside Merod in the Alpaca, Kraken or Coinbase accounts they connected here. They must have turned on “Let others copy my trades”, and they'll be told someone is copying them."
         : "Copies the swaps this public wallet makes on Solana (any app, not just Merod). Wallet activity is public, so no permission is needed. Needs Helius connected in Admin → Integrations."}</p>
@@ -61,8 +71,43 @@ export function CopyBotForm({ handle, onDone }: { handle?: string; onDone?: () =
         {kind === "user" && <Toggle checked={s.includePaper} onChange={(v) => set("includePaper", v)} label="Include their paper (practice) trades" />}
       </div>
       <p className="text-[11px] text-faint">Only trades made after you start are copied. Copies are market orders, so your price can differ from theirs. Past results don't guarantee future results.</p>
-      <div className="flex justify-end"><Button variant="primary" loading={busy} onClick={create}><Copy className="size-4" /> Start copy bot</Button></div>
+      {preset === "mimic" && <p className="text-[11px] text-accent-2">Mimic: matches the size of each of their trades (up to your per-trade and daily caps) and mirrors their sells.</p>}
+      <div className="flex justify-end"><Button variant="primary" loading={busy} onClick={create}><Copy className="size-4" /> {preset === "mimic" ? "Start mimicking" : "Start copy bot"}</Button></div>
+      </>}
     </div>
+  );
+}
+
+/** "Copy trade" button for the page header: opens the copy-bot form (owner only). */
+export function CopyTradeHeaderButton() {
+  const { user } = useShell();
+  const [open, setOpen] = useState(false);
+  if (user.role !== "super_admin") return null;
+  return (
+    <>
+      <Button variant="primary" onClick={() => setOpen(true)}><Copy className="size-4" /> Copy trade</Button>
+      <Modal open={open} onClose={() => setOpen(false)} title="New copy-trading bot"><CopyBotForm onDone={() => setOpen(false)} /></Modal>
+    </>
+  );
+}
+
+/** Follow / Copy / Mimic buttons for an identified trader (Merod handle or public wallet). */
+export function TraderActions({ handle, wallet, copyable = true, following, onFollow }: { handle?: string; wallet?: string; copyable?: boolean; following?: boolean; onFollow?: () => void }) {
+  const { user } = useShell();
+  const [open, setOpen] = useState<CopyPreset | null>(null);
+  const owner = user.role === "super_admin";
+  const who = handle ? `@${handle}` : wallet ? `${wallet.slice(0, 4)}…${wallet.slice(-4)}` : "";
+  const btn = "rounded-md border border-line px-2 py-0.5 text-[11px] text-muted hover:border-accent/50 hover:text-text disabled:cursor-not-allowed disabled:opacity-40";
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {handle ? <button className={btn} onClick={onFollow}>{following ? "Following" : "Follow"}</button>
+        : owner && <button className={btn} onClick={() => setOpen("watch")}>Follow</button>}
+      {owner && <button className={btn} disabled={!copyable} title={copyable ? "Copy with a fixed $ amount per trade" : "This trader hasn't allowed copy trading"} onClick={() => setOpen("copy")}>Copy</button>}
+      {owner && <button className={btn} disabled={!copyable} title={copyable ? "Match their trade sizes and sells" : "This trader hasn't allowed copy trading"} onClick={() => setOpen("mimic")}>Mimic</button>}
+      <Modal open={!!open} onClose={() => setOpen(null)} title={open === "watch" ? `Follow ${who}` : open === "mimic" ? `Mimic ${who}` : `Copy ${who}`}>
+        {open && <CopyBotForm handle={handle} wallet={wallet} preset={open} onDone={() => setOpen(null)} />}
+      </Modal>
+    </span>
   );
 }
 
@@ -108,7 +153,8 @@ export function CopyBotsPanel({ compact = false }: { compact?: boolean }) {
                   <div className="flex min-w-0 items-center gap-2">
                     {f.kind === "wallet" ? <Wallet className="size-4 text-muted" /> : <User className="size-4 text-muted" />}
                     {f.kind === "user" ? <Link href={`/social/${f.leader_handle}`} className="truncate font-medium hover:text-accent-2">{f.label}</Link> : <span className="truncate font-mono text-sm">{f.label}</span>}
-                    <Badge tone={f.status === "active" ? "up" : "neutral"}>{f.status === "active" ? "running" : "paused"}</Badge>
+                    <Badge tone={f.status === "active" ? "up" : "neutral"}>{f.status === "active" ? (f.mode === "watch" ? "following" : "running") : "paused"}</Badge>
+                    {f.mode === "watch" ? <Badge tone="info">notify only</Badge> : f.sizing === "percent" && Number(f.percent) >= 100 ? <Badge tone="accent">mimic</Badge> : null}
                     {f.kind === "user" && f.leader_allows === false && <Badge tone="warn">trader turned copying off</Badge>}
                   </div>
                   <div className="flex items-center gap-1">
@@ -117,8 +163,8 @@ export function CopyBotsPanel({ compact = false }: { compact?: boolean }) {
                   </div>
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-muted">
-                  <span>{f.sizing === "fixed" ? `${usd(f.fixed_usd)} per buy` : `${Number(f.percent)}% of their size`} · max {usd(f.max_trade_usd)}/trade · {usd(f.spent_today)} of {usd(f.max_daily_usd)} today</span>
-                  <span>Into: {f.account_label ?? "Paper account"}</span>
+                  {f.mode !== "watch" && <span>{f.sizing === "fixed" ? `${usd(f.fixed_usd)} per buy` : `${Number(f.percent)}% of their size`} · max {usd(f.max_trade_usd)}/trade · {usd(f.spent_today)} of {usd(f.max_daily_usd)} today</span>}
+                  {f.mode !== "watch" && <span>Into: {f.account_label ?? "Paper account"}</span>}
                   <span>{f.copied} copied · {f.skipped} skipped</span>
                   <span>{f.kind === "user" ? [f.include_external && "incl. outside-Merod trades", f.include_paper && "incl. paper", f.copy_sells ? "copies sells" : "buys only"].filter(Boolean).join(" · ") : f.copy_sells ? "copies sells" : "buys only"}</span>
                   {f.last_checked_at && <span>checked {ago(f.last_checked_at)}</span>}
@@ -146,6 +192,7 @@ export function CopyBotsPanel({ compact = false }: { compact?: boolean }) {
                       <td className="pr-2">{e.copy_notional ? usd(e.copy_notional) : e.side === "sell" ? "matching share" : "—"}</td>
                       <td>{e.status === "copied" ? <span className="flex items-center gap-1 text-up"><CheckCircle2 className="size-3.5" /> Copied</span>
                         : e.status === "pending_approval" ? <Link href="/portfolio?tab=orders" className="flex items-center gap-1 text-warn"><Clock className="size-3.5" /> Needs approval</Link>
+                        : e.status === "watched" ? <span className="text-muted">Followed (not traded)</span>
                         : <span className={cx("flex items-center gap-1", e.status === "failed" ? "text-down" : "text-muted")} title={e.reason ?? ""}><XCircle className="size-3.5" /> {e.status === "failed" ? "Failed" : "Skipped"}: {e.reason}</span>}</td>
                     </tr>
                   ))}
