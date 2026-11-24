@@ -67,6 +67,10 @@ function ProviderKeys({ p, keys, onChange }: { p: any; keys: any[]; onChange: ()
     <div className="rounded-xl border border-line">
       <button onClick={() => setOpen(!open)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-panel-2/50">
         {open ? <ChevronDown className="size-4 text-muted" /> : <ChevronRight className="size-4 text-muted" />}
+        {/* Stays as long as a saved key last tested OK (stored on the server, so it survives reloads and sign-ins). */}
+        <span className="flex size-5 shrink-0 items-center justify-center" title={anyConnected ? "Connected: your key tested OK" : "Not connected yet"}>
+          {anyConnected ? <CheckCircle2 className="size-5 text-up drop-shadow-[0_0_6px_rgba(34,197,94,.55)]" /> : <span className="size-3.5 rounded-full border border-line" />}
+        </span>
         <span className="min-w-0 flex-1">
           <span className="font-medium">{p.name}</span> <span className="text-xs text-faint">{CATEGORY[p.category] ?? p.category}{p.userKeys === "personal_account" && " · your own account"}</span>
           {p.directory?.coverage && <span className="block truncate text-[11px] text-faint">{p.directory.coverage}</span>}
