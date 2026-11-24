@@ -28,6 +28,10 @@ export function describeDbError(e: unknown): { code: string; hint: string } | nu
   try { host = new URL(env.databaseUrl.replace(/^postgres(ql)?:/, "http:")).hostname; } catch { /* unparseable */ }
   const kind = !process.env.DATABASE_URL ? "missing" : host.endsWith(".railway.internal") ? "private" : /localhost|127\.0\.0\.1/.test(host) ? "localhost" : "public";
   if (kind === "missing") return { code: "db_url_missing", hint: "DATABASE_URL is not set. Add it in your hosting provider's environment variables, then redeploy." };
+  const raw = process.env.DATABASE_URL ?? "";
+  if (raw.includes("${{")) return { code: "db_url_template", hint: "DATABASE_URL contains Railway template text like ${{…}} instead of the real link. In Railway click the eye icon on DATABASE_PUBLIC_URL and copy the revealed value (it starts with postgresql:// and contains proxy.rlwy.net), then redeploy." };
+  if (raw !== raw.trim() || /^["']|["']$/.test(raw.trim()) || /\s/.test(raw.trim())) return { code: "db_url_format", hint: "DATABASE_URL has extra spaces, line breaks or quotes around it. Paste only the link itself, then redeploy." };
+  if (!/^postgres(ql)?:\/\//.test(raw.trim())) return { code: "db_url_format", hint: "DATABASE_URL must start with postgresql:// — paste the full DATABASE_PUBLIC_URL value from Railway, then redeploy." };
   if (kind === "private" && process.env.VERCEL === "1") return { code: "db_url_private", hint: "DATABASE_URL is Railway's PRIVATE address (…railway.internal), which Vercel can't reach. Use the Postgres service's DATABASE_PUBLIC_URL instead, then redeploy." };
   if (kind === "localhost" && process.env.VERCEL === "1") return { code: "db_url_localhost", hint: "DATABASE_URL points to localhost. Use your database's public URL, then redeploy." };
   if (code === "ENOTFOUND" || code === "EAI_AGAIN") return { code: "db_host_not_found", hint: "The database address in DATABASE_URL doesn't exist. Re-copy DATABASE_PUBLIC_URL exactly (no spaces or quotes), then redeploy." };
