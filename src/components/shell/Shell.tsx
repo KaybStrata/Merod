@@ -68,10 +68,12 @@ function Frame({ children }: { children: React.ReactNode }) {
   ];
 
   const sidebar = (
-    <nav className="relative flex h-full flex-col gap-0.5 overflow-y-auto p-3">
-      <div className={cx("mb-4 flex items-center px-2 pt-1", "justify-between")}>
-        <Link href="/"><Logo /></Link>
+    <nav className="relative flex h-full flex-col">
+      {/* Logo sits outside the scroll area so its glow is never clipped. */}
+      <div className="relative z-10 flex shrink-0 items-center px-5 pb-3 pt-4">
+        <Link href="/" aria-label="Merod home"><Logo /></Link>
       </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-3">
       {nav.map((n) => {
         const active = n.href === "/" ? pathname === "/" : pathname === n.href || (pathname.startsWith(n.href + "/") && !(n.href === "/admin" && pathname.startsWith("/admin/integrations")));
         return (
@@ -93,6 +95,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         <button onClick={toggle} className="hidden w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-faint hover:text-text lg:flex">
           <PanelLeftClose className="size-4" /> Hide menu
         </button>
+      </div>
       </div>
     </nav>
   );
