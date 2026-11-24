@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Home, Compass, CandlestickChart, Sparkles, Zap, Bot, Users, PieChart, Wallet, Settings, Shield, Bell, Search, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare, Copy,
+  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare, Copy, Repeat,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -66,7 +66,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const isAdmin = user.role === "admin" || user.role === "super_admin";
   const nav = [...NAV,
     ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }, { href: "/admin/integrations", label: "Integrations", icon: Plug }] : []),
-    ...(user.role === "super_admin" ? [{ href: "/copy", label: "Copy Trading", icon: Copy }, { href: "/admin/fees", label: "Fees (Super admin)", icon: Percent }] : []),
+    ...(user.role === "super_admin" ? [{ href: "/copy", label: "Copy Trading", icon: Copy }, { href: "/mimic", label: "Mimic Trading", icon: Repeat }, { href: "/admin/fees", label: "Fees (Super admin)", icon: Percent }] : []),
   ] as { href: string; label: string; icon: any; also?: string[] }[];
 
   const sidebar = (

@@ -1,6 +1,6 @@
 import { requireUser } from "@/server/auth";
 import { ok, route } from "@/server/http";
-import { q } from "@/server/db";
+import { one, q } from "@/server/db";
 import { getCredential } from "@/server/providers/credentials";
 import { contextFor, providerUsable } from "@/server/providers/integrations";
 import { readJson } from "@/server/providers/http";
@@ -14,17 +14,20 @@ const SOL_MINT = "So11111111111111111111111111111111111111112";
 const cache = new Map<string, { at: number; rows: any[] }>();
 
 export const GET = route(async (req) => {
-  await requireUser();
-  if (!(await providerUsable("birdeye", "production"))) return ok({ connected: false, trades: [] });
-  const key = await getCredential("birdeye", "production", "BIRDEYE_API_KEY");
+  const u = await requireUser();
+  // The user's own pasted Birdeye key first (Broker & AI Keys), else the platform key an admin connected.
+  const own = await one("SELECT 1 FROM user_provider_secrets WHERE user_id=$1 AND provider_id='birdeye' AND environment='production' AND status='connected'", [u.id]);
+  if (!own && !(await providerUsable("birdeye", "production"))) return ok({ connected: false, trades: [] });
+  const key = await getCredential("birdeye", "production", "BIRDEYE_API_KEY", own ? u.id : undefined);
   const syms = (new URL(req.url).searchParams.get("symbols") ?? "SOL").split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 8);
   const assets = await q<{ symbol: string; identifier: string }>(
     "SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS symbol, identifier FROM assets WHERE venue='solana' AND upper(symbol) = ANY($1) AND identifier <> 'native' ORDER BY upper(symbol), volume_24h DESC NULLS LAST", [syms]);
   const targets = [...(syms.includes("SOL") ? [{ symbol: "SOL", identifier: SOL_MINT }] : []), ...assets.filter((a) => a.symbol !== "SOL")].slice(0, 6);
-  const ctx = contextFor("birdeye", "production");
+  const ctx = contextFor("birdeye", "production", own ? { userId: u.id, userOnly: true } : {});
   const out: any[] = [];
   for (const t of targets) {
-    let hit = cache.get(t.identifier);
+    const ck = `${own ? u.id : "platform"}:${t.identifier}`;
+    let hit = cache.get(ck);
     if (!hit || Date.now() - hit.at > 10_000) {
       try {
         const j = await readJson(await ctx.fetch(`https://public-api.birdeye.so/defi/txs/token?address=${t.identifier}&offset=0&limit=40&tx_type=swap&sort_type=desc`, {
@@ -37,8 +40,8 @@ export const GET = route(async (req) => {
           return { tx: it.txHash, wallet: it.owner, symbol: t.symbol, side, amount, usd: Number(it.volumeUSD ?? it.volume_usd ?? amount * px) || null, dex: it.source ?? null, at: Number(it.blockUnixTime) * 1000 };
         }).filter((r: any) => r.wallet && r.tx);
         hit = { at: Date.now(), rows };
-        cache.set(t.identifier, hit);
-      } catch { hit = { at: Date.now(), rows: hit?.rows ?? [] }; cache.set(t.identifier, hit); }
+        cache.set(ck, hit);
+      } catch { hit = { at: Date.now(), rows: hit?.rows ?? [] }; cache.set(ck, hit); }
     }
     out.push(...hit.rows);
   }

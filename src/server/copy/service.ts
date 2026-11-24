@@ -170,9 +170,10 @@ async function brokerTrades(f: Follow, since: Date): Promise<LeaderTrade[]> {
 const QUOTE_MINTS = new Set(["So11111111111111111111111111111111111111112", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"]);
 /** A public Solana wallet's swaps via Helius' documented Enhanced Transactions API. */
 async function walletTrades(f: Follow, since: Date): Promise<LeaderTrade[]> {
-  const key = await getCredential("helius", "production", "HELIUS_API_KEY");
-  if (!key) throw new Error("Connect Helius in Admin → Integrations to follow Solana wallets");
-  const ctx = contextFor("helius", "production");
+  // The follower's own pasted Helius key first (Broker & AI Keys), else the platform key.
+  const key = await getCredential("helius", "production", "HELIUS_API_KEY", f.follower_id);
+  if (!key) throw new Error("Paste a Helius API key on Broker & AI Keys (or connect it in Admin → Integrations) to follow Solana wallets");
+  const ctx = contextFor("helius", "production", { userId: f.follower_id });
   const txs = await readJson(await ctx.fetch(`https://api.helius.xyz/v0/addresses/${f.wallet_address}/transactions?api-key=${key}&type=SWAP&limit=25`), "helius");
   const out: LeaderTrade[] = [];
   for (const tx of (txs as any[]) ?? []) {

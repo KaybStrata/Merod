@@ -6,7 +6,7 @@ import { UserApiKeys } from "@/components/UserApiKeys";
 import { Card } from "@/components/ui";
 
 const SECTIONS = [
-  { id: "services", title: "AI & supporting services", icon: Sparkles, note: "Claude and ChatGPT read your prompts; the others supply blockchain connectivity and prices. Pick your AI model on the AI Keys page." },
+  { id: "services", title: "AI & data services (Claude, ChatGPT, Birdeye, Helius…)", icon: Sparkles, note: "Claude and ChatGPT read your prompts. Birdeye shows which wallets are trading (World trades → Who's trading). Helius lets copy bots follow Solana wallets. Pick your AI model on the AI keys tab." },
   { id: "stocks", title: "Stock brokers", icon: Building2, note: "US brokerages. Start with paper/sandbox keys where offered." },
   { id: "global", title: "Global & connected brokers", icon: Globe2, note: "Regional brokers (India, Canada, Europe, Asia). Local eligibility rules apply." },
   { id: "exchanges", title: "Crypto exchanges", icon: Bitcoin, note: "Your own exchange account. Give keys trade permission only, never withdrawals." },

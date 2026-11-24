@@ -47,7 +47,7 @@ export function CopyBotForm({ handle, wallet, preset = "copy", onDone }: { handl
       {!handle && !wallet && <Input label={kind === "user" ? "Trader's @handle" : "Solana wallet address"} value={who} onChange={(e) => setWho(e.target.value)} placeholder={kind === "user" ? "@trader" : "e.g. 7xKX…"} />}
       <p className="text-[11px] text-muted">{kind === "user"
         ? "Copies the trades they make on Merod, plus the trades they make outside Merod in the Alpaca, Kraken or Coinbase accounts they connected here. They must have turned on “Let others copy my trades”, and they'll be told someone is copying them."
-        : "Copies the swaps this public wallet makes on Solana (any app, not just Merod). Wallet activity is public, so no permission is needed. Needs Helius connected in Admin → Integrations."}</p>
+        : <>Copies the swaps this public wallet makes on Solana (any app, not just Merod). Wallet activity is public, so no permission is needed. Needs a Helius API key: paste one on <Link href="/broker-keys" className="text-accent-2">Broker &amp; AI Keys</Link>.</>}</p>
 
       <Select label="Copy into account" value={s.accountId ?? ""} onChange={(e) => set("accountId", e.target.value || null)}>
         <option value="">Paper account (practice money)</option>
@@ -123,13 +123,16 @@ export function CopyTradeButton({ handle, allowed }: { handle: string; allowed: 
 }
 
 /** List + manage copy bots and see every copied trade. */
-export function CopyBotsPanel({ compact = false }: { compact?: boolean }) {
+export function CopyBotsPanel({ compact = false, variant = "copy" }: { compact?: boolean; variant?: "copy" | "mimic" }) {
   const { data, refresh } = useApi<any>("/api/copy", { refreshMs: 10000 });
   const toast = useToast();
   const [creating, setCreating] = useState(false);
   useRealtime((e) => { if (e.type === "copy") refresh(); });
-  const follows: any[] = data?.follows ?? [];
-  const events: any[] = data?.events ?? [];
+  const isMimic = (f: any) => f.mode !== "watch" && f.sizing === "percent" && Number(f.percent) >= 100;
+  const all: any[] = data?.follows ?? [];
+  const follows: any[] = variant === "mimic" ? all.filter(isMimic) : all;
+  const ids = new Set(follows.map((f) => f.id));
+  const events: any[] = (data?.events ?? []).filter((e: any) => variant !== "mimic" || ids.has(e.follow_id));
 
   async function patch(id: string, body: any) {
     try { await api(`/api/copy/${id}`, { method: "PATCH", json: body }); refresh(); } catch (e: any) { toast(e.message, "down"); }
@@ -141,10 +144,12 @@ export function CopyBotsPanel({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="space-y-4">
-      <Card title={<span className="flex items-center gap-2">Copy-trading bots <Badge tone="accent">{follows.filter((f) => f.status === "active").length} running</Badge></span>} icon={<Copy className="size-4 text-accent-2" />}
-        action={<Button size="sm" variant="primary" onClick={() => setCreating(true)}><Copy className="size-3.5" /> New copy bot</Button>}>
+      <Card title={<span className="flex items-center gap-2">{variant === "mimic" ? "Mimic bots" : "Copy-trading bots"} <Badge tone="accent">{follows.filter((f) => f.status === "active").length} running</Badge></span>} icon={<Copy className="size-4 text-accent-2" />}
+        action={<Button size="sm" variant="primary" onClick={() => setCreating(true)}><Copy className="size-3.5" /> {variant === "mimic" ? "New mimic bot" : "New copy bot"}</Button>}>
         {!data ? <div className="text-xs text-muted">Loading…</div> : follows.length === 0 ? (
-          <Empty icon={<Copy className="size-6" />} title="No copy bots yet">Copy a Merod trader (including their trades outside Merod, with their permission) or any public Solana wallet.</Empty>
+          <Empty icon={<Copy className="size-6" />} title={variant === "mimic" ? "No mimic bots yet" : "No copy bots yet"}>{variant === "mimic"
+            ? "Mimic a trader or public Solana wallet: every trade they make is repeated at the same size (within your caps), sells included."
+            : "Copy a Merod trader (including their trades outside Merod, with their permission) or any public Solana wallet."}</Empty>
         ) : (
           <div className="space-y-2">
             {follows.map((f) => (
@@ -210,14 +215,14 @@ export function CopyBotsPanel({ compact = false }: { compact?: boolean }) {
               <li key={l.handle} className="flex items-center justify-between gap-2 py-2 text-sm">
                 <Link href={`/social/${l.handle}`} className="min-w-0 truncate hover:text-accent-2">{l.display_name} <span className="text-faint">@{l.handle}</span></Link>
                 <span className="flex items-center gap-3 text-xs"><span className={cx("num", tone(l.pnl_30d))}>{usd(l.pnl_30d, { sign: true })} 30d</span><span className="text-faint">{l.trades_30d} trades</span>
-                  <CopyTradeButton handle={l.handle} allowed /></span>
+                  <TraderActions handle={l.handle} copyable /></span>
               </li>
             ))}
           </ul>
         </Card>
       )}
 
-      <Modal open={creating} onClose={() => setCreating(false)} title="New copy-trading bot"><CopyBotForm onDone={() => { setCreating(false); refresh(); }} /></Modal>
+      <Modal open={creating} onClose={() => setCreating(false)} title={variant === "mimic" ? "New mimic bot" : "New copy-trading bot"}><CopyBotForm preset={variant === "mimic" ? "mimic" : "copy"} onDone={() => { setCreating(false); refresh(); }} /></Modal>
     </div>
   );
 }

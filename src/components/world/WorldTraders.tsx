@@ -6,6 +6,7 @@ import { api, useApi } from "@/lib/api";
 import { useRealtime, useShell } from "@/components/shell/context";
 import { Badge, Card, Empty, cx, useToast } from "@/components/ui";
 import { TraderActions } from "@/components/CopyBots";
+import { UserApiKeys } from "@/components/UserApiKeys";
 import { ago, usd, qty } from "@/lib/format";
 
 type Agg = { key: string; label: string; handle?: string; wallet?: string; copyable: boolean; buys: number; sells: number; usd: number; last: number; lastText: string };
@@ -71,7 +72,10 @@ export function WorldTraders({ cryptoSymbols }: { cryptoSymbols: string[] }) {
           : "Merod traders who chose to make their trading public. Copy and Mimic need the trader's permission (“Let others copy my trades”)."}</p>
 
       {tab === "wallets" && onchain.data && !onchain.data.connected ? (
-        <Empty icon={<Wallet className="size-6" />} title="Connect Birdeye to see wallets">An admin can connect Birdeye in Admin → Integrations. Merod then shows which Solana wallets are buying and selling, so you can follow, copy or mimic them.</Empty>
+        <div className="space-y-3">
+          <p className="text-xs text-muted">Paste a <b className="text-text">Birdeye</b> API key to see which Solana wallets are buying and selling, so you can follow, copy or mimic them. Get one at birdeye.so (API / data services). Press <b className="text-text">Save</b>, then <b className="text-text">Test my keys</b>; wallets appear within seconds.</p>
+          <UserApiKeys providers={["birdeye"]} title="Paste your Birdeye API key" onChange={onchain.refresh} />
+        </div>
       ) : !(tab === "wallets" ? onchain.data : platform.data) ? <div className="py-4 text-xs text-muted">Loading…</div>
         : rows.length === 0 ? <div className="py-4 text-xs text-muted">{tab === "wallets" ? "No wallet trades for these coins yet." : "No public Merod traders active right now."}</div> : (
         <ul className="divide-y divide-line/60">
