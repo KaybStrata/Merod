@@ -63,7 +63,7 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
     };
     if (indicators.includes("sma20")) line(sma(closes, 20), "#f5b84a");
     if (indicators.includes("ema50")) line(ema(closes, 50), "#4aa8ff");
-    if (indicators.includes("bb")) { const b = boll(closes); line(b.map((x) => x?.up ?? null), "#3ddbd388", 1); line(b.map((x) => x?.lo ?? null), "#3ddbd388", 1); }
+    if (indicators.includes("bb")) { const b = boll(closes); line(b.map((x) => x?.up ?? null), "#7dd3fc88", 1); line(b.map((x) => x?.lo ?? null), "#7dd3fc88", 1); }
     c.timeScale().fitContent();
     lastBar.current = bars.length ? { ...bars[bars.length - 1] } : null;
     tfSec.current = bars.length > 1 ? bars[bars.length - 1].time - bars[bars.length - 2].time : 3600;

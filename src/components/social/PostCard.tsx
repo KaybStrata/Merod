@@ -7,7 +7,7 @@ import { ago, price, pct } from "@/lib/format";
 import { Badge, Button, cx, useToast, AssetIcon } from "@/components/ui";
 
 export function Avatar({ name, color, size = 40 }: { name: string; color?: string | null; size?: number }) {
-  const c = color ?? "#14c3bb";
+  const c = color ?? "#38bdf8";
   return <span style={{ width: size, height: size, background: `${c}26`, color: c, fontSize: size * 0.4 }} className="inline-flex shrink-0 items-center justify-center rounded-full font-semibold">{name.slice(0, 1).toUpperCase()}</span>;
 }
 

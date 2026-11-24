@@ -146,7 +146,7 @@ export default function ShortcutsPage() {
                 <div key={s.id} className="rounded-xl border border-line bg-panel/80 p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2.5">
-                      <span className="flex size-9 items-center justify-center rounded-xl" style={{ background: `${s.color || "#14c3bb"}22`, color: s.color || "#3ddbd3" }}><ShortcutIcon name={s.icon} className="size-4" /></span>
+                      <span className="flex size-9 items-center justify-center rounded-xl" style={{ background: `${s.color || "#38bdf8"}22`, color: s.color || "#7dd3fc" }}><ShortcutIcon name={s.icon} className="size-4" /></span>
                       <div>
                         <div className="font-semibold">{s.name}</div>
                         <div className="text-xs text-muted">{s.asset_symbol ? s.asset_symbol : "Current asset"}{s.asset_category ? ` · ${s.asset_category}` : ""}</div>

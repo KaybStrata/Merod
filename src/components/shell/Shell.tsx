@@ -4,7 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   Home, Compass, CandlestickChart, Sparkles, Zap, Bot, Users, PieChart, Wallet, Settings, Shield, Bell, Search, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, GraduationCap, Percent, Brain, KeyRound,
+  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { PromptBar } from "./PromptBar";
@@ -19,6 +19,7 @@ const NAV = [
   { href: "/ai", label: "AI Trade", icon: Sparkles },
   { href: "/shortcuts", label: "Shortcuts", icon: Zap },
   { href: "/bots", label: "Agents & Bots", icon: Bot },
+  { href: "/world", label: "World Trades", icon: Globe2 },
   { href: "/activity", label: "Live Activity", icon: Radio },
   { href: "/learning", label: "AI Learning", icon: Brain },
   { href: "/training", label: "Auto-Training", icon: GraduationCap },
@@ -98,7 +99,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         return (
           <Link key={n.href} href={n.href} title={collapsed ? n.label : undefined}
             className={cx("flex shrink-0 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors", collapsed && "justify-center px-2",
-              active ? "bg-accent-soft text-text shadow-[inset_0_0_0_1px_rgba(20,195,187,.35)]" : "text-muted hover:bg-panel-2 hover:text-text")}>
+              active ? "bg-accent-soft text-text shadow-[inset_0_0_0_1px_rgba(56,189,248,.35)]" : "text-muted hover:bg-panel-2 hover:text-text")}>
             <n.icon className={cx("size-[18px] shrink-0", active && "text-accent-2")} />
             {!collapsed && <span className="truncate">{n.label}</span>}
           </Link>
@@ -108,7 +109,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         {!collapsed && (
           <div className="rounded-xl border border-warn/25 bg-warn-soft p-3 text-xs text-warn">
             <div className="font-semibold">Paper trading mode</div>
-            <div className="mt-0.5 text-warn/80">Virtual funds. Real-money trading is disabled pending approvals.</div>
+            <div className="mt-0.5 text-warn/80">Virtual funds. Real money only after an admin turns it on.</div>
           </div>
         )}
         <button onClick={toggle} className="hidden w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs text-faint hover:text-text lg:flex">

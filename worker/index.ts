@@ -19,6 +19,7 @@ import { systemEvent } from "@/server/audit";
 import { runTraining } from "@/server/training/trainer";
 import { runLearning } from "@/server/learning/engine";
 import { getFlags } from "@/server/flags";
+import { startWorldStream, stopWorldStream, stockStreamStatus } from "@/server/market/world-stream";
 
 const WORKER_ID = `${hostname()}-${process.pid}`;
 const PORT = Number(process.env.PORT ?? process.env.REALTIME_PORT ?? 4001);
@@ -75,7 +76,7 @@ const server = createServer(async (req, res) => {
   if (req.url === "/healthz" || req.url === "/") {
     let db = false;
     try { await pool.query("SELECT 1"); db = true; } catch {}
-    const body = { ok: db, worker: WORKER_ID, db, redis: redisSub?.status ?? "disabled", loops: lastRun, uptimeSec: Math.round(process.uptime()) };
+    const body = { ok: db, worker: WORKER_ID, db, redis: redisSub?.status ?? "disabled", loops: lastRun, worldStream: stockStreamStatus(), uptimeSec: Math.round(process.uptime()) };
     res.writeHead(db ? 200 : 503, { "content-type": "application/json" });
     res.end(JSON.stringify(body));
     return;
@@ -92,7 +93,7 @@ wss.on("connection", (ws, req) => {
   try { claims = verifyRealtimeToken(token); }
   catch (e: any) { console.error("[realtime] token check failed:", e?.message); ws.close(1011, "realtime not configured"); return; }
   if (!claims) { ws.close(4401, "unauthorized"); return; }
-  const s = { userId: claims.u, role: claims.r, channels: new Set(["market", "launches", "social", "activity", `user:${claims.u}`]) };
+  const s = { userId: claims.u, role: claims.r, channels: new Set(["market", "launches", "social", "activity", "world", `user:${claims.u}`]) };
   if (claims.r === "admin") s.channels.add("admin");
   subs.set(ws, s);
   ws.on("message", async (raw) => {
@@ -149,6 +150,7 @@ const timers = [
                                      ON CONFLICT (worker_id) DO UPDATE SET last_seen_at=now(), info=$2`, [WORKER_ID, JSON.stringify({ loops: lastRun, ws: subs.size })])),
 ];
 
+startWorldStream(() => stopping);
 server.listen(PORT, () => console.log(`[worker] ${WORKER_ID} up — health http://0.0.0.0:${PORT}/healthz, websocket /ws`));
 await systemEvent("worker", "info", `Worker ${WORKER_ID} started`).catch(() => {});
 
@@ -160,7 +162,7 @@ async function shutdown(sig: string) {
   // release bot leases so another replica picks them up immediately
   await q("UPDATE trading_bots SET lease_owner=NULL, lease_expires_at=NULL WHERE lease_owner=$1", [WORKER_ID]).catch(() => {});
   await bt?.close().catch(() => {});
-  wss.close(); server.close();
+  stopWorldStream(); wss.close(); server.close();
   await redisSub?.quit().catch(() => {});
   await pool.end().catch(() => {});
   process.exit(0);

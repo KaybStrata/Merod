@@ -1,22 +1,23 @@
 @import "tailwindcss";
 
 /* Merod design tokens — deep navy surfaces, violet accent, restrained green/red for P&L. */
+/* Merod design tokens — pure black surfaces, sky-blue accent (turquoise → sky-blue gradient), green/red for P&L. */
 :root {
-  --bg: #070912;
-  --bg-2: #0b0e1a;
-  --panel: #0f1322;
-  --panel-2: #141a2e;
-  --line: #1e2640;
-  --line-2: #2a3352;
-  --text: #e8ebf5;
-  --muted: #8b93ad;
-  --faint: #5b6382;
-  /* Turquoise brand accent, fading into orange */
-  --accent: #14c3bb;
-  --accent-2: #3ddbd3;
-  --accent-soft: rgba(20, 195, 187, 0.14);
-  --accent-orange: #ff8a3d;
-  --grad: linear-gradient(90deg, #14c3bb 0%, #4fc9a8 35%, #ffa45c 75%, #ff8a3d 100%);
+  --bg: #000000;
+  --bg-2: #050505;
+  --panel: #0a0a0b;
+  --panel-2: #121214;
+  --line: #1f1f23;
+  --line-2: #2c2c32;
+  --text: #ececf1;
+  --muted: #8e8e99;
+  --faint: #5c5c66;
+  /* Sky-blue accent; brand gradient turquoise → sky blue */
+  --accent: #38bdf8;
+  --accent-2: #7dd3fc;
+  --accent-soft: rgba(56, 189, 248, 0.14);
+  --accent-orange: #38bdf8; /* legacy name: secondary accent, now sky blue */
+  --grad: linear-gradient(90deg, #14c3bb 0%, #22c1d6 40%, #38bdf8 75%, #7dd3fc 100%);
   --up: #22c55e;
   --up-soft: rgba(34, 201, 147, 0.12);
   --down: #f0506e;
@@ -35,11 +36,11 @@
   --text: #121628;
   --muted: #5d6580;
   --faint: #8a91a8;
-  --accent: #0e9a93;
-  --accent-2: #0b7f79;
-  --accent-soft: rgba(14, 154, 147, 0.1);
-  --accent-orange: #e8711f;
-  --grad: linear-gradient(90deg, #0e9a93 0%, #3aa88c 35%, #f0903f 75%, #e8711f 100%);
+  --accent: #0284c7;
+  --accent-2: #0369a1;
+  --accent-soft: rgba(2, 132, 199, 0.1);
+  --accent-orange: #0284c7;
+  --grad: linear-gradient(90deg, #0e9a93 0%, #0ea5b7 40%, #0284c7 100%);
   --up: #16a34a;
   --up-soft: rgba(15, 158, 112, 0.1);
   --down: #d93454;
@@ -77,7 +78,7 @@ html { font-size: 13px; }
 html, body { background: var(--bg); color: var(--text); }
 body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 .num { font-variant-numeric: tabular-nums; }
-/* Brand gradient (turquoise → orange) for primary actions and highlights */
+/* Brand gradient (turquoise → sky blue) for primary actions and highlights */
 .bg-grad { background-image: var(--grad); }
 .bg-grad:hover { filter: brightness(1.08); }
 .text-grad { background-image: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -85,8 +86,8 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
 .app-glow {
   background:
-    radial-gradient(900px 500px at -10% -10%, rgba(20, 195, 187, 0.09), transparent 60%),
-    radial-gradient(700px 400px at 110% 0%, rgba(255, 138, 61, 0.06), transparent 60%),
+    radial-gradient(900px 500px at -10% -10%, rgba(56, 189, 248, 0.07), transparent 60%),
+    radial-gradient(700px 400px at 110% 0%, rgba(20, 195, 187, 0.05), transparent 60%),
     var(--bg);
 }
 [data-theme="light"] .app-glow { background: var(--bg); }

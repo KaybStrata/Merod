@@ -72,7 +72,7 @@ function useSave(refresh: () => void) {
 }
 
 function AccountTab({ data, refresh }: any) {
-  const [v, setV] = useState({ display_name: data.profile.display_name, bio: data.profile.bio ?? "", avatar_color: data.profile.avatar_color ?? "#14c3bb", country: data.user.country ?? "" });
+  const [v, setV] = useState({ display_name: data.profile.display_name, bio: data.profile.bio ?? "", avatar_color: data.profile.avatar_color ?? "#38bdf8", country: data.user.country ?? "" });
   const { save, busy } = useSave(refresh);
   return (
     <Card title="Account information">
