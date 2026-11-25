@@ -2,11 +2,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { api, useApi } from "@/lib/api";
-import { Badge, Button, Input, Modal, cx, useToast } from "@/components/ui";
+import { Badge, Button, Modal, cx, useToast } from "@/components/ui";
+import { CodeInput } from "@/components/settings/AccountSecurity";
 
 /**
  * PAPER / LIVE badge with a real-money on/off switch (owner only) in the top bar.
- * ON turns on real-money crypto + stock trading (needs the server unlock, an approval reference and a 2FA code).
+ * ON turns on real-money crypto + stock trading (needs the server unlock and a 2FA code).
  * OFF is instant. Automated real-money trades stay a separate switch in Admin.
  */
 export function RealMoneySwitch({ owner }: { owner: boolean }) {
@@ -22,7 +23,7 @@ export function RealMoneySwitch({ owner }: { owner: boolean }) {
     setBusy(true);
     try {
       for (const key of ["live_crypto_trading", "live_brokerage_trading"])
-        await api("/api/admin/flags", { method: "POST", json: enabled ? { key, enabled, approvalReference: ref, code } : { key, enabled } });
+        await api("/api/admin/flags", { method: "POST", json: enabled ? { key, enabled, code } : { key, enabled } });
       toast(enabled ? "Real-money trading is ON" : "Real-money trading is OFF. Paper only.", "up");
       setOpen(false); setRef(""); setCode(""); refresh();
     } catch (e: any) { toast(e.message, "down"); refresh(); } finally { setBusy(false); }
@@ -51,8 +52,7 @@ export function RealMoneySwitch({ owner }: { owner: boolean }) {
           <form onSubmit={(e) => { e.preventDefault(); setAll(true); }} className="space-y-3">
             <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">Real money. Orders in your connected real accounts (crypto and stocks) will move real funds. You can switch it off any time from here.</p>
             {!data.twoFactor && <p className="text-xs text-down">Turn on two-factor authentication in <Link href="/settings?tab=security" className="underline">Settings → Security</Link> first.</p>}
-            <Input label="Approval reference" required value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. broker agreement or license ID" />
-            <Input label="2FA code" required inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+            <div><span className="mb-1 block text-xs font-medium text-muted">Code from your authenticator app</span><CodeInput value={code} onChange={setCode} autoFocus /></div>
             <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" variant="danger" loading={busy}>Turn on</Button></div>
           </form>
         )}

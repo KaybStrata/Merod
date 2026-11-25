@@ -5,6 +5,7 @@ import { Shield, Server, Users, Activity, Scale, ScrollText, Plug, AlertOctagon,
 import { api, useApi } from "@/lib/api";
 import { ago, usd } from "@/lib/format";
 import { useShell } from "@/components/shell/context";
+import { CodeInput } from "@/components/settings/AccountSecurity";
 import { Badge, Button, Card, Empty, Input, Modal, PaperBadge, Pills, Select, Skeleton, StatusPill, Toggle, cx, useToast } from "@/components/ui";
 
 type Tab = "overview" | "users" | "trading" | "compliance" | "audit";
@@ -93,8 +94,7 @@ function RealMoneyPanel() {
         <form onSubmit={(e) => { e.preventDefault(); submit(); }} className="space-y-3">
           {pending?.enabled && <p className="rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">Real money. Orders in connected real accounts will move real funds. You can switch this off at any time.</p>}
           {pending?.enabled ? <>
-            <Input label="Approval reference" required value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. broker agreement or license ID" hint="Stored with the change in the compliance records." />
-            <Input label="2FA code" required inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+            <div><span className="mb-1 block text-xs font-medium text-muted">Code from your authenticator app</span><CodeInput value={code} onChange={setCode} autoFocus /></div>
           </> : <p className="text-sm text-muted">Real-money trading of this kind stops right away. Paper trading is unaffected.</p>}
           <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setPending(null)}>Cancel</Button><Button type="submit" variant={pending?.enabled ? "danger" : "primary"} loading={busy}>Confirm</Button></div>
         </form>
@@ -371,7 +371,6 @@ function Compliance() {
       <Modal open={!!pending} onClose={() => setPending(null)} title={`${pending?.enabled ? "Enable" : "Disable"} ${pending?.key}`}>
         <form onSubmit={(e) => { e.preventDefault(); pending && submitFlag(pending.key, pending.enabled, ref || undefined, code); }} className="space-y-3">
           <p className="text-sm text-muted">This is a compliance-controlled change. It is recorded in the audit log and compliance records.</p>
-          {pending?.needsRef && <Input label="Approval reference" required value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Agreement, license or ticket ID" />}
           <Input label="2FA code" required inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} hint="From your authenticator app. Enable 2FA in Settings → Security if you haven't." />
           <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setPending(null)}>Cancel</Button><Button type="submit" variant="primary" loading={busy}>Confirm</Button></div>
         </form>

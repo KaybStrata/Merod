@@ -95,13 +95,14 @@ export async function setFlag(adminId: string, key: string, enabled: boolean, ap
   if (needsControls) {
     if (enabled && REAL_MONEY_FLAGS.includes(key as FlagKey) && process.env.MEROD_ALLOW_LIVE_FLAGS !== "true")
       throw new HttpError(403, "Real-money features are locked for this deployment. Set MEROD_ALLOW_LIVE_FLAGS=true on the server only after broker/legal approvals are complete.");
-    if (!approvalReference?.trim() && !(isHalt && !enabled)) throw new HttpError(400, "An approval reference (agreement / ticket / license ID) is required");
     if (!(await verifyStepUp(adminId, code))) throw new HttpError(403, "Valid 2FA code required. Enable two-factor authentication in Settings → Security first.");
   }
   await q("UPDATE feature_flags SET enabled=$2, approval_reference=COALESCE($3, approval_reference), updated_by=$4, updated_at=now() WHERE key=$1",
     [key, enabled, approvalReference?.trim() || null, adminId]);
-  if (f.requires_approval && approvalReference)
-    await q("INSERT INTO compliance_records (kind, reference, details, created_by) VALUES ('feature_flag',$1,$2,$3)", [approvalReference.trim(), JSON.stringify({ key, enabled }), adminId]);
+  // Every approval-gated change is recorded (2FA-confirmed); a reference is optional.
+  if (f.requires_approval && needsControls)
+    await q("INSERT INTO compliance_records (kind, reference, details, created_by) VALUES ('feature_flag',$1,$2,$3)",
+      [approvalReference?.trim() || `2FA-confirmed by admin on ${new Date().toISOString().slice(0, 10)}`, JSON.stringify({ key, enabled }), adminId]);
   invalidateFlags();
   await audit({ actorType: "admin", actorId: adminId, action: enabled ? "flag.enabled" : "flag.disabled", target: key, data: { reference: approvalReference ?? null } });
   if (isHalt) await publish("admin", "global_halt", { enabled });
