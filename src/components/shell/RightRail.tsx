@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ModoPanel } from "./ModoPanel";
 import Link from "next/link";
-import { Bot, Zap, Pause, Play, PanelRightClose, PanelRightOpen, Plus, OctagonX, Loader2, Activity, Sparkles } from "lucide-react";
+import { Bot, Zap, Pause, Play, PanelRightClose, PanelRightOpen, Plus, OctagonX, Loader2, Activity, Sparkles, MessageSquareText } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { ShortcutBar } from "@/components/ShortcutBar";
 import { PaperBadge, StatusPill, cx, useToast } from "@/components/ui";
@@ -17,6 +17,7 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
   const setTab = (t: "controls" | "modo") => { setTabState(t); try { localStorage.setItem("merod-rail-tab", t); } catch { /* ignore */ } };
   const { screenAsset, connected } = useShell();
   const bots = useApi<any>(open ? "/api/bots" : null, { refreshMs: connected ? 30000 : 10000 });
+  const rail = useApi<any>(open ? "/api/rail" : null, { refreshMs: 15000 });
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
   // Live bot feed: every decision/trade a bot makes streams in; stats refresh (throttled) on each one.
@@ -26,6 +27,7 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
     if (!open) return;
     if (e.type === "bot_log") setFeed((f) => [{ k: `${e.payload.ts}${Math.random()}`, bot: e.payload.botName, level: e.payload.level, msg: e.payload.message, ts: e.payload.ts ?? Date.now() }, ...f].slice(0, 25));
     if (["bot_status", "fill", "bot_log"].includes(e.type) && Date.now() - lastRefresh.current > 2000) { lastRefresh.current = Date.now(); bots.refresh(); }
+    if (["fill", "order", "auto", "copy"].includes(e.type)) rail.refresh();
   });
 
   async function act(id: string, action: "pause" | "resume" | "start") {
@@ -98,7 +100,7 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
               <div className="rounded-xl border border-dashed border-line p-3 text-xs text-muted">No bots yet. <Link href="/bots" className="text-accent-2">Create one</Link> or type a strategy in the prompt box.</div>
             ) : (
               <ul className="space-y-1.5">
-                {list.slice(0, 20).map((b) => (
+                {list.map((b) => (
                   <li key={b.id} className="rounded-xl border border-line bg-panel p-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <Link href={`/bots/${b.id}`} className="min-w-0 truncate text-xs font-medium hover:text-accent-2">{b.name}</Link>
@@ -136,6 +138,9 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
           )}
         </section>
 
+        {rail.data?.automation && <AutomationSection a={rail.data.automation} />}
+        <PromptTradesSection trades={rail.data?.promptTrades ?? []} />
+
         {list.length > 0 && (
           <section>
             <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted"><Activity className="size-3.5 text-accent-2" /> Bot activity</h3>
@@ -156,5 +161,51 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
       </div>
     </aside>
     </>
+  );
+}
+
+/** Owner: every automated trader in one place (auto trading, Modo Autopilot, strategies, mimic/copy bots). */
+function AutomationSection({ a }: { a: any }) {
+  const row = (label: React.ReactNode, right: React.ReactNode, href: string, on?: boolean) => (
+    <li><Link href={href} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-panel-2">
+      <span className="flex min-w-0 items-center gap-1.5"><span className={cx("size-1.5 shrink-0 rounded-full", on ? "bg-up" : "bg-faint")} /><span className="truncate">{label}</span></span>
+      <span className="shrink-0 text-[10px] text-faint">{right}</span></Link></li>
+  );
+  return (
+    <section>
+      <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted"><Bot className="size-3.5 text-accent-2" /> Automated trading</h3>
+      <ul className="rounded-xl border border-line bg-panel p-1">
+        {row("Auto trading", `${a.autoTrading ? "on" : "off"} · ${a.autoOpen} open`, "/auto", a.autoTrading)}
+        {row("Modo Autopilot", `${a.modoAutopilot ? "on" : "off"} · ${a.modoOpen} open`, "/auto", a.modoAutopilot)}
+        {a.strategies.map((s: any) => row(`Strategy: ${s.name}`, `${s.assets} asset${s.assets === 1 ? "" : "s"}`, "/auto", s.enabled && a.autoTrading))}
+        {a.follows.map((f: any) => row(`${f.mode === "watch" ? "Follow" : f.sizing === "fixed" ? "Copy" : "Mimic"}: ${f.label}`, f.mode === "watch" ? "notify only" : `${f.copied} trade${f.copied === 1 ? "" : "s"}`, f.sizing === "fixed" && f.mode !== "watch" ? "/copy" : "/mimic", f.status === "active"))}
+      </ul>
+    </section>
+  );
+}
+
+/** Every trade made from the prompt box, newest first, updating live. */
+function PromptTradesSection({ trades }: { trades: any[] }) {
+  return (
+    <section>
+      <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted"><MessageSquareText className="size-3.5 text-accent-2" /> Prompt box trades</h3>
+      {trades.length === 0 ? <p className="text-[11px] text-faint">Trades you make by typing in the prompt box show up here.</p> : (
+        <ul className="max-h-72 space-y-1 overflow-y-auto pr-0.5">
+          {trades.map((t) => {
+            const filled = Number(t.filled_quantity) > 0;
+            const amount = filled ? `${qty(t.filled_quantity)} @ ${price(t.avg_fill_price)}` : t.notional_usd ? usd(Number(t.notional_usd)) : t.quantity ? `${qty(t.quantity)}` : "";
+            return (
+              <li key={t.id}><Link href={`/portfolio?order=${t.id}`} className="block rounded-lg border border-line bg-panel px-2 py-1.5 text-[11px] hover:border-accent/40">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate"><b className={t.side === "buy" ? "text-up" : "text-down"}>{t.side.toUpperCase()}</b> {t.symbol} <span className="text-muted">{amount}</span></span>
+                  <StatusPill status={t.status} />
+                </div>
+                <div className="mt-0.5 flex items-center justify-between text-[10px] text-faint"><span>{t.is_paper ? "Paper" : "Real money"}</span><span>{ago(t.created_at)}</span></div>
+              </Link></li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }

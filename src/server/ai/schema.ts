@@ -42,6 +42,7 @@ export const InstructionSchema = z.object({
     stop_loss_pct: z.number().nullable(),
     repeat: z.boolean().describe("true for 'rinse and repeat'"),
     max_cycles: z.number().nullable(),
+    scope: z.object({ meme: z.boolean(), venue: z.string().nullable() }).nullable().optional().describe("Set when the bot should watch many coins, e.g. 'every Solana meme coin' → {meme:true, venue:'solana'}"),
   }).nullable(),
   bot: z.object({
     strategy: z.enum(["watchlist_monitor", "meme_discovery", "rebalance", "technical_indicator", "price_trigger", "recurring_buy", "dip_rebound_loop"]),

@@ -212,10 +212,32 @@ export async function handlePrompt(userId: string, input: PromptInput) {
     case "conditional_trade": {
       if (!leg) return reply("Which asset should this apply to?", { type: "clarify", question: "Which asset?", suggestions: [] }, "clarify");
       if (ins.kind !== "conditional_trade" && (!leg.amount || leg.amount_type === "percent_position")) {
+        if (ins.kind === "swing_loop" && ins.swing?.scope) { const qn = "How much should the bot spend on each coin it buys?"; return reply(qn, { type: "clarify", question: qn, suggestions: AMOUNT_CHIPS }, "clarify"); }
         const qn = ins.kind === "swing_loop" ? "How much should each buy cycle spend?" : "How much should each recurring purchase be?";
         return reply(qn, { type: "clarify", question: qn, suggestions: AMOUNT_CHIPS }, "clarify");
       }
       if (ins.kind === "conditional_trade" && !leg.amount) return reply(`How much should I ${leg.side}?`, { type: "clarify", question: `How much should I ${leg.side}?`, suggestions: leg.side === "sell" ? ["25%", "50%", "100%"] : AMOUNT_CHIPS }, "clarify");
+      // A bot over many coins ("every Solana meme coin"): the most-traded matching coins with live prices (bots watch up to 20).
+      if (ins.kind === "swing_loop" && ins.swing?.scope) {
+        const sc = ins.swing.scope;
+        const coins = await q<any>(
+          `SELECT id, symbol FROM assets WHERE asset_class='crypto' AND NOT ('demo_data'=ANY(risk_flags)) AND tradability IN ('paper_tradable','live_tradable')
+             AND last_price IS NOT NULL AND price_source IS NOT NULL AND price_source <> 'simulated'
+             AND ($1::text IS NULL OR venue=$1) AND (NOT $2 OR EXISTS (SELECT 1 FROM unnest(categories) c WHERE c ILIKE '%meme%'))
+           ORDER BY volume_24h DESC NULLS LAST LIMIT 20`, [sc.venue ?? null, !!sc.meme]);
+        const label = `${sc.venue ? sc.venue[0].toUpperCase() + sc.venue.slice(1) + " " : ""}${sc.meme ? "meme coins" : "coins"}`;
+        if (!coins.length) return reply(`I couldn't find any ${label} with live prices right now, so there's nothing for the bot to watch yet.`, null, "info");
+        const amountUsd = leg.amount_type === "usd" ? leg.amount! : null;
+        const user = await one<any>("SELECT trading_mode FROM users WHERE id=$1", [userId]);
+        const config = { description: ins.summary, assetIds: coins.map((c) => c.id), markets: [], isPaper: user?.trading_mode !== "live", createdFromPrompt: originText, start: true,
+          budgetUsd: Math.max((amountUsd ?? 100) * 10, 200), maxPositionUsd: Math.max(amountUsd ?? 100, 1), maxDailySpendUsd: Math.max((amountUsd ?? 100) * 10, 200),
+          maxDailyLossUsd: Math.max((amountUsd ?? 100) * 3, 100), maxTradesPerDay: null, minLiquidityUsd: 0, maxSlippageBps: 150, maxPriceDeviationPct: 5,
+          schedule: "every_15s" as const, approvalRequired: perms?.mode === "manual", notify: { trades: true, errors: true },
+          name: `${label} dip ${ins.swing.dip_pct}% → +${ins.swing.take_profit_pct}% loop`, strategyId: "dip_rebound_loop",
+          params: { amount_usd: amountUsd, dip_pct: ins.swing.dip_pct, take_profit_pct: ins.swing.take_profit_pct, stop_loss_pct: ins.swing.stop_loss_pct, repeat: true, max_cycles: ins.swing.max_cycles } } as BotConfig;
+        return reply(`${ins.summary}. The bot will watch ${coins.length} ${label} (${coins.slice(0, 6).map((c) => c.symbol).join(", ")}${coins.length > 6 ? ", …" : ""}). Review its limits and activate it.`,
+          { type: "bot", config, strategyName: "Dip-buy / take-profit loop", assetLabel: `${coins.length} ${label}` }, "needs_approval");
+      }
       const r = await legAsset(leg, input.screenAssetId);
       if (!r.asset) return reply(r.error!, { type: "clarify", question: r.error!, suggestions: [] }, "clarify");
       const a = r.asset;

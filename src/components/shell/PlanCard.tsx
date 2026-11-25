@@ -72,11 +72,7 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
   const actionable = status === "needs_approval";
 
   if (card.type === "clarify")
-    return card.suggestions?.length ? (
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {card.suggestions.map((s: string) => <button key={s} onClick={() => onChip?.(s)} className="rounded-full border border-accent/40 px-3 py-1 text-xs text-accent-2 hover:bg-accent-soft">{s}</button>)}
-      </div>
-    ) : null;
+    return card.suggestions?.length ? <ClarifyChips suggestions={card.suggestions} onChip={onChip} /> : null;
 
   if (card.type === "executed")
     return (
@@ -204,6 +200,36 @@ function Actions({ status, actionable, busy, onApprove, onDismiss, label, danger
     <div className="mt-3 flex gap-2">
       <Button size="sm" variant={danger ? "danger" : "primary"} loading={busy === "approve"} onClick={onApprove}>{label}</Button>
       <Button size="sm" variant="ghost" loading={busy === "dismiss"} onClick={onDismiss}>Dismiss</Button>
+    </div>
+  );
+}
+
+/** Quick answers, plus a "Custom" chip to type any amount when the question is about how much. */
+function ClarifyChips({ suggestions, onChip }: { suggestions: string[]; onChip?: (t: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState("");
+  const isUsd = suggestions.some((x) => x.startsWith("$"));
+  const isPct = !isUsd && suggestions.some((x) => /%$/.test(x));
+  const amountish = isUsd || isPct;
+  const chip = "rounded-full border border-accent/40 px-3 py-1 text-xs text-accent-2 hover:bg-accent-soft";
+  const num = Number(val.replace(/[$,%\s]/g, ""));
+  function send() {
+    if (!(num > 0)) return;
+    onChip?.(isUsd ? `$${num}` : `${Math.min(num, 100)}%`);
+    setOpen(false); setVal("");
+  }
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      {suggestions.map((s) => <button key={s} onClick={() => onChip?.(s)} className={chip}>{s}</button>)}
+      {amountish && (open ? (
+        <form onSubmit={(e) => { e.preventDefault(); send(); }} className="flex items-center gap-1 rounded-full border border-accent/60 bg-bg-2 py-0.5 pl-3 pr-1">
+          {isUsd && <span className="text-xs text-muted">$</span>}
+          <input autoFocus inputMode="decimal" value={val} onChange={(e) => setVal(e.target.value)} placeholder={isUsd ? "Any amount" : "Any %"} aria-label="Custom amount"
+            className="w-24 bg-transparent text-xs text-text outline-none placeholder:text-faint" />
+          {isPct && <span className="text-xs text-muted">%</span>}
+          <button type="submit" disabled={!(num > 0)} className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-medium text-black disabled:opacity-40">Use</button>
+        </form>
+      ) : <button onClick={() => setOpen(true)} className={chip}>Custom…</button>)}
     </div>
   );
 }

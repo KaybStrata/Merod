@@ -184,14 +184,20 @@ export function parsePrompt(raw: string): Instruction {
   // Swing loop: "buy at 3% dip and sell at 5% increase, rinse and repeat"
   const dip = t.match(/(\d+(?:\.\d+)?)\s*%\s*(dip|drop|decline|pullback|down)|(dip|drop|falls?|declines?|down)\s*(of|by)?\s*(\d+(?:\.\d+)?)\s*%/);
   const rise = t.match(/(\d+(?:\.\d+)?)\s*%\s*(increase|gain|rise|up|profit|pump)|(increase|gain|rise|rises|up|profit)\s*(of|by)?\s*(\d+(?:\.\d+)?)\s*%/);
-  if (dip && rise && /\bbuy\b/.test(t) && /\bsell\b/.test(t)) {
+  // "buys/buying", "sells/selling" count too; "make a bot … 6% dip … 3% profit" is a loop even without the word "sell".
+  const isBot = /\b(bot|bots|agent)\b/.test(t);
+  if (dip && rise && /\bbuy(s|ing)?\b/.test(t) && (/\bsell(s|ing)?\b/.test(t) || (isBot && /\b(profit|gain|increase|up)\b/.test(t)))) {
     const dipPct = num(dip[1] ?? dip[5]), tpPct = num(rise[1] ?? rise[5]);
-    const repeat = /\b(rinse|repeat|loop|again|keep (doing|going)|continuous|forever|cycle)\b/.test(t);
+    const repeat = isBot || /\b(rinse|repeat|loop|again|keep (doing|going)|continuous|forever|cycle)\b/.test(t);
+    // Many coins at once: "every/all (Solana) meme coin(s)".
+    const many = /\b(every|all|each|any)\b[^.]*\b(meme|memes|memecoins?|coins|tokens)\b/.test(t);
+    const scope = many ? { meme: /\bmeme/.test(t), venue: /\bsol(ana|ona)?\b/.test(t) ? "solana" : /\b(eth|ethereum)\b/.test(t) ? "ethereum" : /\bbase\b/.test(t) ? "base" : null } : null;
     const sl = t.match(/stop[- ]?loss (of |at )?(\d+(?:\.\d+)?)\s*%/);
     const cycles = t.match(/(\d+)\s*(times|cycles)/);
-    return base("swing_loop", `Buy ${asset.symbol ?? "this asset"} after a ${dipPct}% dip, sell at +${tpPct}%${repeat ? ", and repeat" : ""}`, {
-      trades: [leg({ side: "buy", symbol: asset.symbol, network: asset.network, contract_address: asset.contract, amount_type: amt.type === "usd" || amt.type === "quantity" ? amt.type : null, amount: amt.type === "usd" || amt.type === "quantity" ? amt.value : null })],
-      swing: { dip_pct: dipPct, take_profit_pct: tpPct, stop_loss_pct: sl ? num(sl[2]) : null, repeat, max_cycles: cycles ? num(cycles[1]) : null },
+    const scopeLabel = scope ? `${scope.venue ? scope.venue[0].toUpperCase() + scope.venue.slice(1) + " " : ""}${scope.meme ? "meme coins" : "coins"}` : null;
+    return base("swing_loop", `Buy ${scopeLabel ?? asset.symbol ?? "this asset"} after a ${dipPct}% dip, sell at +${tpPct}%${repeat ? ", and repeat" : ""}`, {
+      trades: [leg({ side: "buy", symbol: scope ? null : asset.symbol, network: scope?.venue ?? asset.network, contract_address: scope ? null : asset.contract, amount_type: amt.type === "usd" || amt.type === "quantity" ? amt.type : null, amount: amt.type === "usd" || amt.type === "quantity" ? amt.value : null })],
+      swing: { dip_pct: dipPct, take_profit_pct: tpPct, stop_loss_pct: sl ? num(sl[2]) : null, repeat, max_cycles: cycles ? num(cycles[1]) : null, scope },
     });
   }
 
