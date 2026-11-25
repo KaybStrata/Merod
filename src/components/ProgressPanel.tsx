@@ -113,7 +113,7 @@ export function ProgressPanel({ compact = false }: { compact?: boolean }) {
                       <span className="flex shrink-0 items-center gap-2"><span className={cx("num text-xs", tone(b.pnl_usd))}>{usd(b.pnl_usd, { sign: true })}</span><StatusPill status={b.status} /></span>
                     </div>
                     <div className="mt-1.5 grid grid-cols-2 gap-3 text-[10px] text-faint">
-                      <div><div className="mb-0.5 flex justify-between"><span>Trades today</span><span className="num">{b.trades_today}/{b.max_trades_per_day}</span></div><Bar value={b.trades_today} max={b.max_trades_per_day} /></div>
+                      <div className="flex justify-between"><span>Trades today</span><span className="num">{b.trades_today}</span></div>
                       <div><div className="mb-0.5 flex justify-between"><span>Daily spend</span><span className="num">{usd(b.spent_today_usd, { compact: true })}/{usd(b.max_daily_spend_usd, { compact: true })}</span></div><Bar value={+b.spent_today_usd} max={+b.max_daily_spend_usd} /></div>
                     </div>
                     {b.last_message && <div className="mt-1 truncate text-[11px] text-muted">{b.last_message} <span className="text-faint">· {ago(b.last_tick_at)}</span></div>}

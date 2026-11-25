@@ -63,7 +63,7 @@ const Patch = z.object({
   maxPositionUsd: z.number().positive().optional(),
   maxDailySpendUsd: z.number().positive().optional(),
   maxDailyLossUsd: z.number().positive().optional(),
-  maxTradesPerDay: z.number().int().positive().max(1000).optional(),
+  maxTradesPerDay: z.number().int().positive().nullable().optional(),
   minLiquidityUsd: z.number().min(0).optional(),
   maxSlippageBps: z.number().int().min(1).max(5000).optional(),
   schedule: z.enum(["every_15s", "every_1m", "every_5m", "every_15m", "every_1h"]).optional(),

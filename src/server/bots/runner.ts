@@ -100,7 +100,7 @@ async function tickBot(b: any) {
 async function executeDecision(b: any, a: any, d: Exclude<Decision, { action: "none" | "complete" | "alert" }>) {
   await log(b.id, "trigger", `${d.action.toUpperCase()} ${a.symbol}: ${d.reason}`);
   // Bot-level limits (account-level limits are enforced again by the engine).
-  if (b.trades_today >= b.max_trades_per_day) { await log(b.id, "warning", `Max trades per day (${b.max_trades_per_day}) reached`); return { ok: false }; }
+  if (b.max_trades_per_day != null && b.trades_today >= b.max_trades_per_day) { await log(b.id, "warning", `Max trades per day (${b.max_trades_per_day}) reached`); return { ok: false }; }
   if (b.pnl_usd <= -Math.abs(b.max_daily_loss_usd)) { await q("UPDATE trading_bots SET status='halted' WHERE id=$1", [b.id]); await log(b.id, "control", "Halted: max loss reached"); return { ok: false }; }
   const notional = d.action === "buy" ? (d.notionalUsd ?? (d.quantity ?? 0) * a.last_price) : 0;
   if (d.action === "buy") {

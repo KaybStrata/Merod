@@ -75,7 +75,7 @@ export default function BotsPage() {
                     <td className="px-3">{(b.symbols ?? []).join(", ") || <span className="text-faint">{b.strategy_id === "watchlist_monitor" ? "Watchlist" : b.strategy_id === "meme_discovery" ? "New launches" : "—"}</span>}</td>
                     <td className="px-3"><StatusPill status={b.status} /></td>
                     <td className={cx("num px-3 text-right", tone(b.pnl_usd))}>{usd(b.pnl_usd, { sign: true })}</td>
-                    <td className="num px-3 text-right">{b.trades_today}/{b.max_trades_per_day}</td>
+                    <td className="num px-3 text-right">{b.trades_today}</td>
                     <td className="max-w-[260px] truncate px-3 text-xs text-muted" title={b.last_log?.message}>{b.last_log ? `${ago(b.last_log.created_at)} · ${b.last_log.message}` : "—"}</td>
                     <td className="px-4 text-right">
                       {b.status === "running" ? <Button size="sm" onClick={() => control(b.id, "pause")}><PauseCircle className="size-3.5" /> Pause</Button>
@@ -148,7 +148,7 @@ function BotForm({ strategies, initialStrategy, onCreated }: { strategies: any[]
   const [assets, setAssets] = useState<any[]>([]);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<any[]>([]);
-  const [f, setF] = useState({ name: "", description: "", budgetUsd: 1000, maxPositionUsd: 250, maxDailySpendUsd: 500, maxDailyLossUsd: 100, maxTradesPerDay: 10, minLiquidityUsd: 50000,
+  const [f, setF] = useState({ name: "", description: "", budgetUsd: 1000, maxPositionUsd: 250, maxDailySpendUsd: 500, maxDailyLossUsd: 100, minLiquidityUsd: 50000,
     maxSlippageBps: 100, maxPriceDeviationPct: 5, profitTargetPct: "", stopLossPct: "", schedule: "every_1m", approvalRequired: false, start: true, markets: "" });
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (strat) setParams(Object.fromEntries(strat.params.map((p: any) => [p.key, p.default ?? ""]))); }, [strategyId]); // eslint-disable-line
@@ -170,7 +170,7 @@ function BotForm({ strategies, initialStrategy, onCreated }: { strategies: any[]
         name: f.name || strat?.name, description: f.description, strategyId, params: cleanParams, assetIds: assets.map((a) => a.id),
         markets: f.markets ? f.markets.split(",").map((s) => s.trim()).filter(Boolean) : [], isPaper: true,
         budgetUsd: Number(f.budgetUsd), maxPositionUsd: Number(f.maxPositionUsd), maxDailySpendUsd: Number(f.maxDailySpendUsd), maxDailyLossUsd: Number(f.maxDailyLossUsd),
-        maxTradesPerDay: Number(f.maxTradesPerDay), minLiquidityUsd: Number(f.minLiquidityUsd), maxSlippageBps: Number(f.maxSlippageBps), maxPriceDeviationPct: Number(f.maxPriceDeviationPct),
+        minLiquidityUsd: Number(f.minLiquidityUsd), maxSlippageBps: Number(f.maxSlippageBps), maxPriceDeviationPct: Number(f.maxPriceDeviationPct),
         profitTargetPct: f.profitTargetPct ? Number(f.profitTargetPct) : null, stopLossPct: f.stopLossPct ? Number(f.stopLossPct) : null,
         schedule: f.schedule, approvalRequired: f.approvalRequired, start: f.start,
       } });
@@ -224,7 +224,7 @@ function BotForm({ strategies, initialStrategy, onCreated }: { strategies: any[]
         <div className="mb-2 text-sm font-medium">Risk limits</div>
         <div className="grid gap-3 sm:grid-cols-4">
           {num("budgetUsd", "Starting budget ($)")}{num("maxPositionUsd", "Max position ($)")}{num("maxDailySpendUsd", "Max daily spend ($)")}{num("maxDailyLossUsd", "Max daily loss ($)")}
-          {num("maxTradesPerDay", "Max trades / day")}{num("minLiquidityUsd", "Min liquidity ($)")}{num("maxSlippageBps", "Max slippage (bps)")}{num("maxPriceDeviationPct", "Max price deviation (%)")}
+          {num("minLiquidityUsd", "Min liquidity ($)")}{num("maxSlippageBps", "Max slippage (bps)")}{num("maxPriceDeviationPct", "Max price deviation (%)")}
           {num("profitTargetPct", "Profit target (%)", "optional")}{num("stopLossPct", "Stop-loss (%)", "optional")}
           <Select label="Check every" value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })}>{SCHEDULES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
         </div>

@@ -117,11 +117,10 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
                       <span className={cx("num shrink-0 font-medium", tone(b.pnl_usd))}>{usd(b.pnl_usd, { sign: true })}</span>
                     </div>
                     <div className="mt-1.5 grid grid-cols-3 gap-1 text-[10px]">
-                      <div className="rounded-md bg-panel-2 px-1.5 py-1"><div className="text-faint">Trades</div><div className="num text-text">{b.trades_today}/{b.max_trades_per_day}</div></div>
+                      <div className="rounded-md bg-panel-2 px-1.5 py-1"><div className="text-faint">Trades</div><div className="num text-text">{b.trades_today}</div></div>
                       <div className="rounded-md bg-panel-2 px-1.5 py-1"><div className="text-faint">Win</div><div className="num text-text">{(b.wins || 0) + (b.losses || 0) ? `${Math.round(((b.wins || 0) / ((b.wins || 0) + (b.losses || 0))) * 100)}%` : "—"}</div></div>
                       <div className="rounded-md bg-panel-2 px-1.5 py-1"><div className="text-faint">Spent</div><div className="num text-text">{usd(b.spent_today_usd, { compact: true })}</div></div>
                     </div>
-                    <div className="mt-1 h-1 overflow-hidden rounded-full bg-panel-2" title="Trades used today"><div className="h-full rounded-full bg-grad" style={{ width: `${Math.min(100, (b.trades_today / Math.max(1, b.max_trades_per_day)) * 100)}%` }} /></div>
                     {b.last_fill && (
                       <div className="mt-1 truncate text-[10px] text-muted">Last: <span className={b.last_fill.side === "buy" ? "text-up" : "text-down"}>{b.last_fill.side.toUpperCase()}</span> {qty(b.last_fill.filled_quantity)} {b.last_fill.symbol} @ {price(b.last_fill.avg_fill_price)} · {ago(b.last_fill.updated_at)}</div>
                     )}

@@ -223,7 +223,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const user = await one<any>("SELECT trading_mode FROM users WHERE id=$1", [userId]);
       const base = { description: ins.summary, assetIds: [a.id], markets: [], isPaper: user?.trading_mode !== "live", createdFromPrompt: originText, start: true,
         budgetUsd: Math.max((amountUsd ?? 100) * 3, 100), maxPositionUsd: Math.max(amountUsd ?? 100, 1), maxDailySpendUsd: Math.max((amountUsd ?? 100) * 4, 100),
-        maxDailyLossUsd: Math.max((amountUsd ?? 100), 50), maxTradesPerDay: 20, minLiquidityUsd: 0, maxSlippageBps: 100, maxPriceDeviationPct: 5,
+        maxDailyLossUsd: Math.max((amountUsd ?? 100), 50), maxTradesPerDay: null, minLiquidityUsd: 0, maxSlippageBps: 100, maxPriceDeviationPct: 5,
         schedule: "every_1m" as const, approvalRequired: perms?.mode === "manual", notify: { trades: true, errors: true } };
       let config: BotConfig;
       if (ins.kind === "swing_loop") {
@@ -244,7 +244,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const b = ins.bot!;
       const config: BotConfig = { name: b.name, description: ins.summary, strategyId: b.strategy === "dip_rebound_loop" ? "dip_rebound_loop" : b.strategy, params: b.min_liquidity_usd ? { min_liquidity_usd: b.min_liquidity_usd } : {},
         assetIds: input.screenAssetId && !["watchlist_monitor", "meme_discovery"].includes(b.strategy) ? [input.screenAssetId] : [], markets: b.strategy === "meme_discovery" ? ["solana", "solana-demo"] : [],
-        isPaper: true, budgetUsd: 500, maxPositionUsd: 50, maxDailySpendUsd: 200, maxDailyLossUsd: 100, maxTradesPerDay: 10, minLiquidityUsd: b.min_liquidity_usd ?? 50000,
+        isPaper: true, budgetUsd: 500, maxPositionUsd: 50, maxDailySpendUsd: 200, maxDailyLossUsd: 100, maxTradesPerDay: null, minLiquidityUsd: b.min_liquidity_usd ?? 50000,
         maxSlippageBps: 150, maxPriceDeviationPct: 5, schedule: "every_1m", approvalRequired: true, notify: { trades: true, errors: true }, createdFromPrompt: originText, start: true } as BotConfig;
       return reply(`${ins.summary}. Review and activate below.`, { type: "bot", config, strategyName: b.strategy.replace(/_/g, " "), assetLabel: config.assetIds.length ? "Asset on screen" : "Your watchlist / new launches" }, "needs_approval");
     }

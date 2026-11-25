@@ -138,7 +138,6 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
           <Field k="Budget" v={usd(c.budgetUsd)} />
           <Field k="Max daily spend" v={usd(c.maxDailySpendUsd)} />
           <Field k="Max daily loss" v={usd(c.maxDailyLossUsd)} />
-          <Field k="Max trades/day" v={String(c.maxTradesPerDay)} />
           <Field k="Checks every" v={c.schedule.replace("every_", "")} />
           <Field k="Approval per trade" v={c.approvalRequired ? "Yes" : "No"} />
         </div>

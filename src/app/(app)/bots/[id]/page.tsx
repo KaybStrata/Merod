@@ -80,7 +80,7 @@ export default function BotDetail({ params }: { params: Promise<{ id: string }> 
         <Box><Stat label="Filled orders" value={stats.filled} sub={<span className="text-muted">{stats.rejected} rejected · {stats.pending} awaiting approval</span>} /></Box>
         <Box><Stat label="Win rate" value={stats.wins + stats.losses ? `${((stats.wins / (stats.wins + stats.losses)) * 100).toFixed(0)}%` : "—"} sub={<span className="text-muted">{stats.wins}W / {stats.losses}L</span>} /></Box>
         <Box><Stat label="Spent today" value={usd(bot.spent_today_usd)} sub={<span className="text-muted">cap {usd(bot.max_daily_spend_usd)}</span>} /></Box>
-        <Box><Stat label="Trades today" value={`${bot.trades_today}/${bot.max_trades_per_day}`} sub={<span className="text-muted">fees {usd(stats.fees)}</span>} /></Box>
+        <Box><Stat label="Trades today" value={String(bot.trades_today)} sub={<span className="text-muted">fees {usd(stats.fees)}</span>} /></Box>
       </div>
 
       {bot.strategy_id === "dip_rebound_loop" && (
@@ -166,14 +166,14 @@ function ConfigEditor({ bot, strategy, onSaved }: { bot: any; strategy: any; onS
   const locked = bot.status === "running";
   const [p, setP] = useState<Record<string, any>>(bot.params ?? {});
   const [f, setF] = useState({ name: bot.name, budgetUsd: bot.budget_usd, maxPositionUsd: bot.max_position_usd, maxDailySpendUsd: bot.max_daily_spend_usd, maxDailyLossUsd: bot.max_daily_loss_usd,
-    maxTradesPerDay: bot.max_trades_per_day, minLiquidityUsd: bot.min_liquidity_usd, maxSlippageBps: bot.max_slippage_bps, schedule: bot.schedule, approvalRequired: bot.approval_required });
+    minLiquidityUsd: bot.min_liquidity_usd, maxSlippageBps: bot.max_slippage_bps, schedule: bot.schedule, approvalRequired: bot.approval_required });
   const [busy, setBusy] = useState(false);
   async function save() {
     setBusy(true);
     try {
       const params = Object.fromEntries(Object.entries(p).map(([k, v]) => [k, strategy?.params?.find((x: any) => x.key === k)?.type === "number" ? (v === "" || v == null ? null : Number(v)) : v]));
       await api(`/api/bots/${bot.id}`, { method: "PATCH", json: { ...f, budgetUsd: Number(f.budgetUsd), maxPositionUsd: Number(f.maxPositionUsd), maxDailySpendUsd: Number(f.maxDailySpendUsd),
-        maxDailyLossUsd: Number(f.maxDailyLossUsd), maxTradesPerDay: Number(f.maxTradesPerDay), minLiquidityUsd: Number(f.minLiquidityUsd), maxSlippageBps: Number(f.maxSlippageBps), params } });
+        maxDailyLossUsd: Number(f.maxDailyLossUsd), minLiquidityUsd: Number(f.minLiquidityUsd), maxSlippageBps: Number(f.maxSlippageBps), params } });
       toast("Configuration saved", "up"); onSaved();
     } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
   }
@@ -194,7 +194,7 @@ function ConfigEditor({ bot, strategy, onSaved }: { bot: any; strategy: any; onS
         )}
         <div className="grid gap-3 sm:grid-cols-4">
           {n("budgetUsd", "Budget ($)")}{n("maxPositionUsd", "Max position ($)")}{n("maxDailySpendUsd", "Max daily spend ($)")}{n("maxDailyLossUsd", "Max daily loss ($)")}
-          {n("maxTradesPerDay", "Max trades / day")}{n("minLiquidityUsd", "Min liquidity ($)")}{n("maxSlippageBps", "Max slippage (bps)")}
+          {n("minLiquidityUsd", "Min liquidity ($)")}{n("maxSlippageBps", "Max slippage (bps)")}
           <Select label="Check every" disabled={locked} value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })}>{["every_15s", "every_1m", "every_5m", "every_15m", "every_1h"].map((s) => <option key={s} value={s}>{s.replace("every_", "")}</option>)}</Select>
         </div>
         <Toggle disabled={locked} checked={f.approvalRequired} onChange={(v) => setF({ ...f, approvalRequired: v })} label="Require my approval for each trade" />

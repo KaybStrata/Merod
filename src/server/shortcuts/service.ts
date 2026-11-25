@@ -214,7 +214,7 @@ export async function executeShortcut(userId: string, shortcutId: string, execut
             name: `Recurring $${action.amount} (${action.frequency ?? "weekly"})`, description: `Created by shortcut “${s.name}”`, strategyId: "recurring_buy",
             params: { amount_usd: action.amount, frequency: action.frequency ?? "weekly", weekday: "monday" }, assetIds: [assetId], markets: [],
             isPaper: true, budgetUsd: (action.amount ?? 50) * 12, maxPositionUsd: action.amount ?? 50, maxDailySpendUsd: (action.amount ?? 50) * 2,
-            maxDailyLossUsd: 100, maxTradesPerDay: 5, minLiquidityUsd: 0, maxSlippageBps: s.max_slippage_bps ?? 100, maxPriceDeviationPct: 5,
+            maxDailyLossUsd: 100, maxTradesPerDay: null, minLiquidityUsd: 0, maxSlippageBps: s.max_slippage_bps ?? 100, maxPriceDeviationPct: 5,
             schedule: "every_5m", approvalRequired: false, notify: { trades: true, errors: true }, start: true,
           });
           results.push({ index: p.index, description: p.description, ok: true, message: `Recurring buy bot ${bot.status}` });

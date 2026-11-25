@@ -18,7 +18,7 @@ export const BotConfigSchema = z.object({
   maxPositionUsd: z.number().positive().default(250),
   maxDailySpendUsd: z.number().positive().default(500),
   maxDailyLossUsd: z.number().positive().default(100),
-  maxTradesPerDay: z.number().int().positive().max(1000).default(10),
+  maxTradesPerDay: z.number().int().positive().nullable().default(null), // no daily trade-count limit by default
   minLiquidityUsd: z.number().min(0).default(50000),
   maxSlippageBps: z.number().int().min(1).max(5000).default(100),
   maxPriceDeviationPct: z.number().positive().default(5),
