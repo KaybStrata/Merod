@@ -34,7 +34,7 @@ export async function getAsset(id: string) {
 const VOL: Record<string, number> = { stock: 0.0009, etf: 0.0005, crypto: 0.0018, option: 0.003 };
 function gauss() { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 
-const TF_SEC: Record<string, number> = { "5m": 300, "1h": 3600, "1d": 86400 };
+const TF_SEC: Record<string, number> = { "1m": 60, "5m": 300, "1h": 3600, "1d": 86400 };
 const bucket = (ts: number, tf: string) => Math.floor(ts / 1000 / TF_SEC[tf]) * TF_SEC[tf] * 1000;
 
 /** Advance every simulated asset one step (geometric random walk) and roll candle bars. */
@@ -55,7 +55,7 @@ export async function tickSimulated() {
     const vol = Math.random() * 1000;
     await q(`UPDATE assets SET last_price=$2, change_24h=$3, price_source='simulated', price_updated_at=now(),
               volume_24h=COALESCE(volume_24h,0)*0.9999 + $4 WHERE id=$1`, [u.id, u.price, u.change, vol * u.price]);
-    for (const tf of ["5m", "1h", "1d"]) {
+    for (const tf of ["1m", "5m", "1h", "1d"]) {
       await q(`INSERT INTO price_bars (asset_id, timeframe, ts, open, high, low, close, volume, source)
                VALUES ($1,$2,to_timestamp($3/1000.0),$4,$4,$4,$4,$5,'simulated')
                ON CONFLICT (asset_id, timeframe, ts) DO UPDATE SET high=GREATEST(price_bars.high,$4), low=LEAST(price_bars.low,$4),

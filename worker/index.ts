@@ -15,7 +15,7 @@ import { runAutoTrading, runModoAutopilot } from "@/server/auto/engine";
 import { autoEnableSweep } from "@/server/providers/integrations";
 import { runScheduledTasks } from "@/server/auto/workspace";
 import { masterKeyInfo } from "@/server/crypto";
-import { ensureRealData, backfillRealHistory, simulationOn } from "@/server/market/real-data";
+import { ensureRealData, backfillRealHistory, simulationOn, prune1mBars } from "@/server/market/real-data";
 import { processPaperTriggers, reconcileLiveOrders, notify } from "@/server/engine/engine";
 import { tickDueBots, backtest } from "@/server/bots/runner";
 import { testIntegration } from "@/server/providers/integrations";
@@ -157,6 +157,7 @@ const timers = [
   every("auto_tasks", 30_000, () => runScheduledTasks()),
   every("modo_learning", 600_000, () => modoLearn()),
   every("simulated_feed", 3000, async () => { const f = await getFlags(); if (f.paper_trading && f.simulated_prices) await tickSimulated(); }),
+  every("prune_1m_bars", 3_600_000, () => prune1mBars()),
   every("real_history", 90_000, async () => { if (!(await simulationOn())) await backfillRealHistory(3); }),
   every("paper_triggers", 3000, processPaperTriggers),
   every("bots", 5000, () => tickDueBots(WORKER_ID)),

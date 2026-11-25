@@ -7,9 +7,10 @@ import { api, useApi } from "@/lib/api";
 import { ago } from "@/lib/format";
 import { Badge, Button, Card, Empty, Input, Modal, Select, Skeleton, Toggle, cx, useToast } from "@/components/ui";
 import { UserApiKeys } from "@/components/UserApiKeys";
+import { AccountTab as AccountTabUI, SecurityTab as SecurityTabUI } from "@/components/settings/AccountSecurity";
 
 const TABS = [
-  { id: "account", label: "Account", icon: User }, { id: "security", label: "Security", icon: ShieldCheck },
+  { id: "account", label: "Profile & account", icon: User }, { id: "security", label: "Security & 2FA", icon: ShieldCheck },
   { id: "trading", label: "Trading", icon: CandlestickChart }, { id: "risk", label: "Risk management", icon: Gauge },
   { id: "automation", label: "Automation permissions", icon: Bot }, { id: "notifications", label: "Notifications", icon: Bell },
   { id: "accounts", label: "Connected accounts", icon: Link2 }, { id: "ai", label: "AI preferences", icon: Sparkles },
@@ -72,126 +73,12 @@ function useSave(refresh: () => void) {
 }
 
 function AccountTab({ data, refresh }: any) {
-  const [v, setV] = useState({ display_name: data.profile.display_name, bio: data.profile.bio ?? "", avatar_color: data.profile.avatar_color ?? "#38bdf8", country: data.user.country ?? "" });
   const { save, busy } = useSave(refresh);
-  return (
-    <Card title="Account information">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <ChangeField kind="email" label="Email" current={data.user.email} needs2fa={data.user.totp_enabled} onDone={refresh} />
-        <ChangeField kind="handle" label="Username" current={data.profile.handle} needs2fa={false} onDone={refresh} />
-        <Input label="Display name" value={v.display_name} onChange={(e) => setV({ ...v, display_name: e.target.value })} />
-        <Input label="Country (ISO code, e.g. US)" maxLength={2} value={v.country} onChange={(e) => setV({ ...v, country: e.target.value.toUpperCase() })} hint="Used for jurisdiction rules on live features" />
-        <label className="block sm:col-span-2"><span className="mb-1 block text-xs font-medium text-muted">Bio</span>
-          <textarea maxLength={280} rows={3} value={v.bio} onChange={(e) => setV({ ...v, bio: e.target.value })} className="w-full rounded-xl border border-line bg-bg-2 p-3 text-sm outline-none focus:border-accent" /></label>
-        <label className="flex items-center gap-3 text-sm"><input type="color" value={v.avatar_color} onChange={(e) => setV({ ...v, avatar_color: e.target.value })} className="h-9 w-12 rounded-lg border border-line bg-transparent" /> Avatar color</label>
-      </div>
-      <div className="mt-4 flex justify-end"><Button variant="primary" loading={busy} onClick={() => save("account", v)}>Save</Button></div>
-    </Card>
-  );
-}
-
-/** Email or username with a "Change" button (email needs your password, and 2FA code when on). */
-function ChangeField({ kind, label, current, needs2fa, onDone }: { kind: "email" | "handle"; label: string; current: string; needs2fa: boolean; onDone: () => void }) {
-  const toast = useToast();
-  const [open, setOpen] = useState(false);
-  const [val, setVal] = useState(""); const [pw, setPw] = useState(""); const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  async function save() {
-    setBusy(true);
-    try {
-      await api("/api/me/account", { method: "PATCH", json: kind === "email" ? { kind, newEmail: val, password: pw, code: code || undefined } : { kind, handle: val.replace(/^@/, "") } });
-      toast(kind === "email" ? "Email changed. Other devices were signed out." : "Username changed", "up");
-      setOpen(false); setVal(""); setPw(""); setCode(""); onDone();
-    } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
-  }
-  return (
-    <div>
-      <span className="mb-1 block text-xs font-medium text-muted">{label}</span>
-      <div className="flex gap-2">
-        <div className="flex h-10 min-w-0 flex-1 items-center truncate rounded-xl border border-line bg-bg-2 px-3 text-sm">{kind === "handle" ? `@${current}` : current}</div>
-        <Button onClick={() => setOpen(true)}>Change</Button>
-      </div>
-      <Modal open={open} onClose={() => setOpen(false)} title={kind === "email" ? "Change email" : "Change username"}>
-        <div className="space-y-3">
-          <Input label={kind === "email" ? "New email" : "New username"} value={val} onChange={(e) => setVal(e.target.value)} placeholder={kind === "email" ? "you@example.com" : "new_username"} autoComplete="off" />
-          {kind === "handle" && <p className="text-[11px] text-muted">3–20 letters, numbers or underscores. Links to your old profile address will stop working.</p>}
-          {kind === "email" && <Input label="Current password" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />}
-          {kind === "email" && needs2fa && <Input label="2FA code" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value)} />}
-          {kind === "email" && <p className="text-[11px] text-muted">You'll sign in with the new email from now on. Other devices are signed out.</p>}
-          <div className="flex justify-end"><Button variant="primary" loading={busy} disabled={!val.trim() || (kind === "email" && !pw)} onClick={save}>Save</Button></div>
-        </div>
-      </Modal>
-    </div>
-  );
-}
-
-function ChangePassword({ needs2fa }: { needs2fa: boolean }) {
-  const toast = useToast();
-  const [v, setV] = useState({ current: "", next: "", confirm: "", code: "" });
-  const [busy, setBusy] = useState(false);
-  async function save() {
-    if (v.next !== v.confirm) return toast("The new passwords don't match", "down");
-    setBusy(true);
-    try {
-      await api("/api/me/account", { method: "PATCH", json: { kind: "password", currentPassword: v.current, newPassword: v.next, code: v.code || undefined } });
-      toast("Password changed. Other devices were signed out.", "up"); setV({ current: "", next: "", confirm: "", code: "" });
-    } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
-  }
-  return (
-    <Card title="Change password">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Input label="Current password" type="password" autoComplete="current-password" value={v.current} onChange={(e) => setV({ ...v, current: e.target.value })} />
-        <div className="hidden sm:block" />
-        <Input label="New password (10+ characters)" type="password" autoComplete="new-password" value={v.next} onChange={(e) => setV({ ...v, next: e.target.value })} />
-        <Input label="Confirm new password" type="password" autoComplete="new-password" value={v.confirm} onChange={(e) => setV({ ...v, confirm: e.target.value })} />
-        {needs2fa && <Input label="2FA code" inputMode="numeric" maxLength={6} value={v.code} onChange={(e) => setV({ ...v, code: e.target.value })} />}
-      </div>
-      <div className="mt-4 flex justify-end"><Button variant="primary" loading={busy} disabled={!v.current || v.next.length < 10} onClick={save}>Change password</Button></div>
-    </Card>
-  );
+  return <AccountTabUI data={data} save={save} busy={busy} refresh={refresh} />;
 }
 
 function SecurityTab({ data, refresh }: any) {
-  const toast = useToast();
-  const [enroll, setEnroll] = useState<any>(null);
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const sessions = useApi<any>("/api/settings/sessions");
-  async function start() { setBusy(true); try { setEnroll(await api("/api/auth/2fa")); } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); } }
-  async function confirm() { setBusy(true); try { await api("/api/auth/2fa", { method: "POST", json: { code } }); toast("Two-factor authentication enabled", "up"); setEnroll(null); setCode(""); refresh(); } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); } }
-  async function disable() { setBusy(true); try { await api("/api/auth/2fa", { method: "DELETE", json: { code } }); toast("2FA disabled"); setCode(""); refresh(); } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); } }
-  return (
-    <div className="space-y-4">
-      <ChangePassword needs2fa={!!data.user.totp_enabled} />
-      <Card title="Two-factor authentication" action={data.user.totp_enabled ? <Badge tone="up">Enabled</Badge> : <Badge tone="warn">Not enabled</Badge>}>
-        {data.user.totp_enabled ? (
-          <div className="flex flex-wrap items-end gap-3">
-            <p className="w-full text-sm text-muted">Your account requires an authenticator code at sign-in, for withdrawals and for other sensitive actions.</p>
-            <Input label="Code to disable" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
-            <Button variant="danger" loading={busy} disabled={code.length !== 6} onClick={disable}>Disable 2FA</Button>
-          </div>
-        ) : enroll ? (
-          <div className="flex flex-col gap-4 sm:flex-row">
-            {enroll.qr && <img src={enroll.qr} alt="2FA QR code" width={180} height={180} className="rounded-xl bg-white p-2" />}
-            <div className="space-y-3">
-              <p className="text-sm text-muted">Scan with Google Authenticator, 1Password or Authy, or enter this key manually:</p>
-              <code className="block break-all rounded-lg bg-bg-2 px-3 py-2 text-xs">{enroll.secret}</code>
-              <div className="flex items-end gap-2"><Input label="6-digit code" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
-                <Button variant="primary" loading={busy} disabled={code.length !== 6} onClick={confirm}>Verify & enable</Button></div>
-            </div>
-          </div>
-        ) : <><p className="text-sm text-muted">Protect your account with an authenticator app. Required for withdrawals.</p><Button className="mt-3" variant="primary" loading={busy} onClick={start}>Set up 2FA</Button></>}
-      </Card>
-      <Card title="Active sessions" icon={<Monitor className="size-4 text-accent-2" />} action={<Button size="sm" variant="ghost" onClick={async () => { const r = await api("/api/settings/sessions?all=others", { method: "DELETE" }); toast(`Signed out ${r.revoked} other session(s)`); sessions.refresh(); }}>Sign out other sessions</Button>}>
-        {(sessions.data?.sessions ?? []).map((s: any) => (
-          <div key={s.id} className="flex items-center justify-between gap-3 border-b border-line/60 py-2.5 text-sm last:border-0">
-            <span className="min-w-0"><span className="block truncate">{s.user_agent || "Unknown device"}</span><span className="text-xs text-muted">{s.ip} · signed in {ago(s.created_at)}{s.current && " · this device"}</span></span>
-            {!s.current ? <Button size="sm" variant="ghost" onClick={async () => { await api(`/api/settings/sessions?id=${s.id}`, { method: "DELETE" }); sessions.refresh(); }}>Revoke</Button> : <Badge tone="up">Current</Badge>}
-          </div>
-        ))}
-      </Card>
-    </div>
-  );
+  return <SecurityTabUI data={data} refresh={refresh} />;
 }
 
 function TradingTab({ data }: any) {

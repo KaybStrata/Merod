@@ -4,7 +4,7 @@ import { q } from "@/server/db";
 import { getStrategy } from "@/server/bots/strategies";
 
 type Ctx = { params: Promise<{ id: string }> };
-const TF = new Set(["5m", "1h", "1d"]);
+const TF = new Set(["1m", "5m", "1h", "1d"]);
 
 /**
  * Trade markers for the chart:

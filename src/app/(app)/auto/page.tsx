@@ -8,6 +8,7 @@ import {
 import { api, useApi } from "@/lib/api";
 import { useShell, useRealtime } from "@/components/shell/context";
 import { MimicTabs } from "@/components/MimicTabs";
+import { TimeRangePicker, range, barsQuery, type Range } from "@/components/TimeRange";
 import { AssetIcon, Badge, Button, Empty, Input, Modal, Pills, Select, Sparkline, cx, useToast } from "@/components/ui";
 import { ago, price as fmtPrice, usd } from "@/lib/format";
 
@@ -198,16 +199,16 @@ export default function AutoTradingWorkspace() {
 
 /* ───────────────────────── Pieces ───────────────────────── */
 function ChartTile({ t, on, onRemove }: { t: any; on: boolean; onRemove: () => void }) {
-  const [tf, setTf] = useState("5m");
-  const bars = useApi<any>(`/api/assets/${t.id}/bars?tf=${tf}&limit=${tf === "5m" ? 96 : tf === "1h" ? 72 : 90}`, { refreshMs: 30_000 });
+  const [rng, setRng] = useState<Range>(range("6h"));
+  const bars = useApi<any>(`/api/assets/${t.id}/bars?${barsQuery(rng.seconds)}`, { refreshMs: 30_000 });
   const closes = (bars.data?.bars ?? []).filter((b: any) => b.source !== "simulated").map((b: any) => Number(b.close));
   const [menu, setMenu] = useState(false);
   return (
     <div className="relative rounded-2xl border border-line bg-panel/80 p-3">
       <div className="flex items-center justify-between gap-2">
         <Link href={`/terminal/${t.id}`} className="flex min-w-0 items-center gap-2"><AssetIcon symbol={t.symbol} logo={t.logo_url} size={26} /><span className="truncate"><span className="font-semibold">{t.symbol}</span> <span className="text-xs text-faint">{t.name}</span></span></Link>
-        <select value={tf} onChange={(e) => setTf(e.target.value)} className="rounded-md border border-line bg-bg-2 px-1.5 py-0.5 text-xs"><option value="5m">5m</option><option value="1h">1h</option><option value="1d">1d</option></select>
       </div>
+      <div className="mt-1.5"><TimeRangePicker value={rng} onChange={setRng} size="sm" compact /></div>
       <div className="mt-2 flex items-end justify-between gap-2">
         <div className="min-w-0 flex-1">{closes.length > 1 ? <Sparkline data={closes} width={220} height={70} className="h-[70px] w-full" /> : <div className="flex h-[70px] items-center text-[11px] text-faint">{bars.loading ? "Loading…" : "Real price history is still loading"}</div>}</div>
         <div className="text-right"><div className="num font-semibold">{t.live ? fmtPrice(Number(t.last_price)) : "—"}</div><div className={cx("num text-xs", Number(t.change_24h) >= 0 ? "text-up" : "text-down")}>{t.live ? pct(Number(t.change_24h)) : "no live price"}</div></div>

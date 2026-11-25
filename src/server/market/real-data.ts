@@ -32,11 +32,11 @@ export async function purgeSimulatedData() {
   return { barsDeleted: bars[0]?.n ?? 0, pricesCleared: assets.length };
 }
 
-const TF_SEC: Record<string, number> = { "5m": 300, "1h": 3600, "1d": 86400 };
+const TF_SEC: Record<string, number> = { "1m": 60, "5m": 300, "1h": 3600, "1d": 86400 };
 
 /** Extend chart candles with a real price tick (source = the provider it came from). */
 export async function recordTick(assetId: string, price: number, source: string, atMs = Date.now()) {
-  for (const tf of ["5m", "1h", "1d"]) {
+  for (const tf of ["1m", "5m", "1h", "1d"]) {
     const ts = Math.floor(atMs / 1000 / TF_SEC[tf]) * TF_SEC[tf];
     await q(`INSERT INTO price_bars (asset_id, timeframe, ts, open, high, low, close, volume, source)
              VALUES ($1,$2,to_timestamp($3),$4,$4,$4,$4,0,$5)
@@ -125,4 +125,10 @@ export async function realDataStatus() {
                                    count(*) FILTER (WHERE price_source IS NULL)::int AS no_price,
                                    count(*) FILTER (WHERE price_source = 'simulated')::int AS simulated FROM assets WHERE NOT ('demo_data' = ANY(risk_flags))`);
   return r;
+}
+
+/** 1-minute candles are only needed for short chart windows: keep 3 days of them. */
+export async function prune1mBars() {
+  const r = await q<{ n: number }>("WITH d AS (DELETE FROM price_bars WHERE timeframe='1m' AND ts < now() - interval '3 days' RETURNING 1) SELECT count(*)::int AS n FROM d");
+  return r[0]?.n ?? 0;
 }

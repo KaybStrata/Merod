@@ -4,6 +4,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Maximize2 } from "lucide-react";
 import { useApi } from "@/lib/api";
+import { TimeRangePicker, range, barsQuery, type Range } from "@/components/TimeRange";
 import { CheckCircle2, XCircle, AlertTriangle, Bot, ShieldCheck, Repeat } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge, Button, PaperBadge, SourceBadge, cx, useToast } from "@/components/ui";
@@ -18,8 +19,8 @@ const CandleChart = dynamic(() => import("@/components/terminal/charts").then((m
 function TradeChart({ assetId, symbol, side, price: px, at, filled, takeProfit, stopLoss, limitPrice }: {
   assetId: string; symbol: string; side: "buy" | "sell"; price: number | null; at: string | null; filled: boolean; takeProfit?: number | null; stopLoss?: number | null; limitPrice?: number | null;
 }) {
-  const [tf, setTf] = useState<"5m" | "1h">("5m");
-  const bars = useApi<any>(`/api/assets/${assetId}/bars?tf=${tf}&limit=${tf === "5m" ? 144 : 168}`);
+  const [rng, setRng] = useState<Range>(range("12h"));
+  const bars = useApi<any>(`/api/assets/${assetId}/bars?${barsQuery(rng.seconds)}`);
   const list = (bars.data?.bars ?? []).map((b: any) => ({ time: Number(b.time), open: +b.open, high: +b.high, low: +b.low, close: +b.close, volume: +b.volume }));
   const t = Math.floor(new Date(at ?? Date.now()).getTime() / 1000);
   const entry = limitPrice ?? px;
@@ -33,10 +34,10 @@ function TradeChart({ assetId, symbol, side, price: px, at, filled, takeProfit, 
       <div className="flex items-center justify-between px-2 py-1 text-[11px] text-muted">
         <span>{symbol} · {filled ? "where your trade filled" : "where this trade would happen"}</span>
         <span className="flex items-center gap-1">
-          {(["5m", "1h"] as const).map((x) => <button key={x} onClick={() => setTf(x)} className={cx("rounded px-1.5 py-0.5", tf === x ? "bg-panel-2 text-text" : "hover:text-text")}>{x}</button>)}
           <Link href={`/terminal/${assetId}`} className="ml-1 rounded p-0.5 hover:text-text" title="Open full chart"><Maximize2 className="size-3" /></Link>
         </span>
       </div>
+      <div className="px-2 pb-1"><TimeRangePicker value={rng} onChange={setRng} size="sm" /></div>
       {list.length > 1
         ? <CandleChart bars={list} indicators={[]} height={190} compact priceLines={lines}
             markers={[{ time: Math.max(t, list[0].time), side, kind: "mine", label: `${side === "buy" ? "BUY" : "SELL"} ${entry ? price(entry) : ""}` }]} />

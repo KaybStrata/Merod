@@ -1,4 +1,5 @@
 "use client";
+import { TimeRangePicker, range, barsFor, barsQuery, type Range as TimeWindow } from "@/components/TimeRange";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { use, useEffect, useMemo, useState } from "react";
@@ -21,8 +22,9 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
   const toast = useToast();
   const { openPrompt, connected } = useShell();
   const detail = useApi<any>(`/api/assets/${id}`, { refreshMs: connected ? 15000 : 5000 });
-  const [tf, setTf] = useState<"5m" | "1h" | "1d">("1h");
-  const bars = useApi<any>(`/api/assets/${id}/bars?tf=${tf}&limit=500`);
+  const [rng, setRng] = useState<TimeWindow>(range("1W"));
+  const tf = barsFor(rng.seconds).tf;
+  const bars = useApi<any>(`/api/assets/${id}/bars?${barsQuery(rng.seconds)}`, { refreshMs: rng.seconds <= 3 * 3600 ? 30_000 : 0 });
   const [indicators, setIndicators] = useState<Indicator[]>(["sma20"]);
   const [live, setLive] = useState<{ price: number; time: number } | null>(null);
   const [lastPrice, setLastPrice] = useState<number | null>(null);
@@ -104,7 +106,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
         <div className="space-y-4 xl:col-span-9">
           <Card pad={false}>
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-3">
-              <Pills size="sm" value={tf} onChange={setTf} options={[{ value: "5m", label: "5m" }, { value: "1h", label: "1H" }, { value: "1d", label: "1D" }]} />
+              <TimeRangePicker value={rng} onChange={setRng} size="sm" />
               <div className="flex flex-wrap gap-1">
                 {([["sma20", "SMA 20"], ["ema50", "EMA 50"], ["bb", "Bollinger"]] as [Indicator, string][]).map(([k, l]) => (
                   <button key={k} onClick={() => toggleInd(k)} className={cx("rounded-lg border px-2.5 py-1 text-xs", indicators.includes(k) ? "border-accent/50 bg-accent-soft text-accent-2" : "border-line text-muted hover:text-text")}>{l}</button>
