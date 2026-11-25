@@ -17,13 +17,13 @@ const Patch = z.object({
   tradeUsd: z.number().min(1).max(1_000_000).optional(),
   maxDailyUsd: z.number().min(1).max(10_000_000).optional(),
   maxOpen: z.number().int().min(1).max(50).optional(),
-  minConfidence: z.number().min(0.3).max(0.95).optional(),
+  minConfidence: z.number().min(0.01).max(0.99).optional(),
   minTheoryTrades: z.number().int().min(0).max(500).optional(),
   minTheoryWinRate: z.number().min(0).max(1).optional(),
   takeProfitPct: z.number().min(0.1).max(500).optional(),
   stopLossPct: z.number().min(0.1).max(100).optional(),
   modoAutopilot: z.boolean().optional(),
-  modoMinConfidence: z.number().min(0.3).max(0.95).optional(),
+  modoMinConfidence: z.number().min(0.01).max(0.99).optional(),
 }).strict();
 
 /** Change settings or flip the on/off switch. Turning it on runs a first pass right away. */

@@ -440,7 +440,7 @@ function SettingsForm({ s, onSaved }: { s: any; onSaved: () => void }) {
         <Input label="$ per trade" type="number" min={1} value={f.tradeUsd} onChange={(e) => set("tradeUsd", Number(e.target.value))} />
         <Input label="Max $ per day" type="number" min={1} value={f.maxDailyUsd} onChange={(e) => set("maxDailyUsd", Number(e.target.value))} />
         <Input label="Max open trades" type="number" min={1} value={f.maxOpen} onChange={(e) => set("maxOpen", Number(e.target.value))} />
-        <Input label="Min confidence (%)" type="number" min={30} max={95} value={f.minConfidence} onChange={(e) => set("minConfidence", Number(e.target.value))} />
+        <Input label="Min confidence (%)" type="number" min={1} max={99} value={f.minConfidence} onChange={(e) => set("minConfidence", Number(e.target.value))} />
         <Input label="Take profit (%)" type="number" min={0.1} value={f.takeProfitPct} onChange={(e) => set("takeProfitPct", Number(e.target.value))} />
         <Input label="Stop loss (%)" type="number" min={0.1} value={f.stopLossPct} onChange={(e) => set("stopLossPct", Number(e.target.value))} />
         <Input label="Theoretical trades before real" type="number" min={0} value={f.minTheoryTrades} onChange={(e) => set("minTheoryTrades", Number(e.target.value))} />
@@ -472,9 +472,7 @@ function ModoAutopilot({ data, onChange }: { data: any; onChange: () => void }) 
           <p className="mt-0.5 text-xs text-muted">Modo scans news and articles, reads what other traders are doing (traders with profitable recent trades count more), checks momentum and your positions, and places its own trades: no limit on how many. It sells when it changes its mind, at take-profit / stop-loss, or after 24h, and trains itself on every profitable and unprofitable result.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Select aria-label="Minimum confidence" value={String(Math.round(Number(s?.modo_min_confidence ?? 0.5) * 100))} disabled={!s || busy} onChange={(e) => patch({ modoMinConfidence: Number(e.target.value) / 100 }, "Saved")}>
-            {[40, 50, 60, 70, 80].map((v) => <option key={v} value={v}>Trade at {v}%+ confidence</option>)}
-          </Select>
+          <ConfidencePicker value={Math.round(Number(s?.modo_min_confidence ?? 0.5) * 100)} disabled={!s || busy} onChange={(v) => patch({ modoMinConfidence: v / 100 }, `Modo trades at ${v}%+ confidence`)} />
           <button onClick={() => patch({ modoAutopilot: !on }, on ? "Modo Autopilot is OFF" : "Modo Autopilot is ON: Modo is thinking…")} disabled={!s || busy} aria-label="Modo Autopilot switch"
             className={cx("relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50", on ? "bg-up" : "bg-panel-2")}>
             {busy ? <Loader2 className="absolute left-3.5 top-1.5 size-4 animate-spin text-white" /> : <span className={cx("absolute top-1 size-5 rounded-full bg-white transition-all", on ? "left-[26px]" : "left-1")} />}
@@ -528,6 +526,36 @@ function ModoActivity({ on }: { on: boolean }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+const CONF_PRESETS = [40, 50, 60, 70, 80];
+/** Preset confidence bars, or any custom % (1–99). */
+function ConfidencePicker({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled?: boolean }) {
+  const isPreset = CONF_PRESETS.includes(value);
+  const [custom, setCustom] = useState(!isPreset);
+  const [text, setText] = useState(String(value));
+  useEffect(() => { setText(String(value)); if (!CONF_PRESETS.includes(value)) setCustom(true); }, [value]);
+  const n = Number(text);
+  const valid = Number.isFinite(n) && n >= 1 && n <= 99;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <Select aria-label="Minimum confidence" value={custom ? "custom" : String(value)} disabled={disabled}
+        onChange={(e) => { if (e.target.value === "custom") setCustom(true); else { setCustom(false); onChange(Number(e.target.value)); } }}>
+        {CONF_PRESETS.map((v) => <option key={v} value={v}>Trade at {v}%+ confidence</option>)}
+        <option value="custom">{custom && !isPreset ? `Custom: ${value}%+` : "Custom…"}</option>
+      </Select>
+      {custom && (
+        <form onSubmit={(e) => { e.preventDefault(); if (valid) onChange(Math.round(n)); }} className="flex items-center gap-1">
+          <span className="flex h-9 items-center rounded-xl border border-line bg-bg-2 px-2 focus-within:border-accent">
+            <input inputMode="numeric" value={text} onChange={(e) => setText(e.target.value.replace(/[^0-9.]/g, ""))} aria-label="Custom confidence %" className="w-12 bg-transparent text-sm outline-none" />
+            <span className="text-xs text-muted">%</span>
+          </span>
+          <Button size="sm" type="submit" disabled={disabled || !valid || Math.round(n) === value}>Set</Button>
+        </form>
+      )}
+      {custom && valid && n > 85 && <span className="basis-full text-[10px] text-warn">Modo&apos;s ideas currently max out at 85% confidence, so above 85% it won&apos;t trade.</span>}
     </div>
   );
 }
