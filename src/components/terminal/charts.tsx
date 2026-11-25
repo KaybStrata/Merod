@@ -9,14 +9,32 @@ function cssVar(name: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
+/** Show chart times on the viewer's own clock (the library defaults to UTC). */
+const fmt = (opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(undefined, opts);
+const crosshairFmt = fmt({ weekday: "short", day: "numeric", month: "short", year: "2-digit", hour: "numeric", minute: "2-digit", second: "2-digit" });
+const clockFmt = fmt({ hour: "numeric", minute: "2-digit" });
+const dayFmt = fmt({ day: "numeric", month: "short" });
+const monthFmt = fmt({ month: "short", year: "2-digit" });
+const yearFmt = fmt({ year: "numeric" });
+const toDate = (t: any) => new Date((typeof t === "number" ? t : Date.UTC(t.year, t.month - 1, t.day) / 1000) * 1000);
+export const localTimeOptions = {
+  localization: { timeFormatter: (t: any) => crosshairFmt.format(toDate(t)) },
+  // tickMarkType: 0 year, 1 month, 2 day of month, 3 time, 4 time with seconds
+  tickMarkFormatter: (t: any, type: number) => {
+    const d = toDate(t);
+    return type === 0 ? yearFmt.format(d) : type === 1 ? monthFmt.format(d) : type === 2 ? dayFmt.format(d) : clockFmt.format(d);
+  },
+};
+
 function baseOptions(height: number) {
   return {
     height,
+    localization: localTimeOptions.localization,
     layout: { background: { color: "transparent" }, textColor: cssVar("--muted", "#8b93ad"), fontSize: 11, attributionLogo: false },
     grid: { vertLines: { visible: false }, horzLines: { color: cssVar("--line", "#1e2640") + "55" } },
     rightPriceScale: { borderColor: cssVar("--line", "#1e2640"), scaleMargins: { top: 0.12, bottom: 0.2 } },
     // Neat candles: never wider than 12px, even when there are only a few of them.
-    timeScale: { borderColor: cssVar("--line", "#1e2640"), timeVisible: true, secondsVisible: false, barSpacing: 8, minBarSpacing: 2, maxBarSpacing: 12, rightOffset: 4 },
+    timeScale: { borderColor: cssVar("--line", "#1e2640"), timeVisible: true, secondsVisible: false, barSpacing: 8, minBarSpacing: 2, maxBarSpacing: 12, rightOffset: 4, tickMarkFormatter: localTimeOptions.tickMarkFormatter },
     crosshair: { mode: 1 },
   } as const;
 }
