@@ -35,6 +35,9 @@ export default function AdminPage() {
   );
 }
 
+const ROLE_LABEL: Record<string, string> = { user: "User", admin: "Admin", compliance: "Compliance", support: "Support" };
+const ROLE_HELP: Record<string, string> = { user: "Normal trader", admin: "Full admin panel: users, integrations, flags, trading", compliance: "Compliance reviews and records", support: "Helps users" };
+
 /* ───────── Real-money trading (owner) ───────── */
 const RM_LABEL: Record<string, { title: string; note: string }> = {
   live_crypto_trading: { title: "Real-money crypto trading", note: "Trades in connected exchanges and wallets use real money" },
@@ -213,6 +216,7 @@ function UsersTab() {
   return (
     <Card title="Users" icon={<Users className="size-4 text-accent-2" />}
       action={<form onSubmit={(e) => { e.preventDefault(); setQuery(term); }} className="relative w-60"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" /><input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search email or handle" className="h-9 w-full rounded-xl border border-line bg-bg-2 pl-9 pr-3 text-sm outline-none focus:border-accent" /></form>}>
+      <p className="mb-2 text-xs text-muted"><b className="text-text">Roles:</b> {Object.entries(ROLE_HELP).map(([r, h]) => `${ROLE_LABEL[r]} = ${h.toLowerCase()}`).join(" · ")}. <b className="text-text">Super admin</b> (you) already has all of them.</p>
       {loading && !data ? <Skeleton className="h-60" /> : !data?.users.length ? <Empty title="No users found" /> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-sm">
@@ -221,14 +225,18 @@ function UsersTab() {
               {data.users.map((u: any) => (
                 <tr key={u.id} className="border-t border-line">
                   <td className="py-2"><div className="font-medium">@{u.handle} <span className="text-muted">{u.display_name}</span></div><div className="text-xs text-faint">{u.email}</div></td>
-                  <td><select value={u.role} onChange={(e) => patch(u.id, { role: e.target.value })} className="h-8 rounded-lg border border-line bg-bg-2 px-2 text-xs">{["user", "admin", "compliance", "support"].map((r) => <option key={r}>{r}</option>)}</select></td>
+                  <td>{u.role === "super_admin"
+                    ? <span className="inline-flex flex-col"><Badge tone="accent">Super admin (owner)</Badge><span className="mt-0.5 text-[10px] text-faint">Has every permission: admin, compliance, support</span></span>
+                    : <select value={u.role} onChange={(e) => patch(u.id, { role: e.target.value })} title={ROLE_HELP[u.role]} className="h-8 rounded-lg border border-line bg-bg-2 px-2 text-xs">
+                        {Object.entries(ROLE_LABEL).map(([r, l]) => <option key={r} value={r}>{l}</option>)}
+                      </select>}</td>
                   <td><StatusPill status={u.status === "active" ? "running" : "halted"} /></td>
                   <td>{u.totp_enabled ? <CheckCircle2 className="size-4 text-up" /> : <XCircle className="size-4 text-faint" />}</td>
                   <td><PaperBadge paper={u.trading_mode !== "live"} /></td>
                   <td className="num">{u.orders}</td><td className="num">{u.bots_running}</td>
                   <td className="text-xs text-muted">{u.last_login ? ago(u.last_login) : "never"}</td>
                   <td className="text-right">
-                    {u.status === "active"
+                    {u.role === "super_admin" ? null : u.status === "active"
                       ? <Button size="sm" variant="ghost" className="text-down" onClick={() => confirm(`Suspend @${u.handle}? Sessions are revoked and bots halted.`) && patch(u.id, { status: "suspended" })}>Suspend</Button>
                       : <Button size="sm" variant="ghost" onClick={() => patch(u.id, { status: "active" })}>Reactivate</Button>}
                   </td>

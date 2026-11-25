@@ -487,13 +487,47 @@ function ModoAutopilot({ data, onChange }: { data: any; onChange: () => void }) 
           <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Win rate</div><div className="num text-sm font-semibold">{m?.closed ? `${Math.round((m.wins / m.closed) * 100)}%` : "—"}</div><div className="text-faint">{m?.wins ?? 0}/{m?.closed ?? 0} closed</div></div>
           <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Total return</div><div className={cx("num text-sm font-semibold", Number(m?.total_return) >= 0 ? "text-up" : "text-down")}>{m?.closed ? pct(Number(m.total_return)) : "—"}</div><div className="text-faint">{s?.modo_last_run_at ? `thought ${ago(s.modo_last_run_at)}` : "not run yet"}</div></div>
         </div>
-        <div className="max-h-28 overflow-y-auto rounded-lg border border-line bg-bg/40 p-2 lg:col-span-2">
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-faint">Modo's latest thinking</div>
-          {thoughts.length === 0 ? <p className="text-[11px] text-faint">{on ? "Thinking… the first pass appears here within a minute." : "Turn it on to watch Modo scan the news and trade."}</p>
-            : <ul className="space-y-0.5">{thoughts.slice(-10).map((t, i) => <li key={i} className={cx("text-[11px] leading-snug", t.kind === "idea" || t.kind === "news" ? "text-text" : t.kind === "warn" ? "text-warn" : "text-muted")}>• {t.text}</li>)}</ul>}
-        </div>
+        <div className="lg:col-span-2"><ModoActivity on={on} /></div>
       </div>
       <p className="mt-2 text-[10px] text-faint">Trades use the account and “$ per trade” from Settings below (paper by default). Real-money trades also need the real-money switches in Admin and still pass every risk check.</p>
     </section>
+  );
+}
+
+const MODO_DOT: Record<string, string> = { execution: "bg-up", close: "bg-accent-2", decision: "bg-warn", thought: "bg-faint" };
+const MODO_LABEL: Record<string, string> = { execution: "Executed", close: "Closed", decision: "Decided", thought: "Thinking" };
+
+/** Modo auto trading activity: executions, decisions, closed trades and Modo's thought process, live. */
+function ModoActivity({ on }: { on: boolean }) {
+  const { data, refresh } = useApi<any>("/api/auto/activity?origin=modo", { refreshMs: 5000 });
+  useRealtime((e: any) => { if (e.type === "auto") refresh(); });
+  const [filter, setFilter] = useState<"all" | "execution" | "decision" | "thought">("all");
+  const events: any[] = (data?.events ?? []).filter((e: any) => filter === "all" || e.kind === filter || (filter === "execution" && e.kind === "close"));
+  const counts = (k: string) => (data?.events ?? []).filter((e: any) => e.kind === k || (k === "execution" && e.kind === "close")).length;
+  return (
+    <div className="flex h-full flex-col rounded-lg border border-line bg-bg/40 p-2">
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1.5">
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">
+          Modo auto trading activity
+          <span className={cx("flex items-center gap-1 normal-case", on ? "text-up" : "")}><span className={cx("size-1.5 rounded-full", on ? "bg-up pulse-dot" : "bg-faint")} />{on ? "live" : "off"}</span>
+        </span>
+        <span className="flex gap-0.5">
+          {([["all", "All"], ["execution", `Executions (${counts("execution")})`], ["decision", `Decisions (${counts("decision")})`], ["thought", "Thoughts"]] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setFilter(k)} className={cx("rounded-md px-1.5 py-0.5 text-[10px]", filter === k ? "bg-accent-soft text-text" : "text-muted hover:text-text")}>{l}</button>
+          ))}
+        </span>
+      </div>
+      <ul className="max-h-48 min-h-24 flex-1 space-y-1 overflow-y-auto pr-1">
+        {events.length === 0 && <li className="text-[11px] text-faint">{on ? "Waiting for Modo's next round (every 3 minutes)…" : "Turn Modo Autopilot on to see its decisions and trades here."}</li>}
+        {events.map((e, i) => (
+          <li key={i} className="flex gap-2 text-[11px] leading-snug">
+            <span className={cx("mt-1 size-1.5 shrink-0 rounded-full", MODO_DOT[e.kind])} />
+            <span className="w-14 shrink-0 text-faint" title={new Date(e.at).toLocaleString()}>{new Date(e.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            <span className="min-w-0"><b className={cx("mr-1 font-medium", e.kind === "execution" ? "text-up" : e.kind === "close" ? "text-accent-2" : e.kind === "decision" ? "text-warn" : "text-faint")}>{MODO_LABEL[e.kind]}</b>
+              <span className={e.kind === "thought" ? "text-muted" : "text-text"}>{e.text.replace(/^Modo (decided: |closed |bought |order )/i, (m: string) => m.toLowerCase().includes("closed") ? "" : "")}</span></span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

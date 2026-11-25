@@ -404,7 +404,10 @@ export async function runModoAutopilotFor(userId: string) {
     }
   }
   if (!ideas.length) thoughts.push({ text: "No trade this round: the signals don't agree strongly enough.", kind: "think", at: Date.now() });
-  await q("UPDATE auto_trading SET modo_thoughts=$2 WHERE user_id=$1", [userId, JSON.stringify(thoughts.slice(-40))]);
+  // Keep a running history (last 200) so the activity feed shows earlier rounds too.
+  thoughts.unshift({ text: `New round: scanned news, trader flow and momentum (${ideas.length} idea${ideas.length === 1 ? "" : "s"})`, kind: "round", at: thoughts[0]?.at ?? Date.now() });
+  await q(`UPDATE auto_trading SET modo_thoughts = (SELECT COALESCE(jsonb_agg(x), '[]'::jsonb) FROM (SELECT x FROM jsonb_array_elements(modo_thoughts || $2::jsonb) x OFFSET GREATEST(jsonb_array_length(modo_thoughts || $2::jsonb) - 200, 0)) t) WHERE user_id=$1`,
+    [userId, JSON.stringify(thoughts)]);
   return { bought, sold, ideas: ideas.length };
 }
 

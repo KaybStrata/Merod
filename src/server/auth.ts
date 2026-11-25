@@ -115,8 +115,8 @@ export async function requireUser(): Promise<SessionUser> {
 }
 export async function requireRole(...roles: Role[]): Promise<SessionUser> {
   const u = await requireUser();
-  // super_admin can do everything an admin can.
-  const ok = roles.includes(u.role) || (u.role === "super_admin" && roles.includes("admin"));
+  // super_admin holds every role's permissions (admin, compliance, support).
+  const ok = roles.includes(u.role) || u.role === "super_admin";
   if (!ok) throw new HttpError(403, "Insufficient permissions");
   return u;
 }

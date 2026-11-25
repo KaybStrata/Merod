@@ -13,11 +13,19 @@ function baseOptions(height: number) {
   return {
     height,
     layout: { background: { color: "transparent" }, textColor: cssVar("--muted", "#8b93ad"), fontSize: 11, attributionLogo: false },
-    grid: { vertLines: { color: cssVar("--line", "#1e2640") + "80" }, horzLines: { color: cssVar("--line", "#1e2640") + "80" } },
-    rightPriceScale: { borderColor: cssVar("--line", "#1e2640") },
-    timeScale: { borderColor: cssVar("--line", "#1e2640"), timeVisible: true, secondsVisible: false },
+    grid: { vertLines: { visible: false }, horzLines: { color: cssVar("--line", "#1e2640") + "55" } },
+    rightPriceScale: { borderColor: cssVar("--line", "#1e2640"), scaleMargins: { top: 0.12, bottom: 0.2 } },
+    // Neat candles: never wider than 12px, even when there are only a few of them.
+    timeScale: { borderColor: cssVar("--line", "#1e2640"), timeVisible: true, secondsVisible: false, barSpacing: 8, minBarSpacing: 2, maxBarSpacing: 12, rightOffset: 4 },
     crosshair: { mode: 1 },
   } as const;
+}
+
+/** Decimal places that suit the price: 2 for normal prices, more for sub-dollar and tiny meme-coin prices. */
+export function pricePrecision(p: number) {
+  if (!(p > 0)) return 2;
+  if (p >= 1) return 2;
+  return Math.min(12, Math.max(4, Math.ceil(-Math.log10(p)) + 3));
 }
 
 export interface Bar { time: number; open: number; high: number; low: number; close: number; volume: number }
@@ -48,11 +56,14 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
 
   useEffect(() => {
     if (!el.current) return;
-    const c = createChart(el.current, { ...baseOptions(height), width: el.current.clientWidth, ...(compact ? { handleScroll: false, handleScale: false, timeScale: { borderColor: cssVar("--line", "#1e2640"), timeVisible: true, secondsVisible: false, rightOffset: 4 } } : {}) });
+    const c = createChart(el.current, { ...baseOptions(height), width: el.current.clientWidth, ...(compact ? { handleScroll: false, handleScale: false } : {}) });
     chart.current = c;
     const up = cssVar("--up", "#22c993"), down = cssVar("--down", "#f0506e");
     const levels = priceLines.map((l) => l.price).filter((x) => x > 0);
-    const cs = c.addSeries(CandlestickSeries, { upColor: up, downColor: down, borderVisible: false, wickUpColor: up, wickDownColor: down,
+    const lastClose = bars.length ? +bars[bars.length - 1].close : 0;
+    const prec = pricePrecision(lastClose);
+    const priceFormat = { type: "price" as const, precision: prec, minMove: Math.pow(10, -prec) };
+    const cs = c.addSeries(CandlestickSeries, { upColor: up, downColor: down, borderVisible: false, wickUpColor: up, wickDownColor: down, priceFormat,
       // Keep marked levels (entry, take-profit, stop-loss) inside the visible price range.
       ...(levels.length ? { autoscaleInfoProvider: (original: () => any) => {
         const r = original(); if (!r?.priceRange) return r;
@@ -60,7 +71,7 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
       } } : {}) });
     candles.current = cs;
     const vol = c.addSeries(HistogramSeries, { priceFormat: { type: "volume" }, priceScaleId: "vol" });
-    c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    c.priceScale("vol").applyOptions({ scaleMargins: { top: 0.86, bottom: 0 } });
     const data = bars.map((b) => ({ time: b.time as UTCTimestamp, open: +b.open, high: +b.high, low: +b.low, close: +b.close }));
     cs.setData(data);
     markerApi.current = createSeriesMarkers(cs, []);
@@ -68,13 +79,14 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
     vol.setData(bars.map((b) => ({ time: b.time as UTCTimestamp, value: +b.volume, color: (+b.close >= +b.open ? up : down) + "55" })));
     const closes = bars.map((b) => +b.close);
     const line = (vals: (number | null)[], color: string, width = 1.5) => {
-      const s = c.addSeries(LineSeries, { color, lineWidth: width as any, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
+      const s = c.addSeries(LineSeries, { color, lineWidth: width as any, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat });
       s.setData(vals.flatMap((v, i) => (v == null ? [] : [{ time: bars[i].time as UTCTimestamp, value: v }])));
     };
     if (indicators.includes("sma20")) line(sma(closes, 20), "#f5b84a");
     if (indicators.includes("ema50")) line(ema(closes, 50), "#4aa8ff");
     if (indicators.includes("bb")) { const b = boll(closes); line(b.map((x) => x?.up ?? null), "#7dd3fc88", 1); line(b.map((x) => x?.lo ?? null), "#7dd3fc88", 1); }
-    c.timeScale().fitContent();
+    // Fit when there are plenty of candles; with only a few, keep them at a normal width on the right.
+    if (bars.length > 60) c.timeScale().fitContent(); else c.timeScale().scrollToRealTime();
     lastBar.current = bars.length ? { ...bars[bars.length - 1] } : null;
     tfSec.current = bars.length > 1 ? bars[bars.length - 1].time - bars[bars.length - 2].time : 3600;
     const ro = new ResizeObserver(() => el.current && c.applyOptions({ width: el.current.clientWidth }));
