@@ -28,9 +28,12 @@ export const GET = route<Ctx>(async (req, { params }) => {
     `SELECT extract(epoch from e.executed_at)::bigint AS t, o.side, e.price, e.quantity, o.source, o.source_ref, o.user_id = $2 AS mine, o.is_paper,
             (SELECT name FROM trading_bots b WHERE o.source='bot' AND b.id::text=o.source_ref) AS bot_name
        FROM executions e JOIN orders o ON o.id=e.order_id WHERE o.asset_id=$1 AND e.executed_at >= $3 ORDER BY e.executed_at DESC LIMIT 400`, [id, u.id, since]);
-  const mine = fills.filter((f) => f.mine && f.source !== "bot").map((f) => ({ time: Number(f.t), side: f.side, kind: "mine", label: `${f.side === "buy" ? "B" : "S"}${f.is_paper ? " (paper)" : ""}` }));
-  const bots = fills.filter((f) => f.mine && f.source === "bot").map((f) => ({ time: Number(f.t), side: f.side, kind: "bot", label: f.bot_name ? f.bot_name.slice(0, 14) : "Bot" }));
-  const others = fills.filter((f) => !f.mine).slice(0, 120).map((f) => ({ time: Number(f.t), side: f.side, kind: "others" }));
+  // Your manual/prompt/shortcut trades; your automated trades (bots, auto trading, Modo, copy/mimic); other users (anonymous).
+  const AUTO = new Set(["bot", "auto", "copy"]);
+  const autoLabel = (f: any) => f.source === "bot" ? (f.bot_name ? f.bot_name.slice(0, 14) : "Bot") : f.source === "copy" ? "Copy" : "Auto";
+  const mine = fills.filter((f) => f.mine && !AUTO.has(f.source)).map((f) => ({ time: Number(f.t), side: f.side, kind: "mine", label: `You ${f.side === "buy" ? "B" : "S"}${f.is_paper ? " (paper)" : ""}` }));
+  const bots = fills.filter((f) => f.mine && AUTO.has(f.source)).map((f) => ({ time: Number(f.t), side: f.side, kind: "bot", label: autoLabel(f) }));
+  const others = fills.filter((f) => !f.mine).slice(0, 150).map((f) => ({ time: Number(f.t), side: f.side, kind: "others", label: AUTO.has(f.source) ? "User bot" : "User" }));
 
   // Ghost replay. Defaults are tuned to this asset's own volatility; callers can override.
   const rets = bars.slice(1).map((b, i) => Math.abs((b.c - bars[i].c) / bars[i].c) * 100);

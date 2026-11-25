@@ -30,7 +30,9 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
   const [lastPrice, setLastPrice] = useState<number | null>(null);
   const [tab, setTab] = useState<"orders" | "fills" | "info">("orders");
   // Ghost trading layers on the chart
-  const [layers, setLayers] = useState({ mine: true, bot: true, ghost: true, others: false });
+  const [layers, setLayers] = useState({ mine: true, bot: true, others: true, thinking: true, ghost: false });
+  const thoughts = useApi<any>(`/api/assets/${id}/thoughts?hours=${Math.max(1, Math.ceil(rng.seconds / 3600))}`, { refreshMs: 20_000 });
+  const [liveThoughts, setLiveThoughts] = useState<{ time: number; who: string; text: string; level: string }[]>([]);
   const [ghostCfg, setGhostCfg] = useState<{ strategy: string; dip: string; tp: string }>({ strategy: "dip_rebound_loop", dip: "", tp: "" });
   const ghosts = useApi<any>(`/api/assets/${id}/ghosts?tf=${tf}&strategy=${ghostCfg.strategy}${ghostCfg.dip ? `&dip=${ghostCfg.dip}` : ""}${ghostCfg.tp ? `&tp=${ghostCfg.tp}` : ""}`, { refreshMs: 15000 });
   const [liveMarks, setLiveMarks] = useState<ChartMarker[]>([]);
@@ -46,18 +48,32 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
       if (t) { setLastPrice(t.price); setLive({ price: t.price, time: Math.floor(Date.now() / 1000) }); }
     }
     if (e.type === "fill" || e.type === "order") { detail.refresh(); ghosts.refresh(); }
+    // Your own fills on this asset appear instantly.
+    if (e.type === "fill" && a && e.payload?.symbol === a.symbol)
+      setLiveMarks((m) => [...m.slice(-100), { time: Math.floor(Date.now() / 1000), side: e.payload.side, kind: ["bot", "auto", "copy"].includes(e.payload.source) ? "bot" : "mine", label: ["bot", "auto", "copy"].includes(e.payload.source) ? (e.payload.source === "copy" ? "Copy" : e.payload.source === "auto" ? "Auto" : "Bot") : "You" }]);
+    // Bot / auto-trading / Modo thinking about this asset, live.
+    if (e.type === "bot_log" && (thoughts.data?.botIds ?? []).includes(e.payload?.botId))
+      setLiveThoughts((t) => (t.at(-1)?.text === e.payload.message ? t : [...t.slice(-40), { time: Math.floor((e.payload.ts ?? Date.now()) / 1000), who: e.payload.botName, text: e.payload.message, level: e.payload.level }]));
+    if (e.type === "auto" && a && e.payload?.symbol === a.symbol) thoughts.refresh();
     // Live markers: anonymized trades on this asset appear on the chart as they happen.
     if (e.channel === "activity" && e.type === "trade" && e.payload.assetId === id)
       setLiveMarks((m) => [...m.slice(-100), { time: Math.floor(Date.now() / 1000), side: e.payload.side, kind: e.payload.source === "bot" ? "bot" : "others", label: e.payload.source === "bot" ? "Bot" : undefined }]);
   });
+  const allThoughts = useMemo(() => {
+    const merged = [...(thoughts.data?.thoughts ?? []), ...liveThoughts].sort((x: any, y: any) => x.time - y.time);
+    return merged.filter((t: any, i: number) => !(i && merged[i - 1].text === t.text && merged[i - 1].who === t.who));
+  }, [thoughts.data, liveThoughts]);
   const markers = useMemo<ChartMarker[]>(() => {
     const g = ghosts.data;
     if (!g) return [];
     return [
       ...(layers.ghost ? g.ghost : []), ...(layers.others ? g.others : []), ...(layers.bot ? g.bots : []), ...(layers.mine ? g.mine : []),
-      ...liveMarks.filter((m) => (m.kind === "bot" ? layers.bot : layers.others)),
+      ...liveMarks.filter((m) => (m.kind === "bot" ? layers.bot : m.kind === "mine" ? layers.mine : layers.others)),
+      // Thinking markers: only meaningful steps (not every repeated "waiting…" observation).
+      ...(layers.thinking ? allThoughts.filter((t) => t.level !== "observation").slice(-40)
+        .map((t) => ({ time: t.time, side: "think" as const, kind: "thought" as const, label: "💭" })) : []),
     ];
-  }, [ghosts.data, layers, liveMarks]);
+  }, [ghosts.data, layers, liveMarks, allThoughts]);
 
   const chartBars = useMemo(() => (bars.data?.bars ?? []).map((b: any) => ({ time: Number(b.time), open: +b.open, high: +b.high, low: +b.low, close: +b.close, volume: +b.volume })), [bars.data]);
   const px = lastPrice ?? (a?.last_price != null ? Number(a.last_price) : null);
@@ -113,12 +129,22 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
                 ))}
               </div>
             </div>
-            <div className="px-1 pb-2 pt-1">
+            <div className="relative px-1 pb-2 pt-1">
+              {layers.thinking && allThoughts.length > 0 && (
+                <div className="pointer-events-auto absolute left-3 top-3 z-10 max-w-[min(420px,70%)] rounded-xl border border-[#f5b84a]/30 bg-bg/85 p-2 backdrop-blur">
+                  <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#f5b84a]"><span className="size-1.5 rounded-full bg-[#f5b84a] pulse-dot" /> Bot thinking · live</div>
+                  <ul className="max-h-28 space-y-0.5 overflow-y-auto">
+                    {allThoughts.slice(-5).reverse().map((t: any, i: number) => (
+                      <li key={i} className="text-[11px] leading-snug"><b className="text-text">{t.who}</b> <span className="text-muted">{t.text}</span> <span className="text-faint">{ago(t.time * 1000)}</span></li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {bars.data && chartBars.length > 1 ? <CandleChart bars={chartBars} indicators={indicators} live={live} markers={markers} /> : bars.data ? <div className="p-4"><Empty title="No chart history">No bars are available for this timeframe yet.</Empty></div> : <Skeleton className="mx-3 h-[420px]" />}
             </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-4 py-2.5 text-xs">
               <span className="font-medium text-muted">Trades on chart:</span>
-              {([["mine", "You", "bg-up"], ["bot", "Your bots", "bg-[#4aa8ff]"], ["ghost", "Ghost strategy", "bg-up/50"], ["others", "Others (anon.)", "bg-faint"]] as const).map(([k, l, dot]) => (
+              {([["mine", "You", "bg-up"], ["bot", "Your bots & auto", "bg-[#4aa8ff]"], ["others", "Other users", "bg-[#a78bfa]"], ["thinking", "Bot thinking", "bg-[#f5b84a]"], ["ghost", "Ghost strategy", "bg-up/50"]] as const).map(([k, l, dot]) => (
                 <button key={k} onClick={() => setLayers((x) => ({ ...x, [k]: !x[k] }))} className={cx("flex items-center gap-1.5 rounded-lg border px-2 py-1", layers[k] ? "border-accent/50 bg-accent-soft text-text" : "border-line text-faint")}>
                   <span className={cx("size-2 rounded-full", dot)} />{l}
                 </button>

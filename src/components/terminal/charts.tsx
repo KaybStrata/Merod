@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { createChart, createSeriesMarkers, CandlestickSeries, HistogramSeries, LineSeries, AreaSeries, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time, type UTCTimestamp } from "lightweight-charts";
 
 /** A trade drawn on the chart: your fills, your bots, hypothetical "ghost" strategy trades, or others' (anonymized). */
-export interface ChartMarker { time: number; side: "buy" | "sell"; kind: "mine" | "bot" | "ghost" | "others"; label?: string }
+export interface ChartMarker { time: number; side: "buy" | "sell" | "think"; kind: "mine" | "bot" | "ghost" | "others" | "thought"; label?: string }
 
 function cssVar(name: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
@@ -120,7 +120,8 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
       mine: { buy: "#22c55e", sell: "#f0506e", shape: "arrowUp" },
       bot: { buy: "#4aa8ff", sell: "#7cc4ff", shape: "square" },
       ghost: { buy: "#22c99399", sell: "#f0506e99", shape: "circle" },
-      others: { buy: "#8b93ad88", sell: "#8b93ad88", shape: "circle" },
+      others: { buy: "#a78bfa", sell: "#c4b5fd", shape: "circle" },
+      thought: { buy: "#f5b84a", sell: "#f5b84a", shape: "square" },
     };
     const out: SeriesMarker<Time>[] = markers
       .filter((m) => m.time >= first)
@@ -128,11 +129,11 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
         const s = style[m.kind];
         return {
           time: (Math.floor(m.time / step) * step) as UTCTimestamp,
-          position: m.side === "buy" ? "belowBar" : "aboveBar",
-          color: m.side === "buy" ? s.buy : s.sell,
+          position: m.kind === "thought" ? "aboveBar" : m.side === "buy" ? "belowBar" : "aboveBar",
+          color: m.side === "sell" ? s.sell : s.buy,
           shape: m.kind === "mine" ? (m.side === "buy" ? "arrowUp" : "arrowDown") : s.shape,
           text: m.label,
-          size: m.kind === "others" ? 0.5 : m.kind === "mine" ? 2 : 1,
+          size: m.kind === "others" ? 0.7 : m.kind === "thought" ? 0.5 : m.kind === "mine" ? 2 : 1,
         } as SeriesMarker<Time>;
       })
       .sort((a, b) => Number(a.time) - Number(b.time));
