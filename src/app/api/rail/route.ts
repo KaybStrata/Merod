@@ -2,12 +2,13 @@ import { requireUser } from "@/server/auth";
 import { ok, route } from "@/server/http";
 import { one, q } from "@/server/db";
 
-/** Right-bar extras: trades made from the prompt box, and (owner) every automated trader that's set up. */
+/** Right-bar extras: your single orders (prompt box, manual, shortcuts), and (owner) every automated trader that's set up. */
 export const GET = route(async () => {
   const u = await requireUser();
   const promptTrades = await q<any>(
-    `SELECT o.id, o.side, o.status, o.notional_usd, o.quantity, o.filled_quantity, o.avg_fill_price, o.is_paper, o.created_at, o.updated_at, a.symbol, a.id AS asset_id
-       FROM orders o JOIN assets a ON a.id=o.asset_id WHERE o.user_id=$1 AND o.source='prompt' ORDER BY o.created_at DESC LIMIT 25`, [u.id]);
+    `SELECT o.id, o.side, o.status, o.source, o.notional_usd, o.quantity, o.filled_quantity, o.avg_fill_price, o.is_paper, o.created_at, o.updated_at, a.symbol, a.id AS asset_id
+       FROM orders o JOIN assets a ON a.id=o.asset_id
+      WHERE o.user_id=$1 AND o.source IN ('prompt','manual','shortcut','conditional') ORDER BY o.created_at DESC LIMIT 30`, [u.id]);
   let automation: any = null;
   if (u.role === "super_admin") {
     const s = await one<any>("SELECT enabled, modo_autopilot FROM auto_trading WHERE user_id=$1", [u.id]);

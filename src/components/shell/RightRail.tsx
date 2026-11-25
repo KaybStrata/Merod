@@ -44,7 +44,12 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
 
   const list: any[] = bots.data?.bots ?? [];
   const running = list.filter((b) => b.status === "running").length;
-  const totals = list.reduce((t, b) => ({ pnl: t.pnl + Number(b.pnl_usd || 0), trades: t.trades + (b.trades_today || 0), wins: t.wins + (b.wins || 0), losses: t.losses + (b.losses || 0), volume: t.volume + Number(b.volume_24h || 0) }), { pnl: 0, trades: 0, wins: 0, losses: 0, volume: 0 });
+  // Stats for real-money bots or paper bots, switched on the card (remembered on this device).
+  const [book, setBookState] = useState<"live" | "paper">("paper");
+  useEffect(() => { try { if (localStorage.getItem("merod-rail-book") === "live") setBookState("live"); } catch {} }, []);
+  const setBook = (b: "live" | "paper") => { setBookState(b); try { localStorage.setItem("merod-rail-book", b); } catch {} };
+  const bookList = list.filter((b) => (book === "paper" ? b.is_paper : !b.is_paper));
+  const totals = bookList.reduce((t, b) => ({ pnl: t.pnl + Number(b.pnl_usd || 0), trades: t.trades + (b.trades_today || 0), wins: t.wins + (b.wins || 0), losses: t.losses + (b.losses || 0), volume: t.volume + Number(b.volume_24h || 0) }), { pnl: 0, trades: 0, wins: 0, losses: 0, volume: 0 });
   const decided = totals.wins + totals.losses;
   return (
     <>
@@ -84,9 +89,18 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
           {list.length > 0 && (
             <div className="mb-2 rounded-xl border border-line bg-panel p-2.5">
               <div className="mb-1.5 flex items-center justify-between text-[10px] uppercase tracking-wide text-faint">
-                <span className="flex items-center gap-1"><Activity className="size-3 text-accent-2" /> Live trading stats</span>
-                <span className={cx("flex items-center gap-1 normal-case", connected ? "text-up" : "")}><span className={cx("size-1.5 rounded-full", connected ? "bg-up pulse-dot" : "bg-faint")} />{connected ? "live" : "polling"}</span>
+                <span className="flex items-center gap-1"><Activity className="size-3 text-accent-2" /> {book === "live" ? "Real-money" : "Paper"} trading stats</span>
+                <span className={cx("flex items-center gap-1 normal-case", connected ? "text-up" : "")}><span className={cx("size-1.5 rounded-full", connected ? "bg-up pulse-dot" : "bg-faint")} />{connected ? "updating live" : "polling"}</span>
               </div>
+              <div className="mb-2 flex rounded-lg border border-line bg-bg-2/60 p-0.5 text-[11px]" role="tablist" aria-label="Real-money or paper stats">
+                {([["live", "Live (real money)"], ["paper", "Paper"]] as const).map(([k, l]) => (
+                  <button key={k} role="tab" aria-selected={book === k} onClick={() => setBook(k)}
+                    className={cx("flex-1 rounded-md px-2 py-1 font-medium transition-colors", book === k ? (k === "live" ? "bg-down/20 text-down" : "bg-warn-soft text-warn") : "text-muted hover:text-text")}>
+                    {l} <span className="text-faint">({list.filter((b) => (k === "paper" ? b.is_paper : !b.is_paper)).length})</span>
+                  </button>
+                ))}
+              </div>
+              {bookList.length === 0 && <p className="mb-1 text-[10px] text-faint">{book === "live" ? "No real-money bots yet. Real-money bots appear here once real-money trading is on and a bot uses a real account." : "No paper bots yet."}</p>}
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
                 <div><div className="text-faint">Total P&L</div><div className={cx("num text-sm font-semibold", tone(totals.pnl))}>{usd(totals.pnl, { sign: true })}</div></div>
                 <div><div className="text-faint">Win rate</div><div className="num text-sm font-semibold">{decided ? `${Math.round((totals.wins / decided) * 100)}%` : "—"}<span className="ml-1 text-[10px] font-normal text-faint">{totals.wins}W/{totals.losses}L</span></div></div>
@@ -184,14 +198,23 @@ function AutomationSection({ a }: { a: any }) {
   );
 }
 
-/** Every trade made from the prompt box, newest first, updating live. */
+const SOURCE_LABEL: Record<string, string> = { prompt: "Prompt box", manual: "Manual", shortcut: "Shortcut", conditional: "Price trigger" };
+
+/** Your single orders (prompt box, manual buys/sells, shortcuts, price triggers), newest first, updating live. */
 function PromptTradesSection({ trades }: { trades: any[] }) {
+  const [filter, setFilter] = useState<"all" | "prompt" | "manual" | "shortcut">("all");
+  const shown = trades.filter((t) => filter === "all" || t.source === filter);
   return (
     <section>
-      <h3 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted"><MessageSquareText className="size-3.5 text-accent-2" /> Prompt box trades</h3>
-      {trades.length === 0 ? <p className="text-[11px] text-faint">Trades you make by typing in the prompt box show up here.</p> : (
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted"><MessageSquareText className="size-3.5 text-accent-2" /> Your orders</h3>
+        <span className="flex gap-0.5">{([["all", "All"], ["prompt", "Prompt"], ["manual", "Manual"], ["shortcut", "Shortcut"]] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setFilter(k)} className={cx("rounded px-1.5 py-0.5 text-[10px]", filter === k ? "bg-accent-soft text-text" : "text-faint hover:text-text")}>{l}</button>
+        ))}</span>
+      </div>
+      {shown.length === 0 ? <p className="text-[11px] text-faint">Buys and sells you place from the prompt box, the trade panel or shortcut buttons show up here.</p> : (
         <ul className="max-h-72 space-y-1 overflow-y-auto pr-0.5">
-          {trades.map((t) => {
+          {shown.map((t) => {
             const filled = Number(t.filled_quantity) > 0;
             const amount = filled ? `${qty(t.filled_quantity)} @ ${price(t.avg_fill_price)}` : t.notional_usd ? usd(Number(t.notional_usd)) : t.quantity ? `${qty(t.quantity)}` : "";
             return (
@@ -200,7 +223,7 @@ function PromptTradesSection({ trades }: { trades: any[] }) {
                   <span className="truncate"><b className={t.side === "buy" ? "text-up" : "text-down"}>{t.side.toUpperCase()}</b> {t.symbol} <span className="text-muted">{amount}</span></span>
                   <StatusPill status={t.status} />
                 </div>
-                <div className="mt-0.5 flex items-center justify-between text-[10px] text-faint"><span>{t.is_paper ? "Paper" : "Real money"}</span><span>{ago(t.created_at)}</span></div>
+                <div className="mt-0.5 flex items-center justify-between text-[10px] text-faint"><span>{SOURCE_LABEL[t.source] ?? t.source} · {t.is_paper ? "Paper" : "Real money"}</span><span>{ago(t.created_at)}</span></div>
               </Link></li>
             );
           })}
