@@ -1,4 +1,6 @@
 "use client";
+import { RealMoneySwitch } from "./RealMoneySwitch";
+import { AutoEnableSwitch, AutoTradingSwitch, AutoActivityFeed } from "./SidebarControls";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useEffect, useState } from "react";
@@ -95,7 +97,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           </Link>
           {n.href === "/discover" && <Suspense fallback={null}><DiscoverSubLinks /></Suspense>}
           {n.href === "/admin" && <AdminSubLinks pathname={pathname} superAdmin={user.role === "super_admin"} />}
-          {n.href === "/mimic" && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }, { href: "/auto", label: "Auto trading", icon: Cpu }]} />}
+          {n.href === "/mimic" && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }, { href: "/auto", label: "Auto trading", icon: Cpu, extra: <AutoTradingSwitch />, below: <AutoActivityFeed /> }]} />}
           </Fragment>
         );
       })}
@@ -164,7 +166,7 @@ function TopBar({ onMenu, unread, connected }: { onMenu: () => void; unread: num
       <button onClick={onMenu} className="rounded-lg p-2 text-muted hover:text-text lg:hidden" aria-label="Menu"><Menu className="size-5" /></button>
       <div className="hidden min-w-0 items-center gap-2 md:flex">
         <span className="truncate text-sm text-muted">Welcome back, <span className="font-semibold text-text">@{user.handle}</span></span>
-        <Badge tone="warn">PAPER</Badge>
+        <RealMoneySwitch owner={user.role === "super_admin"} />
       </div>
       <div className="relative mx-auto w-full max-w-xl">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" />
@@ -231,22 +233,27 @@ function DiscoverSubLinks() {
 /** Integrations and Fees under Admin in the menu. */
 function AdminSubLinks({ pathname, superAdmin }: { pathname: string; superAdmin: boolean }) {
   return <SubLinks pathname={pathname} items={[
-    { href: "/admin/integrations", label: "Integrations", icon: Plug },
+    { href: "/admin/integrations", label: "Integrations", icon: Plug, extra: <AutoEnableSwitch /> },
     ...(superAdmin ? [{ href: "/admin/fees", label: "Fees", icon: Percent }] : []),
   ]} />;
 }
 
 /** Indented sub-links under a menu section. */
-function SubLinks({ pathname, items }: { pathname: string; items: { href: string; label: string; icon: any }[] }) {
+function SubLinks({ pathname, items }: { pathname: string; items: { href: string; label: string; icon: any; extra?: React.ReactNode; below?: React.ReactNode }[] }) {
   return (
     <div className="mb-1 ml-6 flex flex-col gap-0.5 border-l border-line pl-2">
       {items.map((i) => {
         const on = pathname === i.href || pathname.startsWith(i.href + "/");
         return (
-          <Link key={i.href} href={i.href}
-            className={cx("flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors", on ? "bg-accent-soft text-text" : "text-muted hover:bg-panel-2 hover:text-text")}>
-            <i.icon className={cx("size-3.5", on && "text-accent-2")} />{i.label}
-          </Link>
+          <Fragment key={i.href}>
+            <div className={cx("flex items-center rounded-lg transition-colors", on ? "bg-accent-soft text-text" : "text-muted hover:bg-panel-2 hover:text-text")}>
+              <Link href={i.href} className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-xs font-medium">
+                <i.icon className={cx("size-3.5 shrink-0", on && "text-accent-2")} /><span className="truncate">{i.label}</span>
+              </Link>
+              {i.extra && <span className="pr-2">{i.extra}</span>}
+            </div>
+            {i.below}
+          </Fragment>
         );
       })}
     </div>

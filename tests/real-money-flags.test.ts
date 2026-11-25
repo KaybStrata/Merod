@@ -21,3 +21,12 @@ test("real-money switches: locked without the server unlock, but switching off i
     if (prev === undefined) delete process.env.MEROD_ALLOW_LIVE_FLAGS; else process.env.MEROD_ALLOW_LIVE_FLAGS = prev;
   }
 });
+
+test("auto-enable integrations is a one-tap switch (no approval reference or 2FA)", async () => {
+  await ensureFlags();
+  const admin = await newUser();
+  await q("UPDATE users SET role='admin' WHERE id=$1", [admin]);
+  await setFlag(admin, "auto_enable_integrations", true);
+  assert.equal((await one<any>("SELECT enabled FROM feature_flags WHERE key='auto_enable_integrations'"))!.enabled, true);
+  await setFlag(admin, "auto_enable_integrations", false);
+});

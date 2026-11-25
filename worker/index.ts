@@ -12,6 +12,7 @@ import { Queue, Worker } from "bullmq";
 import { pool, q, one } from "@/server/db";
 import { tickSimulated, refreshLivePrices, discoverLaunches, syncBrokerCatalog } from "@/server/market/prices";
 import { runAutoTrading, runModoAutopilot } from "@/server/auto/engine";
+import { autoEnableSweep } from "@/server/providers/integrations";
 import { runScheduledTasks } from "@/server/auto/workspace";
 import { masterKeyInfo } from "@/server/crypto";
 import { ensureRealData, backfillRealHistory, simulationOn } from "@/server/market/real-data";
@@ -152,6 +153,7 @@ const timers = [
   every("copy_trading", 5000, () => processCopyTrading()),
   every("auto_trading", 20_000, () => runAutoTrading()),
   every("modo_autopilot", 30_000, () => runModoAutopilot()),
+  every("auto_enable_integrations", 300_000, async () => { if ((await getFlags()).auto_enable_integrations) await autoEnableSweep(null); }),
   every("auto_tasks", 30_000, () => runScheduledTasks()),
   every("modo_learning", 600_000, () => modoLearn()),
   every("simulated_feed", 3000, async () => { const f = await getFlags(); if (f.paper_trading && f.simulated_prices) await tickSimulated(); }),

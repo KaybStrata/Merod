@@ -1,4 +1,5 @@
 import "@/lib/server-only-shim";
+import { getFlags } from "../flags";
 import { one, q } from "../db";
 import { audit } from "../audit";
 import { publish } from "../realtime";
@@ -120,6 +121,37 @@ export async function saveCredentials(adminId: string, providerId: string, env: 
     last_error: null,
   });
   await audit({ actorType: "admin", actorId: adminId, action: "integration.credentials_saved", target: `${providerId}:${env}`, data: { names } });
+  // Auto-enable mode: switch the integration on and test it right away.
+  if ((await getFlags()).auto_enable_integrations && (await requiredCredsPresent(providerId, env))) {
+    await setEnabled(adminId, providerId, env, true).catch(() => {});
+    await testIntegration(adminId, providerId, env).catch(() => {});
+  }
+}
+
+/**
+ * Auto-enable sweep: every integration whose required keys are saved (or that needs none, like CoinGecko's free tier)
+ * is switched on and tested. Approval-gated trading providers still wait for their compliance approval, and real-money
+ * trading stays controlled by the Admin real-money switches.
+ */
+export async function autoEnableSweep(actorId: string | null) {
+  const defs = await allProviders();
+  let enabled = 0, connected = 0, failed = 0;
+  for (const def of defs) {
+    for (const env of def.environments as ProviderEnv[]) {
+      if (!(await requiredCredsPresent(def.id, env))) continue;
+      if (def.credentials.length && !def.credentials.some((c) => c.required) && !(await Promise.all(def.credentials.map((c) => credentialSource(def.id, env, c.name)))).some(Boolean)
+          && !["coingecko", "dexscreener"].includes(def.id)) continue; // nothing saved and not a known keyless provider
+      const cfg = await getConfig(def.id, env);
+      if (cfg.enabled && /_connected$/.test(cfg.status)) { connected++; continue; }
+      if (cfg.enabled && cfg.last_tested_at && Date.now() - new Date(cfg.last_tested_at).getTime() < 30 * 60_000) continue; // tested recently and failing: don't hammer it
+      try {
+        if (!cfg.enabled) { await setEnabled(actorId ?? "system", def.id, env, true); enabled++; }
+        const r = await testIntegration(actorId, def.id, env);
+        if (r.ok) connected++; else failed++;
+      } catch { failed++; }
+    }
+  }
+  return { enabled, connected, failed };
 }
 
 export async function removeCredential(adminId: string, providerId: string, env: ProviderEnv, name: string) {

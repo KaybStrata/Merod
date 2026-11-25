@@ -13,18 +13,21 @@ export const FLAG_DEFS = {
   ai_trading: "Prompt-to-trade through AI providers",
   social_trading: "Social feed, profiles and trade sharing",
   paper_trading: "Simulated trading environment",
+  auto_enable_integrations: "Automatically switch on (and test) every integration that has its keys saved, including ones added later",
   simulated_prices: "TESTING ONLY: make up prices and chart history for assets with no real data feed (off = real market data only)",
   global_trading_halt: "EMERGENCY: halt all order submission platform-wide",
 } as const;
 export type FlagKey = keyof typeof FLAG_DEFS;
 
+// Convenience switches an admin can flip without an approval reference.
+const NO_APPROVAL: FlagKey[] = ["auto_enable_integrations"];
 const SAFE_DEFAULT_ON: FlagKey[] = ["paper_trading", "social_trading", "ai_trading", "embedded_wallets"];
 
 export async function ensureFlags() {
   for (const [key, description] of Object.entries(FLAG_DEFS)) {
     await q(
       `INSERT INTO feature_flags (key, enabled, description, requires_approval) VALUES ($1,$2,$3,$4) ON CONFLICT (key) DO NOTHING`,
-      [key, key === "simulated_prices" ? process.env.NODE_ENV !== "production" && process.env.MEROD_ENV !== "production" : SAFE_DEFAULT_ON.includes(key as FlagKey), description, !SAFE_DEFAULT_ON.includes(key as FlagKey) && key !== "global_trading_halt"],
+      [key, key === "simulated_prices" ? process.env.NODE_ENV !== "production" && process.env.MEROD_ENV !== "production" : SAFE_DEFAULT_ON.includes(key as FlagKey), description, !SAFE_DEFAULT_ON.includes(key as FlagKey) && !NO_APPROVAL.includes(key as FlagKey) && key !== "global_trading_halt"],
     );
   }
 }
