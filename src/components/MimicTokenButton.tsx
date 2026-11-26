@@ -23,17 +23,63 @@ export function MimicSizing({ live, setLive, perTrade, setPerTrade }: { live: bo
   );
 }
 
+/**
+ * "Mimic top gainers" bar (Markets → Top gainers): copy the top wallets of the N biggest Solana gainers at once,
+ * paper or real money, same size or a custom $ per trade.
+ */
+export function MimicTopGainers({ assets }: { assets: any[] }) {
+  const { user } = useShell();
+  const toast = useToast();
+  const [tokens, setTokens] = useState(5);
+  const [perToken, setPerToken] = useState(3);
+  const [live, setLive] = useState(false);
+  const [perTrade, setPerTrade] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (user.role !== "super_admin") return null;
+  const STABLE = new Set(["USDC", "USDT", "PYUSD", "USDS", "DAI", "USDE"]);
+  const sol = assets.filter((a) => a.venue === "solana" && Number(a.change_24h) > 0 && !STABLE.has(String(a.symbol).toUpperCase()));
+  async function go() {
+    const pick = sol.slice(0, tokens);
+    if (!pick.length) { toast("No Solana gainers in this list to mimic", "down"); return; }
+    if (live && !confirm(`Mimic the top wallets of ${pick.length} gainers with REAL money?`)) return;
+    setBusy(true);
+    let done = 0; const errs: string[] = [];
+    for (const a of pick) {
+      try { const r: any = await api("/api/traders", { method: "POST", json: { token: a.id, count: perToken, onlyThisToken: true, live, perTradeUsd: perTrade ? Number(perTrade) : null } }); done += r.done; }
+      catch (e: any) { errs.push(`${a.symbol}: ${e.message}`); }
+    }
+    setBusy(false);
+    toast(done ? `Mimicking ${done} wallets across ${pick.length - errs.length} top gainers (${live ? "real money" : "paper"}, ${perTrade ? `$${perTrade}/trade` : "same size"})` : `Nothing started. ${errs[0] ?? ""}`, done ? "up" : "down");
+    if (done && errs.length) toast(`Skipped ${errs.length}: ${errs[0]}`, "down");
+  }
+  return (
+    <section className={cx("surface mb-3 rounded-2xl p-4", live && "ring-1 ring-down/30")}>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="min-w-[220px]">
+          <div className="flex items-center gap-2 text-[15px] font-semibold"><Repeat className="size-4 text-accent-2" /> Mimic top gainers</div>
+          <p className="text-[11.5px] text-muted">Copy the biggest public wallets of today&apos;s top Solana gainers ({sol.length} in this list).</p>
+        </div>
+        <div className="flex items-center gap-1 text-[12px]"><span className="mr-1 text-muted">Gainers</span>{[1, 3, 5, 10].map((n) => <button key={n} onClick={() => setTokens(n)} className={cx("rounded-md px-2 py-0.5", tokens === n ? "nav-active" : "text-muted hover:text-text")}>{n}</button>)}</div>
+        <div className="flex items-center gap-1 text-[12px]"><span className="mr-1 text-muted">Wallets each</span>{[1, 3, 5].map((n) => <button key={n} onClick={() => setPerToken(n)} className={cx("rounded-md px-2 py-0.5", perToken === n ? "nav-active" : "text-muted hover:text-text")}>{n}</button>)}</div>
+        <div className="min-w-[260px] flex-1"><MimicSizing live={live} setLive={setLive} perTrade={perTrade} setPerTrade={setPerTrade} /></div>
+        <button onClick={go} disabled={busy || !sol.length} className={cx("h-10 rounded-xl px-5 text-sm font-semibold disabled:opacity-50", live ? "bg-down text-white" : "bg-grad")}>{busy ? "Starting…" : `Mimic top ${Math.min(tokens, sol.length)}${live ? " · real money" : " · paper"}`}</button>
+      </div>
+    </section>
+  );
+}
+
 /** "Mimic" on a token row: copy the trades of that token's top public wallets (last 24h), paper or real money. */
-export function MimicTokenButton({ asset }: { asset: any }) {
+export function MimicTokenButton({ asset, align = "right" }: { asset: any; align?: "left" | "right" }) {
   const { user } = useShell();
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const [count, setCount] = useState(3);
   const [only, setOnly] = useState(true);
   const [live, setLive] = useState(false);
   const [perTrade, setPerTrade] = useState("");
   const [busy, setBusy] = useState(false);
-  if (user.role !== "super_admin" || asset.venue !== "solana") return null;
+  if (user.role !== "super_admin" || asset.venue !== "solana" || ["USDC", "USDT", "PYUSD", "USDS", "DAI", "USDE"].includes(String(asset.symbol).toUpperCase())) return null;
   async function go() {
     if (live && !confirm(`Mimic ${asset.symbol}'s top ${count} wallets with REAL money?`)) return;
     setBusy(true);
@@ -46,11 +92,19 @@ export function MimicTokenButton({ asset }: { asset: any }) {
   }
   return (
     <div className="relative" onClick={(e) => e.stopPropagation()}>
-      <button onClick={() => setOpen(!open)} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11.5px] font-medium", open ? "border-accent/60 text-accent-2" : "border-line-2 text-muted hover:border-accent/50 hover:text-text")}>
+      <button onClick={(e) => {
+        // Float the panel above the page (fixed) so a scrolling table can't clip it.
+        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const w = 288, h = 380;
+        const left = Math.max(8, Math.min(window.innerWidth - w - 8, align === "left" ? r.left : r.right - w));
+        const top = r.bottom + h + 8 > window.innerHeight ? Math.max(8, r.top - h - 6) : r.bottom + 6;
+        setPos({ top, left }); setOpen(!open);
+      }} className={cx("flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold", open ? "border-accent/60 bg-accent-soft text-accent-2" : "border-accent/40 text-accent-2 hover:bg-accent-soft")}>
         <Repeat className="size-3.5" /> Mimic
       </button>
-      {open && (
-        <div className="absolute right-0 top-9 z-30 w-72 rounded-xl border border-line bg-panel p-3 text-left shadow-2xl">
+      {open && pos && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
+      {open && pos && (
+        <div className="fixed z-50 w-72 rounded-xl border border-line bg-panel p-3 text-left shadow-2xl" style={{ top: pos.top, left: pos.left }}>
           <div className="text-[13px] font-semibold">Mimic {asset.symbol}&apos;s top traders</div>
           <p className="mt-0.5 text-[11px] text-muted">Copies the biggest public wallets trading {asset.symbol} in the last 24h, ranked by cash taken out (sold − bought).</p>
           <div className="mt-2 flex items-center gap-1 text-[12px]"><span className="mr-1 text-muted">Wallets</span>{[1, 3, 5, 10].map((n) => <button key={n} onClick={() => setCount(n)} className={cx("rounded-md px-2 py-0.5", count === n ? "nav-active" : "text-muted hover:text-text")}>{n}</button>)}</div>
