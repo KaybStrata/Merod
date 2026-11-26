@@ -58,7 +58,7 @@ export const GET = route<Ctx>(async (_req, { params }) => {
       ORDER BY (id=$3) DESC, market_cap DESC NULLS LAST LIMIT 12`, [a.asset_class, cat, id]);
   const watch = await one(`SELECT 1 FROM watchlist_items wi JOIN watchlists w ON w.id=wi.watchlist_id WHERE w.user_id=$1 AND wi.asset_id=$2`, [u.id, id]);
   const thesis = [
-    `${a.name} (${a.symbol}) is ${a.asset_class === "crypto" ? "a crypto asset" : a.asset_class === "etf" ? "an ETF" : "a stock"} on ${a.venue}${a.market_cap ? ` with a market value of about $${(Number(a.market_cap) / 1e9).toFixed(Number(a.market_cap) > 1e11 ? 0 : 1)}B` : ""}.`,
+    `${a.name} (${a.symbol}) is ${a.asset_class === "crypto" ? "a crypto asset" : a.asset_class === "etf" ? "an ETF" : "a stock"} on ${a.venue}${a.market_cap ? ` with a market value of about ${Number(a.market_cap) >= 1e12 ? `$${(Number(a.market_cap) / 1e12).toFixed(2)}T` : `$${(Number(a.market_cap) / 1e9).toFixed(1)}B`}` : ""}.`,
     m3 != null ? `It is ${m3 >= 0 ? "up" : "down"} ${Math.abs(m3).toFixed(1)}% over 3 months and ${y1 != null ? `${y1 >= 0 ? "up" : "down"} ${Math.abs(y1).toFixed(1)}% over a year` : "has under a year of history in Merod"}.` : "",
     ind.rsi14 != null ? `Short-term trend is ${(ind.ema12 ?? 0) > (ind.ema26 ?? 0) ? "positive" : "negative"} (RSI ${ind.rsi14.toFixed(0)}${vol != null ? `, annualised volatility ${vol.toFixed(0)}%` : ""}).` : "",
   ].filter(Boolean).join(" ");

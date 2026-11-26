@@ -7,6 +7,7 @@ import { Badge, Card, Empty, Pills, Stat, cx } from "@/components/ui";
 import { CRYPTO_VENUES, useCryptoTape, type FeedState, type WorldTrade } from "@/components/world/useCryptoTape";
 import { compact, price, qty, usd } from "@/lib/format";
 import { WorldTraders } from "@/components/world/WorldTraders";
+import { TraderDirectory } from "@/components/TraderDirectory";
 import { CopyTradeHeaderButton } from "@/components/CopyBots";
 
 const DEFAULT_CRYPTO = ["BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "AVAX", "LINK", "LTC", "PEPE", "SHIB", "BONK"];
@@ -140,6 +141,7 @@ export default function WorldTradesPage() {
       </div>
 
       <WorldTraders cryptoSymbols={cryptoSyms} />
+      <TraderDirectory compact />
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
         <Card title={<span className="flex items-center gap-2">Live tape {paused && <Badge tone="warn">paused</Badge>}</span>}

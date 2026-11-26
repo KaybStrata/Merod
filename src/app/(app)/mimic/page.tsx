@@ -4,6 +4,7 @@ import { MimicTabs } from "@/components/MimicTabs";
 import { useShell } from "@/components/shell/context";
 import { CopyBotsPanel } from "@/components/CopyBots";
 import { Card, Empty } from "@/components/ui";
+import { TraderDirectory } from "@/components/TraderDirectory";
 
 /** Mimic trading: repeat a trader's or wallet's trades at the same size (within your caps), sells included. */
 export default function MimicTradingPage() {
@@ -28,6 +29,7 @@ export default function MimicTradingPage() {
         </Card>
       </div>
       <p className="text-[11px] text-faint">Not possible for anyone: trades in a private brokerage or exchange account that isn't connected to Merod. Those brokers don't publish who traded.</p>
+      <TraderDirectory />
       <CopyBotsPanel variant="mimic" />
     </div>
   );
