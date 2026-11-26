@@ -11,7 +11,7 @@ import { trainingNotes } from "../learning/materials";
 import { aiAvailable, llmInterpret, llmResearch, type AIProvider } from "./llm";
 import type { Instruction, TradeLeg } from "./schema";
 import { promptDefaults } from "../training/trainer";
-import { parseMimicRequest, topRoiLeaders } from "../copy/leaders";
+import { parseMimicRequest, parseMimicTop, topRoiLeaders } from "../copy/leaders";
 import { gatherFacts, factsPacket, factsAnswer, isMarketQuestion, sourcesLine } from "./market-answers";
 import { createFollow, type MimicScope } from "../copy/service";
 
@@ -132,6 +132,23 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const orig = await one<{ content: string }>("SELECT content FROM trading_prompts WHERE conversation_id=$1 AND role='user' AND created_at < $2 ORDER BY created_at DESC LIMIT 1", [convId, last.created_at]);
       if (orig) originText = `${orig.content} → ${text}`;
     }
+  }
+  // "Mimic the top 50 stock and crypto traders this week" → mimic many traders at once, immediately (owner only).
+  const bulk = !instruction ? parseMimicTop(text) : null;
+  if (bulk) {
+    const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role;
+    if (role !== "super_admin") return reply("Mimic trading is only available on the platform owner's account.", null, "info", null);
+    try {
+      const { mimicTop } = await import("../copy/directory");
+      const r = await mimicTop(userId, bulk);
+      const lines: string[] = [];
+      if (r.crypto) lines.push(`Crypto wallets: ${r.crypto.done} now mimicked${r.crypto.window ? ` (top ${bulk.count} by ${r.crypto.kind === "pnl" ? "PnL" : "net flow"}, ${r.crypto.window})` : ""}${r.crypto.note ? `. ${r.crypto.note}` : ""}`);
+      if (r.merodCrypto?.done) lines.push(`Merod crypto traders: ${r.merodCrypto.done}`);
+      if (r.stocks) lines.push(`Stock traders: ${r.stocks.done} now mimicked${r.stocks.note ? `. ${r.stocks.note}` : ""}`);
+      const skipped = [r.crypto?.skipped, r.merodCrypto?.skipped, r.stocks?.skipped].flat().filter(Boolean);
+      const acct = r.crypto?.account ?? r.stocks?.account ?? (bulk.live ? "real money" : "paper");
+      return reply(`Done. ${lines.join(". ")}.\nAccount: ${acct}. Sizing: ${bulk.perTradeUsd ? `$${bulk.perTradeUsd} per trade` : "same size as each trader"}, $${bulk.maxDailyUsd ?? 1000}/day cap each.${skipped.length ? `\nSkipped ${skipped.length} (e.g. ${skipped[0]}).` : ""}\nOnly public Solana wallets and Merod traders who allow copying can be mimicked: trades at outside brokers and exchanges aren't public. Pause any of them in Mimic trading.`, null, "info", null);
+    } catch (e: any) { return reply(`Couldn't start the mimics: ${e.message}`, null, "info", null); }
   }
   // "Mimic the top ROI earner for Solana meme coins this week" → find the trader, propose a mimic bot (owner only).
   const mimicReq = !instruction ? parseMimicRequest(text) : null;

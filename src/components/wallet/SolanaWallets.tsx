@@ -188,12 +188,18 @@ export function BuyFromMerod({ id = "buy" }: { id?: string }) {
   const [q, setQ] = useState(""); const [results, setResults] = useState<any[]>([]); const [asset, setAsset] = useState<any>(null);
   const [side, setSide] = useState<"buy" | "sell">("buy"); const [usd, setUsd] = useState("25"); const [acct, setAcct] = useState(""); const [mode, setMode] = useState<TradeMode>("paper"); const [busy, setBusy] = useState(false);
   useEffect(() => { if (q.trim().length < 1) { setResults([]); return; } const t = setTimeout(() => api(`/api/assets?q=${encodeURIComponent(q)}&limit=8`).then((r: any) => setResults(r.assets)).catch(() => {}), 150); return () => clearTimeout(t); }, [q]);
+  // Sell amount: a % of the position, a dollar amount, or an exact quantity.
+  const [sellUnit, setSellUnit] = useState<"pct" | "usd" | "qty">("pct");
+  const [sellAmt, setSellAmt] = useState("100");
+  const sellSize = () => { const n = Number(sellAmt); return sellUnit === "pct" ? { percentOfPosition: Math.min(100, Math.max(0.01, n)) } : sellUnit === "usd" ? { notionalUsd: n } : { quantity: n }; };
+  const sellText = () => sellUnit === "pct" ? `${sellAmt}% of` : sellUnit === "usd" ? `$${sellAmt} of` : `${sellAmt}`;
   async function go() {
     if (!asset || !acct) return;
-    if (mode === "live" && !confirm(`${side === "buy" ? `Buy $${usd} of` : "Sell all of"} ${asset.symbol} with REAL money?`)) return;
+    if (side === "sell" && !(Number(sellAmt) > 0)) { toast("Enter how much to sell", "down"); return; }
+    if (mode === "live" && !confirm(`${side === "buy" ? `Buy $${usd} of` : `Sell ${sellText()}`} ${asset.symbol} with REAL money?`)) return;
     setBusy(true);
     try {
-      const r: any = await api("/api/orders", { method: "POST", json: { mode: "place", intent: { asset: { assetId: asset.id }, side, orderType: "market", timeInForce: asset.asset_class === "crypto" ? "gtc" : "day", accountId: acct, ...(side === "buy" ? { notionalUsd: Number(usd) } : { percentOfPosition: 100 }) } } });
+      const r: any = await api("/api/orders", { method: "POST", json: { mode: "place", intent: { asset: { assetId: asset.id }, side, orderType: "market", timeInForce: asset.asset_class === "crypto" ? "gtc" : "day", accountId: acct, ...(side === "buy" ? { notionalUsd: Number(usd) } : sellSize()) } } });
       const o = r.order;
       if (o.status === "pending_approval" && o.unsigned_tx?.tx) { toast("Approve the swap in your wallet…", "neutral"); const s: any = await signOrderWithWallet(o); toast(`Swap ${s.order?.status}`, "up"); }
       else toast(o.status === "rejected" || o.status === "failed" ? `${o.status}: ${o.status_reason}` : `${side === "buy" ? "Bought" : "Sold"} ${asset.symbol}: ${o.status.replace("_", " ")}`, o.status === "rejected" || o.status === "failed" ? "down" : "up");
@@ -217,8 +223,21 @@ export function BuyFromMerod({ id = "buy" }: { id?: string }) {
           <label className="block pt-1 text-[11px] font-medium uppercase tracking-wide text-faint">2 · Order</label>
           <div className="grid grid-cols-2 gap-2">
             <div className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-bg-2/60 p-1">{(["buy", "sell"] as const).map((s) => <button key={s} onClick={() => setSide(s)} className={cx("rounded-lg py-1.5 text-sm font-semibold capitalize", side === s ? (s === "buy" ? "bg-up text-[#04130d]" : "bg-down text-white") : "text-muted")}>{s}</button>)}</div>
-            {side === "buy" ? <label className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">$</span><input type="number" min={1} value={usd} onChange={(e) => setUsd(e.target.value)} className="h-10 w-full rounded-xl border border-line bg-panel-2/70 pl-6 pr-2 text-sm" aria-label="Amount in dollars" /></label> : <div className="flex h-10 items-center justify-center rounded-xl border border-line text-[12px] text-muted">Sell whole position</div>}
+            {side === "buy" ? <label className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">$</span><input type="number" min={1} value={usd} onChange={(e) => setUsd(e.target.value)} className="h-10 w-full rounded-xl border border-line bg-panel-2/70 pl-6 pr-2 text-sm" aria-label="Amount in dollars" /></label> : (
+              <div className="flex h-10 items-center rounded-xl border border-line bg-panel-2/70">
+                <input type="number" min={0} step="any" value={sellAmt} onChange={(e) => setSellAmt(e.target.value)} className="h-full min-w-0 flex-1 bg-transparent px-3 text-sm outline-none" aria-label="Amount to sell" />
+                <select value={sellUnit} onChange={(e) => { const u = e.target.value as any; setSellUnit(u); setSellAmt(u === "pct" ? "100" : u === "usd" ? "25" : "1"); }} className="h-full rounded-r-xl border-l border-line bg-transparent px-2 text-[12.5px] outline-none" aria-label="Sell unit">
+                  <option value="pct">% of position</option><option value="usd">US dollars</option><option value="qty">{asset?.symbol ?? "Units"}</option>
+                </select>
+              </div>
+            )}
           </div>
+          {side === "sell" && (
+            <div className="flex items-center gap-1.5 text-[11.5px]">
+              <span className="text-faint">Quick:</span>
+              {[25, 50, 75, 100].map((p) => <button key={p} onClick={() => { setSellUnit("pct"); setSellAmt(String(p)); }} className={cx("rounded-full border px-2.5 py-0.5", sellUnit === "pct" && Number(sellAmt) === p ? "border-accent/60 text-accent-2" : "border-line-2 text-muted hover:text-text")}>{p === 100 ? "All" : `${p}%`}</button>)}
+            </div>
+          )}
         </div>
         <div className="space-y-2.5">
           <label className="block text-[11px] font-medium uppercase tracking-wide text-faint">3 · Account</label>

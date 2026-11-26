@@ -4,6 +4,7 @@ import Link from "next/link";
 import { KeyRound, ShieldCheck, Wallet, ArrowRight, Building2, Globe2, Bitcoin, Link2, Layers, Plug, Sparkles, Cpu, Users } from "lucide-react";
 import { UserApiKeys } from "@/components/UserApiKeys";
 import { PlatformApis } from "@/components/PlatformApis";
+import { PersonalApis } from "@/components/PersonalApis";
 import { useShell } from "@/components/shell/context";
 import { UserRound } from "lucide-react";
 import { Card } from "@/components/ui";
@@ -30,11 +31,8 @@ export default function BrokerKeysPage() {
         <p className="mt-1 max-w-3xl text-sm text-muted">Two separate sets of keys: <b className="text-text">Merod&apos;s platform APIs</b>, which serve Merod and all its users, and <b className="text-text">your own trading APIs</b>, which only ever trade your personal accounts.</p>
       </div>
       <PlatformApis />
-      <section className="rounded-2xl border-2 border-up/35 bg-panel/80 p-5">
-        <div className="flex flex-wrap items-center gap-2"><UserRound className="size-5 text-up" /><h2 className="text-[1.25rem] font-semibold">{owner ? "My own trading APIs" : "My API keys"}</h2>
-          <span className="rounded-md bg-up px-2 py-0.5 text-[10px] font-bold text-[#04130d]">{owner ? "SUPER ADMIN · PERSONAL" : "PERSONAL"}</span></div>
-        <p className="mt-1 max-w-3xl text-[13px] text-muted">{owner ? "Your personal brokerage, exchange and swap keys for trading your own money as yourself. They're never used for Merod or for any other user. Your Alpaca, Coinbase, Kraken and similar accounts go here." : "Your own brokerage, exchange and swap keys. Merod encrypts them and uses them only for your account."}</p>
-      </section>
+      <PersonalApis />
+      <h2 id="my-keys" className="flex scroll-mt-24 items-center gap-2 pt-2 text-[1.1rem] font-semibold"><UserRound className="size-5 text-up" /> {owner ? "Add or edit my personal keys" : "Add or edit my keys"}</h2>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_300px]">
         <div className="space-y-4">
           {SECTIONS.map((s) => (

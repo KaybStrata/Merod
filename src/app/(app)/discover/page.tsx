@@ -1,4 +1,5 @@
 "use client";
+import { MimicTokenButton } from "@/components/MimicTokenButton";
 import { NewsFeed } from "@/components/NewsFeed";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -113,7 +114,7 @@ function DiscoverInner() {
                 <tr className="border-b border-line">
                   <th className="w-10 px-4 py-2.5"></th><th className="px-2 py-2.5">Asset</th><th className="px-2 py-2.5">Venue</th><th className="px-2 py-2.5 text-right">Price</th>
                   <th className="px-2 py-2.5 text-right">24h</th><th className="px-2 py-2.5">24h trend</th><th className="px-2 py-2.5 text-right">Volume</th>
-                  <th className="px-2 py-2.5 text-right">Mkt cap</th><th className="px-2 py-2.5 text-right">Liquidity</th><th className="px-2 py-2.5">Status</th><th className="px-4 py-2.5 text-right">Updated</th>
+                  <th className="px-2 py-2.5 text-right">Mkt cap</th><th className="px-2 py-2.5 text-right">Liquidity</th><th className="px-2 py-2.5">Status</th><th className="px-2 py-2.5 text-right">Updated</th><th className="px-4 py-2.5 text-right">Mimic</th>
                 </tr>
               </thead>
               <tbody>
@@ -137,7 +138,8 @@ function DiscoverInner() {
                     <td className="num px-2 py-2 text-right text-muted">{a.market_cap ? usd(a.market_cap, { compact: true }) : "—"}</td>
                     <td className="num px-2 py-2 text-right text-muted">{a.liquidity_usd ? usd(a.liquidity_usd, { compact: true }) : "—"}</td>
                     <td className="px-2 py-2"><div className="flex flex-wrap gap-1"><TradabilityBadge a={a} />{a.risk_flags?.filter((f: string) => f !== "demo_data").slice(0, 2).map((f: string) => <Badge key={f} tone="warn">{f.replace(/_/g, " ")}</Badge>)}</div></td>
-                    <td className="px-4 py-2 text-right text-xs"><div className="flex flex-col items-end gap-0.5"><SourceBadge source={a.price_source} /><span className="text-faint">{ago(a.price_updated_at)}</span></div></td>
+                    <td className="px-2 py-2 text-right text-xs"><div className="flex flex-col items-end gap-0.5"><SourceBadge source={a.price_source} /><span className="text-faint">{ago(a.price_updated_at)}</span></div></td>
+                    <td className="px-4 py-2 text-right" onClick={(e) => e.stopPropagation()}>{a.venue === "solana" ? <MimicTokenButton asset={a} /> : <span className="text-[10px] text-faint" title="Only public Solana wallets can be mimicked">—</span>}</td>
                   </tr>
                 ))}
               </tbody>

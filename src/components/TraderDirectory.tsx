@@ -5,6 +5,7 @@ import { Wallet, Users, CandlestickChart, ExternalLink, Info, Search, Repeat, Tr
 import { api, useApi } from "@/lib/api";
 import { cx, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
+import { MimicSizing } from "@/components/MimicTokenButton";
 
 const short = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
 const money = (n: number | null | undefined) => n == null || !Number.isFinite(n) ? "—" : `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2 })}`;
@@ -36,6 +37,8 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
   const onchain = useApi<any>(tab === "cryptoTrades" ? "/api/world/onchain?symbols=SOL" : null, { refreshMs: 15000 });
   const [qs, setQs] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [live, setLive] = useState(false);
+  const [perTrade, setPerTrade] = useState("");
   const toast = useToast();
   const can = !!data?.canMimic;
   const group = (t: Tab): "wallets" | "merod" | "stocks" => (t === "gainers" || t === "wallets" ? "wallets" : t === "stocks" ? "stocks" : "merod");
@@ -52,7 +55,8 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
   async function flip(g: "wallets" | "merod" | "stocks", targets: string[], on: boolean, key: string) {
     setBusy(key);
     try {
-      const r: any = await api("/api/traders", { method: "POST", json: { group: g, on, targets: [...new Set(targets)] } });
+      if (on && live && !confirm(`Mimic ${targets.length} trader${targets.length === 1 ? "" : "s"} with REAL money?`)) { setBusy(null); return; }
+      const r: any = await api("/api/traders", { method: "POST", json: { group: g, on, targets: [...new Set(targets)], live, perTradeUsd: perTrade ? Number(perTrade) : null } });
       toast(on ? `Mimicking ${r.done} ${g === "wallets" ? "wallet" : "trader"}${r.done === 1 ? "" : "s"}: their new trades are repeated at the same size (paper, $1,000/day cap each)` : `Paused ${r.done}`, on ? "up" : "neutral");
       if (r.skipped?.length) toast(`Skipped ${r.skipped.length}: ${r.skipped[0]}`, "down");
       refresh();
@@ -73,6 +77,12 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
         <div className="relative ml-auto"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" /><input value={qs} onChange={(e) => setQs(e.target.value)} placeholder="Filter…" className="h-8 w-40 rounded-lg border border-line bg-panel-2/60 pl-8 pr-2 text-xs outline-none" /></div>
         {can && !isFeed && <Switch on={allOn} disabled={!eligible.length || busy === "all"} onClick={() => flip(group(tab), eligible.map(targetOf), !allOn, "all")} label={`Mimic all (${eligible.length})`} title="Turn mimic on or off for every eligible trader in this list" />}
       </header>
+      {can && !isFeed && (
+        <div className="mt-3 rounded-xl border border-line bg-bg-2/50 p-3 sm:flex sm:items-center sm:gap-4">
+          <span className="mb-2 block shrink-0 text-[12px] font-medium sm:mb-0">New mimics use:</span>
+          <div className="flex-1"><MimicSizing live={live} setLive={setLive} perTrade={perTrade} setPerTrade={setPerTrade} /></div>
+        </div>
+      )}
       {isWallet && !data?.birdeye && <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-panel-2 px-3 py-2 text-[11.5px] text-muted"><Info className="mt-0.5 size-3.5 shrink-0" /><span>Top public wallets come from Birdeye. Connect it in Admin → Integrations or paste your own key on <Link href="/broker-keys" className="underline">Broker & AI Keys</Link>. Wallets you follow are listed either way. Mimicking a wallet&apos;s swaps also needs a Helius key.</span></p>}
       {tab === "gainers" && (
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-line bg-bg-2/50 px-3 py-2.5">

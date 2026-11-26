@@ -66,3 +66,23 @@ export async function topRoiLeaders(followerId: string, req: MimicRequest, limit
   return rows.map((r) => ({ userId: r.user_id, handle: r.handle, displayName: r.display_name, trades: r.trades,
     pnl: Number(r.pnl), invested: Number(r.invested), roi: Number(r.pnl) / Number(r.invested) }));
 }
+
+/**
+ * "Mimic the top 50 stock and crypto traders this week" / "mimic top 10 wallets today with real money, $20 each".
+ * Many traders at once (a number or plural "traders/wallets" is required, so single-trader requests still go to
+ * parseMimicRequest). Markets default to both; paper unless "real money"/"live" is said.
+ */
+export function parseMimicTop(raw: string): { count: number; crypto: boolean; stocks: boolean; period: "today" | "24h" | "7d"; live: boolean; perTradeUsd: number | null; maxDailyUsd: number | null } | null {
+  const t = raw.toLowerCase();
+  if (!/\b(mimic|copy|mirror)\b/.test(t)) return null;
+  const num = t.match(/\btop\s+(\d{1,3})\b/) ?? t.match(/\b(\d{1,3})\s+(?:best|top|most profitable|biggest)?\s*(?:stock|crypto|coin|meme|solana|wallet|trader|earner|gainer)/);
+  const plural = /\btop\s+(?:\w+\s+){0,3}(traders|wallets|earners|gainers)\b|\b(traders|wallets)\b/.test(t);
+  if (!num && !plural) return null;
+  if (!num && /\btop (roi )?(earner|trader|wallet)\b/.test(t) && !/\b(traders|wallets|earners)\b/.test(t)) return null;
+  const count = Math.max(1, Math.min(50, num ? Number(num[1]) : 10));
+  const stocks = /\bstocks?\b|\bequit/.test(t), crypto = /\bcrypto|coins?\b|meme|solana|\bsol\b|wallets?\b|tokens?\b/.test(t);
+  const period = /\btoday\b|\b24 ?h|\bday\b/.test(t) ? (/\btoday\b/.test(t) ? "today" : "24h") : "7d";
+  const each = t.match(/\$\s?(\d+(?:\.\d+)?)\s*(?:each|per trade|a trade|per buy)/);
+  const daily = t.match(/\$\s?(\d+(?:\.\d+)?)\s*(?:a|per)\s*day/);
+  return { count, crypto: crypto || !stocks, stocks: stocks || !crypto, period, live: /\breal money\b|\blive\b|\breal\b/.test(t), perTradeUsd: each ? Number(each[1]) : null, maxDailyUsd: daily ? Number(daily[1]) : null };
+}

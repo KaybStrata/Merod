@@ -191,17 +191,90 @@ export async function directory(userId: string, period: GainerPeriod = "today") 
 }
 
 /** Mimic switch for many targets at once. On = create/resume a mimic follow for each; Off = pause them. */
-export async function mimicMany(userId: string, group: "wallets" | "merod" | "stocks", on: boolean, targets: string[]) {
+/**
+ * Mimic the top traders of ONE token (Markets → Top gainers): its biggest public wallets in the last 24h, ranked by
+ * net flow (sold − bought, i.e. cash taken out) or volume. Optionally copy only their trades in that token.
+ */
+export type MimicOpts = { live?: boolean; perTradeUsd?: number | null; maxDailyUsd?: number | null };
+/**
+ * Follow settings for a mimic: paper or real money (crypto → your Merod Wallet, stocks → your live broker),
+ * same size as the trader (default) or a fixed $ per trade.
+ */
+export async function mimicSettings(userId: string, kind: "crypto" | "stock", o: MimicOpts = {}) {
+  let accountId: string | null = null, note = "paper";
+  if (o.live) {
+    const a = kind === "crypto"
+      ? await one<any>("SELECT id, label FROM trading_accounts WHERE user_id=$1 AND status='active' AND provider_id='merod_wallet' ORDER BY created_at LIMIT 1", [userId])
+      : await one<any>("SELECT id, label FROM trading_accounts WHERE user_id=$1 AND status='active' AND kind='brokerage' AND COALESCE(metadata->>'environment','production')='production' AND provider_id IN ('alpaca_trading','tradier','snaptrade') ORDER BY created_at LIMIT 1", [userId]);
+    if (!a) throw new HttpError(400, kind === "crypto" ? "Create a Merod Wallet first (Wallet & Funds) to mimic crypto with real money" : "Connect a live stock broker (Alpaca) first to mimic stock traders with real money");
+    accountId = a.id; note = `real money · ${a.label}`;
+  } else {
+    accountId = (await one<any>("SELECT id FROM trading_accounts WHERE user_id=$1 AND kind='paper' ORDER BY created_at LIMIT 1", [userId]))?.id ?? null;
+  }
+  const settings = CopySettings.parse({
+    accountId, includeExternal: false, includePaper: false, copySells: true, maxTradeUsd: 1_000_000, maxDailyUsd: o.maxDailyUsd ?? 1000,
+    ...(o.perTradeUsd ? { sizing: "fixed", fixedUsd: o.perTradeUsd } : { sizing: "percent", percent: 100 }),
+  });
+  return { settings, note };
+}
+
+export async function mimicTokenTraders(userId: string, assetId: string, count: number, onlyThisToken: boolean, opts: MimicOpts = {}) {
+  const a = await one<any>("SELECT id, symbol, venue, identifier FROM assets WHERE id=$1", [assetId]);
+  if (!a) throw new HttpError(404, "Asset not found");
+  if (a.venue !== "solana") throw new HttpError(400, `${a.symbol} isn't a Solana token: only public Solana wallets can be mimicked`);
+  const own = await one("SELECT 1 FROM user_provider_secrets WHERE user_id=$1 AND provider_id='birdeye' AND environment='production' AND status='connected'", [userId]);
+  if (!own && !(await providerUsable("birdeye", "production"))) throw new HttpError(400, "Connect Birdeye (Admin → Integrations or Broker & API keys) to find a token's top traders");
+  const key = await getCredential("birdeye", "production", "BIRDEYE_API_KEY", own ? userId : undefined);
+  const ctx = contextFor("birdeye", "production", own ? { userId, userOnly: true } : {});
+  const mint = a.identifier === "native" ? SOL_MINT : a.identifier;
+  const j = await readJson(await ctx.fetch(`https://public-api.birdeye.so/defi/v2/tokens/top_traders?address=${mint}&time_frame=24h&sort_type=desc&sort_by=volume&offset=0&limit=10`,
+    { headers: { "X-API-KEY": key!, "x-chain": "solana", accept: "application/json" } }), "birdeye");
+  const traders = (j?.data?.items ?? []).filter((it: any) => it.owner).map((it: any) => ({ address: it.owner as string, net: Number(it.volumeSell ?? 0) - Number(it.volumeBuy ?? 0), volume: Number(it.volume ?? 0) }));
+  if (!traders.length) throw new HttpError(404, `No public top traders found for ${a.symbol} in the last 24h`);
+  const ranked = [...traders].sort((x, y) => y.net - x.net || y.volume - x.volume).slice(0, Math.max(1, Math.min(10, count)));
+  const scope = onlyThisToken ? { label: `${a.symbol} only`, symbol: a.symbol } : null;
+  const { settings, note } = await mimicSettings(userId, "crypto", opts);
+  const r = await mimicMany(userId, "wallets", true, ranked.map((t) => t.address), scope, settings);
+  return { ...r, symbol: a.symbol, wallets: ranked, account: note };
+}
+
+/**
+ * "Mimic the top 50 stock and crypto traders this week": crypto = top public Solana wallets for the window,
+ * stocks = Merod traders (and their consenting outside brokers) ranked by stock P&L. Runs immediately (owner only).
+ */
+export async function mimicTop(userId: string, o: { count: number; crypto: boolean; stocks: boolean; period: GainerPeriod } & MimicOpts) {
+  const n = Math.max(1, Math.min(50, o.count));
+  const out: { crypto?: any; stocks?: any; merodCrypto?: any } = {};
+  if (o.crypto) {
+    const wallets = (await gainersForPeriod(userId, o.period)).slice(0, n);
+    const { settings, note } = await mimicSettings(userId, "crypto", o);
+    out.crypto = wallets.length ? { ...(await mimicMany(userId, "wallets", true, wallets.map((w: any) => w.address), null, settings)), account: note, window: wallets[0]?.window, kind: wallets[0]?.kind }
+      : { done: 0, skipped: [], note: "No public wallets found (connect Birdeye)" };
+    const dir = await directory(userId, o.period);
+    const merodCrypto = dir.merod.filter((t: any) => t.copyable && t.cryptoTrades > 0).sort((a: any, b: any) => b.cryptoPnl - a.cryptoPnl).slice(0, n);
+    if (merodCrypto.length) out.merodCrypto = await mimicMany(userId, "merod", true, merodCrypto.map((t: any) => t.handle), null, settings);
+  }
+  if (o.stocks) {
+    const dir = await directory(userId, o.period);
+    const top = dir.stocks.filter((t: any) => t.copyable).sort((a: any, b: any) => b.stockPnl - a.stockPnl).slice(0, n);
+    const { settings, note } = await mimicSettings(userId, "stock", o);
+    out.stocks = top.length ? { ...(await mimicMany(userId, "stocks", true, top.map((t: any) => t.handle), { label: "Stocks only", assetClasses: ["stock", "etf"] }, settings)), account: note }
+      : { done: 0, skipped: [], note: "No Merod stock traders allow copying yet" };
+  }
+  return out;
+}
+
+export async function mimicMany(userId: string, group: "wallets" | "merod" | "stocks", on: boolean, targets: string[], scope: { label: string; symbol?: string; assetClasses?: string[] } | null = null, settings: any = MIMIC) {
   const list = [...new Set(targets)].slice(0, 60);
   if (!list.length) throw new HttpError(400, "Nothing to mimic in this list");
   let done = 0; const skipped: string[] = [];
   for (const t of list) {
     try {
       if (group === "wallets") {
-        if (on) await createFollow(userId, { kind: "wallet", network: "solana", address: t }, MIMIC as any, "copy");
+        if (on) await createFollow(userId, { kind: "wallet", network: "solana", address: t }, settings, "copy", scope);
         else await q("UPDATE copy_follows SET status='paused' WHERE follower_id=$1 AND kind='wallet' AND wallet_address=$2", [userId, t]);
       } else {
-        if (on) await createFollow(userId, { kind: "user", handle: t }, MIMIC as any, "copy");
+        if (on) await createFollow(userId, { kind: "user", handle: t }, settings, "copy", group === "stocks" ? (scope ?? { label: "Stocks only", assetClasses: ["stock", "etf"] }) : scope);
         else await q("UPDATE copy_follows SET status='paused' WHERE follower_id=$1 AND kind='user' AND leader_user_id=(SELECT user_id FROM user_profiles WHERE lower(handle)=lower($2))", [userId, t.replace(/^@/, "")]);
       }
       done++;
