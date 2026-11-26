@@ -5,7 +5,8 @@ import { cx } from "@/components/ui";
 import { MerodAvatar } from "./Digest";
 import { Widget, knownWidgets } from "./widgets/Widgets";
 
-const PLAN_TYPES = new Set(["order", "bot", "mimic", "confirm_action", "executed", "alert", "clarify"]);
+/** Reply types that get an action card (Approve / Dismiss etc.). app_action = settings and on/off changes from the prompt. */
+const PLAN_TYPES = new Set(["order", "bot", "mimic", "confirm_action", "executed", "alert", "clarify", "app_action"]);
 const STEPS = ["Preview", "Risk checks", "Approval", "Route", "Reconcile"];
 
 /** Conversation thread: user bubbles on the right, Merod replies with text + typed widgets. Plans render via the existing PlanCard. */

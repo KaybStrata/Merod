@@ -5,6 +5,7 @@ import { publish } from "../realtime";
 import { getFlags } from "../flags";
 import { place, notify } from "../engine/engine";
 import { usdPx, getStrategy, type Decision, type Observation } from "./strategies";
+import { heldForProfit } from "../engine/profit-guard";
 
 /**
  * Persistent bot runner (runs in the Railway worker, never in the browser).
@@ -103,6 +104,10 @@ async function tickBot(b: any) {
     if (decision.action === "none") continue;
     if (decision.action === "complete") { await q("UPDATE trading_bots SET status='stopped' WHERE id=$1", [b.id]); await log(b.id, "control", `Completed: ${decision.reason}`); break; }
     if (decision.action === "alert") { await notify(b.user_id, "bot", `${b.name}: ${a.symbol}`, decision.message, `/bots/${b.id}`); continue; }
+    if (decision.action === "sell") {
+      const held = await heldForProfit(b.user_id, obs.price, obs.avgCost ?? assetState.entry ?? null, a.symbol);
+      if (held) { put(assetState); await log(b.id, "observation", held, { coin }); continue; }
+    }
     // A retry after a rejected order gets a fresh idempotency key (otherwise the old rejection is replayed forever).
     const res = await executeDecision(b, a, swing ? { ...decision, tag: `${decision.tag}:${next.fails ?? 0}` } : decision);
     if (swing) {

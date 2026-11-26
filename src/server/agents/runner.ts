@@ -6,6 +6,7 @@ import { getNews } from "../news/service";
 import { roleById, STRATEGY_LABEL } from "./catalog";
 import { indicators, decide, backtestStrategy, type Bars, type Signal } from "./signals";
 import { emit, positionsFor, metricsFor, postMessage, addKnowledge, remember, updateAgent, type EventKind } from "./service";
+import { heldForProfit } from "../engine/profit-guard";
 
 /**
  * AGENT WORKERS (Merod Parallel / Autopilot). Run in the durable worker, never in the browser, so agents keep working
@@ -170,6 +171,11 @@ async function submit(a: any, asset: any, side: "buy" | "sell", sig: Signal, opt
   const label = `${side === "buy" ? "Buy" : "Sell"} ${asset.symbol}`;
   const sizeTxt = opts.notional ? fmt(opts.notional) : `${opts.qty?.toPrecision(6)} ${asset.symbol}`;
   const policy = a.fleet_id ? (await one<any>("SELECT shared_policy, operation_mode FROM agent_fleets WHERE id=$1", [a.fleet_id])) : null;
+  if (side === "sell") {
+    const pos = (await positionsFor(a.id)).find((p: any) => p.assetId === asset.id);
+    const held = await heldForProfit(a.user_id, Number(asset.last_price ?? opts.ind?.price ?? 0), pos?.entry ?? null, asset.symbol);
+    if (held) { await note(a, `profit:${asset.id}`, "thought", `Holding ${asset.symbol}: waiting for profit`, `${held} Signal was: ${sig.reason}.`, { assetId: asset.id }); return; }
+  }
   if (level <= 2) {
     await note(a, `sig:${asset.id}:${side}`, "decision", `${level === 1 ? "Observed" : "Suggests"}: ${label}`, `${sig.reason}. ${level === 1 ? "Observe mode: recorded only." : "Suggest mode: no order created."}`, { signal: sig, inputs: opts.ind, assetId: asset.id });
     return;

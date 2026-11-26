@@ -32,10 +32,21 @@ export function parseAppAction(raw: string): AppAction | null {
   const nav = t.match(/^(?:please\s+)?(?:open|go to|goto|take me to|navigate to|show(?: me)?(?: my| the)?|bring up)\s+(.+)$/);
   if (nav) for (const [re, href, label] of PAGES) if (re.test(nav[1])) return { title: `Open ${label}`, steps: [], link: { href, label }, navigateOnly: true };
 
-  const tradeVerb = /\b(buy|sell|short|purchase|swap)\b/.test(t) && !/\b(risk|limit|setting|flag|reject)\b/.test(t);
-  if (tradeVerb) return null;
-
   const steps: ActionStep[] = [];
+  // "Update all bots/agents to only sell when profitable" / "never sell at a loss" / "allow selling at a loss again".
+  const profitOn = /\b(only|just)\s+(sell|exit|close)s?\b[^.]{0,40}\b(profit|profitable|in the green|green|gains?|positive)\b|\bsells? only (when|if|in|at)\b[^.]{0,30}\b(profit|profitable|green|gains?)\b|\b(never|don.?t|do not|stop|no)\s+(sell|selling|exit|close)\w*\b[^.]{0,25}\b(at a |for a |in (the )?|below )?(loss|losses|red|cost|entry)\b|\bprofit.?only\b/.test(t);
+  const profitOff = /\b(allow|let|ok to|okay to|can)\b[^.]{0,30}\b(sell|selling|exit)\w*\b[^.]{0,20}\b(loss|losses|red)\b|\bturn off\b[^.]{0,20}\b(only sell|profit.?only|sell only)/.test(t)
+    || (profitOn && /\b(turn off|disable|stop)\b[^.]{0,15}\b(only|profit.?only)\b/.test(t));
+  if (profitOn || profitOff) {
+    const on = !profitOff;
+    const pct = t.match(/(\d+(?:\.\d+)?)\s*%/);
+    const min = pct ? Number(pct[1]) : null;
+    steps.push({ op: "settings", section: "risk", values: on ? { sell_only_in_profit: true, ...(min != null ? { min_profit_pct: min } : {}) } : { sell_only_in_profit: false },
+      label: on ? `Every bot and agent only sells in profit: at least ${min ?? "0.5"}% above what it paid${min == null ? " (covers fees)" : ""}. Stop-losses are held while this is on.` : "Bots and agents may sell at a loss again (stop-losses work normally)" });
+  }
+
+  const tradeVerb = /\b(buy|sell|short|purchase|swap)\b/.test(t) && !/\b(risk|limit|setting|flag|reject)\b/.test(t);
+  if (tradeVerb && !steps.length) return null;
   // Risk flagging / rejections / liquidity screening.
   // "confidence" (auto trading / Modo's confidence bar) → force trading ignores the bar.
   if (/\bconfidence\b[^.]{0,40}\b(flag|flags|flagging|check|checks|bar|filter|factor)\b|\b(flag|flagging)\b[^.]{0,20}\bconfidence\b/.test(t) || /\bconfidence\b/.test(t) && /\brisk\b/.test(t)) {
