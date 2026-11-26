@@ -137,7 +137,8 @@ async function executeDecision(b: any, a: any, d: Exclude<Decision, { action: "n
     });
     await q("UPDATE trading_bots SET trades_today=trades_today+1 WHERE id=$1", [b.id]);
     await log(b.id, order.status === "filled" ? "result" : "order", `Order ${order.status}${order.status_reason ? `: ${order.status_reason}` : ""}`, { orderId: order.id, qty: order.filled_quantity, price: order.avg_fill_price });
-    return { ok: !["rejected", "failed"].includes(order.status), order };
+    // A cancelled or expired order (e.g. an old one handed back for the same key) is not a success: the bot retries with a fresh key.
+    return { ok: !["rejected", "failed", "cancelled", "expired"].includes(order.status), order };
   } catch (e: any) {
     await log(b.id, "error", `Engine rejected instruction: ${e.message}`);
     return { ok: false };
@@ -166,7 +167,7 @@ async function reconcileSwing(b: any, state: any, multi: boolean) {
   }
   if (["rejected", "failed", "cancelled", "expired"].includes(o.status)) {
     await log(b.id, "warning", `Order ${o.status}; returning to previous phase`);
-    return { ...state, phase: state.phase === "buy_pending" ? "waiting_dip" : "holding", pendingOrderId: null, waitNote: undefined };
+    return { ...state, phase: state.phase === "buy_pending" ? "waiting_dip" : "holding", pendingOrderId: null, waitNote: undefined, fails: (state.fails ?? 0) + 1 };
   }
   // Still open: say exactly why (needs your approval, or waiting at the broker/exchange) so the log isn't a bare "pending".
   const side = state.phase === "buy_pending" ? "Buy" : "Sell";

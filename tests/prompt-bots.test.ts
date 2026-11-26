@@ -105,3 +105,28 @@ test("a multi-coin buy-now loop buys every coin, and each coin keeps its own cyc
     for (const p of coins) await q("UPDATE assets SET price_source=$2, change_24h=$3 WHERE id=$1", [p.id, p.price_source, p.change_24h]);
   }
 });
+
+test("a cancelled bot order is replaced by a NEW order (no replay loop of the cancelled one)", async () => {
+  const { approvePlan } = await import("@/server/ai/interpret");
+  const { tickDueBots } = await import("@/server/bots/runner");
+  const me = await newUser(); await freshPrices();
+  await q("UPDATE trading_permissions SET allow_ai_prompts=true, allow_bots=true, mode='manual' WHERE user_id=$1", [me]);
+  await q("UPDATE user_profiles SET ai_provider='merod' WHERE user_id=$1", [me]);
+  const r: any = await handlePrompt(me, { text: "buy $10 of SOL at a 0% dip and sell at 2% profit, repeat" } as any);
+  assert.equal(r.message.plan?.type, "bot", r.message.content);
+  const { botId } = await approvePlan(me, r.message.id);
+  const fresh = () => q("UPDATE assets SET price_updated_at=now() WHERE symbol='SOL'");
+  await fresh(); await tickDueBots("test-worker");
+  const first = await q<any>("SELECT id, status FROM orders WHERE source='bot' AND source_ref=$1", [botId]);
+  assert.equal(first.length, 1); assert.equal(first[0].status, "pending_approval", "manual mode: waits for approval");
+  // Auto-approve turned on: the waiting order is cancelled and approvals are switched off.
+  await q("UPDATE orders SET status='cancelled', status_reason='Auto-approve turned on' WHERE id=$1", [first[0].id]);
+  await q("UPDATE trading_bots SET approval_required=false WHERE id=$1", [botId]);
+  await q("UPDATE trading_permissions SET mode='auto_within_limits' WHERE user_id=$1", [me]);
+  for (let i = 0; i < 3; i++) { await q("UPDATE trading_bots SET last_tick_at=NULL WHERE id=$1", [botId]); await fresh(); await tickDueBots("test-worker"); }
+  const all = await q<any>("SELECT id, status FROM orders WHERE source='bot' AND source_ref=$1 ORDER BY created_at", [botId]);
+  assert.ok(all.length >= 2, JSON.stringify(all));
+  assert.ok(all.slice(1).some((o) => o.status !== "cancelled"), `a new, non-cancelled order was placed: ${JSON.stringify(all)}`);
+  const logs = await q<any>("SELECT message FROM bot_activity_logs WHERE bot_id=$1 AND message LIKE 'Order cancelled: Auto-approve%'", [botId]);
+  assert.ok(logs.length <= 1, `the cancelled order isn't replayed over and over (${logs.length} times)`);
+});
