@@ -598,12 +598,13 @@ function TradingControls({ s, onChange }: { s: any; onChange: () => void }) {
           {force && <p className="mt-1 text-[11px] text-warn">Force trading ignores this dial while it&apos;s on.</p>}
         </div>
       </div>
+      <RiskControl s={s} busy={busy} patch={patch} />
     </section>
   );
 }
 
 /** A round knob (270° sweep). Drag, scroll, arrow keys or −/+ change it; the value is saved when you let go. */
-function Dial({ value, min, max, onChange, onCommit, disabled, size = 120 }: { value: number; min: number; max: number; onChange: (v: number) => void; onCommit: (v: number) => void; disabled?: boolean; size?: number }) {
+function Dial({ value, min, max, onChange, onCommit, disabled, size = 120, caption = "min confidence", suffix = "%", tones }: { value: number; min: number; max: number; onChange: (v: number) => void; onCommit: (v: number) => void; disabled?: boolean; size?: number; caption?: string; suffix?: string; tones?: [number, number, string, string, string] }) {
   const ref = useRef<SVGSVGElement>(null);
   const dragging = useRef(false);
   const latest = useRef(value);
@@ -621,11 +622,12 @@ function Dial({ value, min, max, onChange, onCommit, disabled, size = 120 }: { v
     if (deg > SWEEP) deg = deg > SWEEP + (360 - SWEEP) / 2 ? 0 : SWEEP;
     onChange(clamp(min + (deg / SWEEP) * (max - min)));
   }
-  const tone = value < 40 ? "#22c55e" : value < 70 ? "#38bdf8" : "#f5b84a";
+  const [t1, t2, c1, c2, c3] = tones ?? [40, 70, "#22c55e", "#38bdf8", "#f5b84a"];
+  const tone = value < t1 ? c1 : value < t2 ? c2 : c3;
   const knob = pt(START + frac * SWEEP);
   return (
     <div className="flex shrink-0 flex-col items-center gap-1">
-      <svg ref={ref} width={size} height={size} role="slider" aria-label="Minimum confidence" aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} tabIndex={disabled ? -1 : 0}
+      <svg ref={ref} width={size} height={size} role="slider" aria-label={caption} aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} tabIndex={disabled ? -1 : 0}
         className={cx("touch-none select-none outline-none focus-visible:drop-shadow-[0_0_8px_rgba(56,189,248,.7)]", disabled ? "opacity-50" : "cursor-pointer")}
         onPointerDown={(e) => { if (disabled) return; dragging.current = true; (e.target as Element).setPointerCapture?.(e.pointerId); fromPointer(e); }}
         onPointerMove={(e) => { if (dragging.current) fromPointer(e); }}
@@ -636,12 +638,49 @@ function Dial({ value, min, max, onChange, onCommit, disabled, size = 120 }: { v
         <path d={arc(START, START + SWEEP)} stroke="var(--panel-2)" strokeWidth={10} fill="none" strokeLinecap="round" />
         {frac > 0.001 && <path d={arc(START, START + frac * SWEEP)} stroke={tone} strokeWidth={10} fill="none" strokeLinecap="round" style={{ filter: `drop-shadow(0 0 6px ${tone})` }} />}
         <circle cx={knob[0]} cy={knob[1]} r={8} fill="#fff" stroke={tone} strokeWidth={3} />
-        <text x={c} y={c - 2} textAnchor="middle" className="fill-[var(--text)] font-semibold" fontSize={size / 5}>{value}%</text>
-        <text x={c} y={c + size / 7} textAnchor="middle" className="fill-[var(--faint)]" fontSize={10}>min confidence</text>
+        <text x={c} y={c - 2} textAnchor="middle" className="fill-[var(--text)] font-semibold" fontSize={size / 5}>{value}{suffix}</text>
+        <text x={c} y={c + size / 7} textAnchor="middle" className="fill-[var(--faint)]" fontSize={10}>{caption}</text>
       </svg>
       <div className="flex items-center gap-1">
         <button disabled={disabled || value <= min} onClick={() => { const v = clamp(value - 1); onChange(v); onCommit(v); }} className="h-6 w-7 rounded-md border border-line text-sm text-muted hover:text-text disabled:opacity-40" aria-label="Lower">−</button>
         <button disabled={disabled || value >= max} onClick={() => { const v = clamp(value + 1); onChange(v); onCommit(v); }} className="h-6 w-7 rounded-md border border-line text-sm text-muted hover:text-text disabled:opacity-40" aria-label="Raise">+</button>
+      </div>
+    </div>
+  );
+}
+
+/** Risk taking: toggle + 1–100 dial that scales trade size and exit width (25 = normal). */
+function RiskControl({ s, busy, patch }: { s: any; busy: boolean; patch: (body: any, msg: string) => Promise<void> }) {
+  const on = !!s?.risk_mode;
+  const saved = Number(s?.risk_level ?? 25);
+  const [lvl, setLvl] = useState(saved);
+  useEffect(() => setLvl(saved), [saved]);
+  const f = +(0.5 + lvl / 50).toFixed(2);
+  const base = { usd: Number(s?.trade_usd ?? 100), tp: Number(s?.take_profit_pct ?? 4), sl: Number(s?.stop_loss_pct ?? 2) };
+  const label = lvl <= 10 ? "Very careful" : lvl <= 25 ? "Normal" : lvl <= 50 ? "Bold" : lvl <= 80 ? "Aggressive" : "Maximum";
+  return (
+    <div className={cx("flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center md:col-span-2", on ? "border-down/50 bg-down-soft/30" : "border-line bg-bg/40")}>
+      <div className={cx(!on && "opacity-60")}>
+        <Dial value={lvl} min={1} max={100} caption="risk level" suffix="" tones={[26, 61, "#22c55e", "#f5b84a", "#f0506e"]} disabled={!s || busy}
+          onChange={setLvl} onCommit={(v) => v !== saved && patch({ riskLevel: v }, `Risk level ${v}`)} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-semibold">Risk taking {on && <Badge tone="down">ON · {label}</Badge>}</h3>
+            <p className="mt-0.5 text-xs text-muted">Turn the dial up to take bigger trades with more room to move, down to trade smaller and tighter. 25 is normal. Applies to auto trading and Modo Autopilot. Your max $ per day and the risk checks still apply.</p>
+          </div>
+          <button onClick={() => patch({ riskMode: !on, riskLevel: lvl }, on ? "Risk taking is OFF (normal size and exits)" : `Risk taking is ON at ${lvl}`)} disabled={!s || busy} aria-label="Risk taking switch"
+            className={cx("relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50", on ? "bg-down" : "bg-panel-2")}>
+            <span className={cx("absolute top-1 size-5 rounded-full bg-white transition-all", on ? "left-[26px]" : "left-1")} />
+          </button>
+        </div>
+        <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[11px]">
+          <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Per trade</div><div className="num text-sm font-semibold">${(base.usd * f).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div><div className="text-faint">×{f}</div></div>
+          <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Take profit</div><div className="num text-sm font-semibold text-up">+{+(base.tp * f).toFixed(2)}%</div></div>
+          <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Stop loss</div><div className="num text-sm font-semibold text-down">−{+(base.sl * f).toFixed(2)}%</div></div>
+        </div>
+        {!on && <p className="mt-1 text-[10px] text-faint">Off: trades use your normal settings. The numbers above show what the dial would do once it&apos;s on.</p>}
       </div>
     </div>
   );

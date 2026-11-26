@@ -33,16 +33,25 @@ const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 const pctTxt = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(2)}%`;
 const money = (n: number) => `$${Number(n).toLocaleString("en-US", { maximumFractionDigits: n < 1 ? 6 : 2 })}`;
 
+/* ───────────────────────── Risk dial ───────────────────────── */
+/** Risk mode scales trade size and exit width: level 25 = normal, 1 ≈ 0.5×, 100 = 2.5×. Off = 1×. */
+export const riskFactor = (cfg: any) => (cfg?.risk_mode ? +(0.5 + Number(cfg.risk_level ?? 25) / 50).toFixed(2) : 1);
+const round2 = (x: number) => Math.round(x * 100) / 100;
+export const sizeOf = (cfg: any) => round2(Number(cfg.trade_usd) * riskFactor(cfg));
+export const tpOf = (cfg: any) => round2(Number(cfg.take_profit_pct) * riskFactor(cfg));
+export const slOf = (cfg: any) => round2(Number(cfg.stop_loss_pct) * riskFactor(cfg));
+const riskNote = (cfg: any) => (cfg?.risk_mode ? ` Risk dial at ${cfg.risk_level} (×${riskFactor(cfg)}): ${money(sizeOf(cfg))} per trade, exits at +${tpOf(cfg)}% / −${slOf(cfg)}%.` : "");
+
 /* ───────────────────────── Settings & switch ───────────────────────── */
 export async function getSettings(userId: string) {
   return (await one<any>("SELECT * FROM auto_trading WHERE user_id=$1", [userId]))
     ?? { user_id: userId, enabled: false, account_id: null, markets: "both", trade_usd: 100, max_daily_usd: 500, max_open: 5, min_confidence: 0.6,
          min_theory_trades: 5, min_theory_win_rate: 0.55, take_profit_pct: 4, stop_loss_pct: 2, weights: DEFAULT_WEIGHTS, last_run_at: null,
-         asset_ids: [], modo_autopilot: false, modo_min_confidence: 0.5, modo_last_run_at: null, modo_thoughts: [], force_trading: false };
+         asset_ids: [], modo_autopilot: false, modo_min_confidence: 0.5, modo_last_run_at: null, modo_thoughts: [], force_trading: false, risk_mode: false, risk_level: 25 };
 }
 
 export async function saveSettings(userId: string, patch: Partial<{ enabled: boolean; accountId: string | null; markets: string; tradeUsd: number; maxDailyUsd: number; maxOpen: number;
-  minConfidence: number; minTheoryTrades: number; minTheoryWinRate: number; takeProfitPct: number; stopLossPct: number; forceTrading: boolean }>) {
+  minConfidence: number; minTheoryTrades: number; minTheoryWinRate: number; takeProfitPct: number; stopLossPct: number; forceTrading: boolean; riskMode: boolean; riskLevel: number }>) {
   if (patch.accountId) {
     const a = await one("SELECT 1 FROM trading_accounts WHERE id=$1 AND user_id=$2 AND status='active'", [patch.accountId, userId]);
     if (!a) throw new HttpError(400, "That trading account isn't yours or isn't active");
@@ -61,6 +70,10 @@ export async function saveSettings(userId: string, patch: Partial<{ enabled: boo
     [userId, n.enabled, n.account_id, n.markets, n.trade_usd, n.max_daily_usd, n.max_open, n.min_confidence, n.min_theory_trades, n.min_theory_win_rate, n.take_profit_pct, n.stop_loss_pct]);
   if (patch.enabled !== undefined && patch.enabled !== cur.enabled)
     await audit({ actorType: "user", actorId: userId, userId, action: patch.enabled ? "auto.enabled" : "auto.disabled", data: {} });
+  if (patch.riskMode !== undefined || patch.riskLevel !== undefined) {
+    await q("UPDATE auto_trading SET risk_mode=COALESCE($2, risk_mode), risk_level=COALESCE($3, risk_level) WHERE user_id=$1", [userId, patch.riskMode ?? null, patch.riskLevel != null ? Math.max(1, Math.min(100, Math.round(patch.riskLevel))) : null]);
+    if (patch.riskMode !== undefined && patch.riskMode !== !!cur.risk_mode) await audit({ actorType: "user", actorId: userId, userId, action: patch.riskMode ? "auto.risk_on" : "auto.risk_off", data: { level: patch.riskLevel ?? cur.risk_level } });
+  }
   if (patch.forceTrading !== undefined && patch.forceTrading !== !!cur.force_trading) {
     await q("UPDATE auto_trading SET force_trading=$2 WHERE user_id=$1", [userId, patch.forceTrading]);
     await audit({ actorType: "user", actorId: userId, userId, action: patch.forceTrading ? "auto.force_on" : "auto.force_off", data: {} });
@@ -186,8 +199,8 @@ export async function manageOpen(userId: string, cfg: any) {
     if (!px || !t.entry_price) continue;
     const ret = (px / Number(t.entry_price) - 1) * 100;
     const ageH = (Date.now() - new Date(t.created_at).getTime()) / 3_600_000;
-    const reason = ret >= Number(cfg.take_profit_pct) ? `take-profit (+${cfg.take_profit_pct}%) reached`
-      : ret <= -Number(cfg.stop_loss_pct) ? `stop-loss (−${cfg.stop_loss_pct}%) reached` : ageH >= 24 ? "24-hour time limit" : null;
+    const reason = ret >= tpOf(cfg) ? `take-profit (+${tpOf(cfg)}%) reached`
+      : ret <= -slOf(cfg) ? `stop-loss (−${slOf(cfg)}%) reached` : ageH >= 24 ? "24-hour time limit" : null;
     if (reason && await closeTrade(userId, t, px, reason)) closed++;
   }
   if (closed) await learn(userId);
@@ -286,16 +299,16 @@ export async function runFor(userId: string) {
     if (sc.score <= 0 || (!force && sc.confidence < Number(cfg.min_confidence))) continue; // opens are buys only; no shorting
     const px = await livePrice(a.id);
     if (!px) continue;
-    const canReal = proven && realOpen + made < Number(cfg.max_open) && spent + Number(cfg.trade_usd) * (made + 1) <= Number(cfg.max_daily_usd);
+    const canReal = proven && realOpen + made < Number(cfg.max_open) && spent + sizeOf(cfg) * (made + 1) <= Number(cfg.max_daily_usd);
     const why = canReal && force
-      ? `force trading is on, so placing a ${money(Number(cfg.trade_usd))} order now (no theoretical record or confidence bar required).`
+      ? `force trading is on, so placing a ${money(sizeOf(cfg))} order now (no theoretical record or confidence bar required).`
       : canReal
-      ? `theoretical record ${record.wins}/${record.trades} wins (${Math.round(record.winRate * 100)}%) clears the bar, so placing a ${money(Number(cfg.trade_usd))} order.`
+      ? `theoretical record ${record.wins}/${record.trades} wins (${Math.round(record.winRate * 100)}%) clears the bar, so placing a ${money(sizeOf(cfg))} order.`
       : !proven
         ? `building the theoretical record first (${record.wins}/${record.trades} wins; needs ${cfg.min_theory_trades}+ trades at ${Math.round(Number(cfg.min_theory_win_rate) * 100)}%+ before real orders).`
         : `real-trade limits reached (max ${cfg.max_open} open / ${money(Number(cfg.max_daily_usd))} a day), so testing it theoretically.`;
     const mode = canReal ? "real" : "theory";
-    const before = (a.strategy_name ? `[${a.strategy_name}] ` : "") + explainBefore(a.symbol, "buy", s, wl, sc, mode, why);
+    const before = (a.strategy_name ? `[${a.strategy_name}] ` : "") + explainBefore(a.symbol, "buy", s, wl, sc, mode, why + riskNote(cfg));
     const row = await one<{ id: string }>(
       `INSERT INTO auto_trades (user_id, asset_id, symbol, side, mode, status, signals, score, confidence, entry_price, explain_before, strategy_id)
        VALUES ($1,$2,$3,'buy',$4,'open',$5,$6,$7,$8,$9,$10) RETURNING id`, [userId, a.id, a.symbol, mode, JSON.stringify(s), sc.score, sc.confidence, px, before, a.strategy_id ?? null]);
@@ -304,13 +317,13 @@ export async function runFor(userId: string) {
       const account = await accountFor(userId, cfg.account_id);
       if (!account) { await q("UPDATE auto_trades SET status='failed', explain_during='Your auto-trading account is missing or inactive.' WHERE id=$1", [row!.id]); continue; }
       try {
-        const { order } = await place({ asset: { assetId: a.id }, side: "buy", orderType: "market", notionalUsd: Number(cfg.trade_usd), timeInForce: "gtc", accountId: account.id } as any,
+        const { order } = await place({ asset: { assetId: a.id }, side: "buy", orderType: "market", notionalUsd: sizeOf(cfg), timeInForce: "gtc", accountId: account.id } as any,
           { userId, source: "auto", sourceRef: row!.id, idempotencyKey: `auto:${row!.id}`, actor: { type: "system", id: "auto-trading" },
             // Paper runs automatically; real money also needs the platform's "automated real money" flag (checked by the engine).
             userConfirmed: account.kind === "paper" } as any);
         const ok = ["filled", "partially_filled", "submitted"].includes(order.status);
         const fill = Number(order.avg_fill_price) || null;
-        const during = ok ? `Order ${order.status}${fill ? ` at ${money(fill)}` : ""} in your ${account.kind === "paper" ? "paper" : "live"} account. Watching for +${cfg.take_profit_pct}% / −${cfg.stop_loss_pct}% or 24h.`
+        const during = ok ? `Order ${order.status}${fill ? ` at ${money(fill)}` : ""} in your ${account.kind === "paper" ? "paper" : "live"} account. Watching for +${tpOf(cfg)}% / −${slOf(cfg)}% or 24h.`
           : order.status === "pending_approval" ? "Order is waiting for your approval in Portfolio → Orders (real-money automation needs approval)." : `Order ${order.status}: ${order.status_reason ?? "rejected by the risk checks"}.`;
         await q(`UPDATE auto_trades SET order_id=$2, explain_during=$3, entry_price=COALESCE($4, entry_price), status=CASE WHEN $5 THEN 'open' WHEN $6 THEN 'open' ELSE 'failed' END WHERE id=$1`,
           [row!.id, order.id, during, fill, ok, order.status === "pending_approval"]);
@@ -319,7 +332,7 @@ export async function runFor(userId: string) {
         await q("UPDATE auto_trades SET status='failed', explain_during=$2 WHERE id=$1", [row!.id, `Order failed: ${e.message}`]);
       }
     } else {
-      await q("UPDATE auto_trades SET explain_during=$2 WHERE id=$1", [row!.id, `Tracking theoretically from ${money(px)}; graded at +${cfg.take_profit_pct}% / −${cfg.stop_loss_pct}% or after 24h.`]);
+      await q("UPDATE auto_trades SET explain_during=$2 WHERE id=$1", [row!.id, `Tracking theoretically from ${money(px)}; graded at +${tpOf(cfg)}% / −${slOf(cfg)}% or after 24h.`]);
     }
     await publish(`user:${userId}`, "auto", { id: row!.id, phase: "before", symbol: a.symbol, mode });
     if (made >= 3) break; // at most 3 new decisions a minute
@@ -391,16 +404,16 @@ export async function runModoAutopilotFor(userId: string) {
       backtest: { value: 0, evidence: "not used by Modo Autopilot" },
       momentum: { value: Number(sig.momentum ?? 0), evidence: "24h price move" },
     };
-    const before = `[Modo Autopilot] Buying ${idea.symbol} at ${Math.round(conf * 100)}% confidence. ${idea.thesis}\n• News ${Number(sig.news ?? 0).toFixed(2)} · trader flow ${Number(sig.crowd ?? 0).toFixed(2)} · momentum ${Number(sig.momentum ?? 0).toFixed(2)} · your book ${Number(sig.own ?? 0).toFixed(2)}${idea.risk ? `\n• Risk: ${idea.risk}` : ""}`;
+    const before = `[Modo Autopilot] Buying ${idea.symbol} at ${Math.round(conf * 100)}% confidence.${riskNote(cfg)} ${idea.thesis}\n• News ${Number(sig.news ?? 0).toFixed(2)} · trader flow ${Number(sig.crowd ?? 0).toFixed(2)} · momentum ${Number(sig.momentum ?? 0).toFixed(2)} · your book ${Number(sig.own ?? 0).toFixed(2)}${idea.risk ? `\n• Risk: ${idea.risk}` : ""}`;
     const row = await one<{ id: string }>(
       `INSERT INTO auto_trades (user_id, asset_id, symbol, side, mode, status, signals, score, confidence, entry_price, explain_before, origin)
        VALUES ($1,$2,$3,'buy','real','open',$4,$5,$6,$7,$8,'modo') RETURNING id`, [userId, idea.asset_id, idea.symbol, JSON.stringify(signals), conf, conf, px, before]);
     try {
-      const { order } = await place({ asset: { assetId: idea.asset_id }, side: "buy", orderType: "market", notionalUsd: Number(cfg.trade_usd), timeInForce: "gtc", accountId: account.id } as any,
+      const { order } = await place({ asset: { assetId: idea.asset_id }, side: "buy", orderType: "market", notionalUsd: sizeOf(cfg), timeInForce: "gtc", accountId: account.id } as any,
         { userId, source: "auto", sourceRef: row!.id, idempotencyKey: `modo-auto:${row!.id}`, actor: { type: "system", id: "modo-autopilot" }, userConfirmed: account.kind === "paper" } as any);
       const ok = ["filled", "partially_filled", "submitted"].includes(order.status);
       const fill = Number(order.avg_fill_price) || null;
-      const during = ok ? `Order ${order.status}${fill ? ` at ${money(fill)}` : ""} in your ${account.kind === "paper" ? "paper" : "live"} account. Exits at +${cfg.take_profit_pct}% / −${cfg.stop_loss_pct}%, 24h, or a Modo sell signal.`
+      const during = ok ? `Order ${order.status}${fill ? ` at ${money(fill)}` : ""} in your ${account.kind === "paper" ? "paper" : "live"} account. Exits at +${tpOf(cfg)}% / −${slOf(cfg)}%, 24h, or a Modo sell signal.`
         : order.status === "pending_approval" ? "Waiting for your approval (real-money automation needs approval)." : `Order ${order.status}: ${order.status_reason ?? "rejected by the risk checks"}.`;
       await q(`UPDATE auto_trades SET order_id=$2, explain_during=$3, entry_price=COALESCE($4, entry_price), status=CASE WHEN $5 OR $6 THEN 'open' ELSE 'failed' END WHERE id=$1`,
         [row!.id, order.id, during, fill, ok, order.status === "pending_approval"]);

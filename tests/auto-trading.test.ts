@@ -92,3 +92,29 @@ test("force trading places a real order on the first decision (no theoretical re
     await q("UPDATE assets SET price_source=$2, change_24h=$3 WHERE id=$1", [eth.id, eth.price_source, eth.change_24h]);
   }
 });
+
+test("risk dial scales trade size and exits: 25 = normal, 100 = 2.5×, off = 1×", async () => {
+  const { riskFactor, sizeOf, tpOf, slOf } = await import("@/server/auto/engine");
+  const base = { trade_usd: 100, take_profit_pct: 4, stop_loss_pct: 2 };
+  assert.equal(riskFactor({ ...base, risk_mode: false, risk_level: 100 }), 1);
+  assert.equal(riskFactor({ ...base, risk_mode: true, risk_level: 25 }), 1);
+  assert.equal(sizeOf({ ...base, risk_mode: true, risk_level: 100 }), 250);
+  assert.equal(tpOf({ ...base, risk_mode: true, risk_level: 100 }), 10);
+  assert.equal(slOf({ ...base, risk_mode: true, risk_level: 1 }), 1.04);
+
+  const me = await newUser(), other = await newUser();
+  await freshPrices();
+  await q("UPDATE users SET role='super_admin' WHERE id=$1", [me]);
+  const eth = (await one<any>("SELECT id, price_source, change_24h FROM assets WHERE symbol='ETH' ORDER BY market_cap DESC NULLS LAST LIMIT 1"))!;
+  await q("UPDATE assets SET price_source='coingecko', change_24h=3, price_updated_at=now() WHERE id=$1", [eth.id]);
+  try {
+    await place({ asset: { assetId: eth.id }, side: "buy", orderType: "market", notionalUsd: 100, timeInForce: "gtc" }, ctx(other));
+    await saveSettings(me, { enabled: true, forceTrading: true, tradeUsd: 20, maxDailyUsd: 1000, riskMode: true, riskLevel: 100 });
+    await runFor(me);
+    const t = await one<any>("SELECT t.explain_before, o.notional_usd FROM auto_trades t JOIN orders o ON o.id=t.order_id WHERE t.user_id=$1", [me]);
+    assert.equal(Number(t.notional_usd), 50, "$20 × 2.5");
+    assert.match(t.explain_before, /Risk dial at 100 \(×2.5\)/);
+  } finally {
+    await q("UPDATE assets SET price_source=$2, change_24h=$3 WHERE id=$1", [eth.id, eth.price_source, eth.change_24h]);
+  }
+});

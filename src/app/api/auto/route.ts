@@ -24,6 +24,8 @@ const Patch = z.object({
   stopLossPct: z.number().min(0.1).max(100).optional(),
   modoAutopilot: z.boolean().optional(),
   forceTrading: z.boolean().optional(),
+  riskMode: z.boolean().optional(),
+  riskLevel: z.number().int().min(1).max(100).optional(),
   modoMinConfidence: z.number().min(0.01).max(0.99).optional(),
 }).strict();
 
