@@ -68,8 +68,9 @@ const Patch = z.object({
   maxSlippageBps: z.number().int().min(1).max(5000).optional(),
   schedule: z.enum(["every_15s", "every_1m", "every_5m", "every_15m", "every_1h"]).optional(),
   approvalRequired: z.boolean().optional(),
+  allowRisky: z.boolean().optional(),
 });
-const COLS: Record<string, string> = { name: "name", description: "description", budgetUsd: "budget_usd", maxPositionUsd: "max_position_usd", maxDailySpendUsd: "max_daily_spend_usd",
+const COLS: Record<string, string> = { allowRisky: "allow_risky", name: "name", description: "description", budgetUsd: "budget_usd", maxPositionUsd: "max_position_usd", maxDailySpendUsd: "max_daily_spend_usd",
   maxDailyLossUsd: "max_daily_loss_usd", maxTradesPerDay: "max_trades_per_day", minLiquidityUsd: "min_liquidity_usd", maxSlippageBps: "max_slippage_bps", schedule: "schedule", approvalRequired: "approval_required" };
 
 /** PATCH — edit configuration; only while the bot is not running. */
@@ -77,8 +78,10 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   const u = await requireUser();
   const { id } = await params;
   const bot = await own(u.id, id);
-  if (bot.status === "running") throw new HttpError(409, "Pause the bot before editing its configuration");
   const b = await parse(req, Patch);
+  // The "never reject trades" switch can be flipped while the bot runs; everything else needs a pause.
+  const toggleOnly = Object.keys(b).every((k) => k === "allowRisky");
+  if (bot.status === "running" && !toggleOnly) throw new HttpError(409, "Pause the bot before editing its configuration");
   const sets: string[] = []; const vals: unknown[] = [id];
   for (const [k, col] of Object.entries(COLS)) if ((b as any)[k] !== undefined) { vals.push((b as any)[k]); sets.push(`${col}=$${vals.length}`); }
   if (b.params) {

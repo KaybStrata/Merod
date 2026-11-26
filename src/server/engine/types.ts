@@ -46,7 +46,8 @@ export interface EngineContext {
   /** True only when a human explicitly approved this exact previewed order in the UI. */
   userConfirmed?: boolean;
   /** Bot-level constraints merged on top of user risk settings. */
-  botLimits?: { approvalRequired: boolean; maxSlippageBps: number; minLiquidityUsd: number; maxPositionUsd: number };
+  /** allowRisky: owner switch on the bot to never reject for risk flags, liquidity or slippage */
+  botLimits?: { approvalRequired: boolean; maxSlippageBps: number; minLiquidityUsd: number; maxPositionUsd: number; allowRisky?: boolean };
   ip?: string;
 }
 

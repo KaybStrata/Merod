@@ -252,12 +252,15 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
     add("daily_spend", (today?.spend ?? 0) + notional <= lim(risk.max_daily_spend_usd), `Today $${fmtUsd(today?.spend ?? 0)} + $${notional.toFixed(2)} vs daily limit ${show(lim(risk.max_daily_spend_usd))}`);
   }
   add("daily_loss", (today?.loss ?? 0) < lim(risk.max_daily_loss_usd), `Realized loss today $${fmtUsd(today?.loss ?? 0)} vs limit ${show(lim(risk.max_daily_loss_usd))}`);
-  if (quote) add("slippage", quote.slippageBps <= slippageBps, `Est. slippage ${quote.slippageBps} bps vs max ${slippageBps} bps`);
+  // A bot set to "never reject" lets risk-flag, liquidity and slippage findings through. They stay visible as "allowed".
+  const allowRisky = !!ctx.botLimits?.allowRisky && ctx.source === "bot";
+  const allowed = (ok: boolean, detail: string) => (ok || !allowRisky ? detail : `${detail} (allowed: bot set to never reject)`);
+  if (quote) add("slippage", allowRisky || quote.slippageBps <= slippageBps, allowed(quote.slippageBps <= slippageBps, `Est. slippage ${quote.slippageBps} bps vs max ${slippageBps} bps`));
   const minLiq = Math.max(risk.min_liquidity_usd, ctx.botLimits?.minLiquidityUsd ?? 0);
   if (asset.asset_class === "crypto" && asset.liquidity_usd != null && intent.side === "buy")
-    add("liquidity", asset.liquidity_usd >= minLiq, `Liquidity $${fmtUsd(asset.liquidity_usd)} vs min $${fmtUsd(minLiq)}`, ctx.source === "bot" || ctx.source === "agent" ? "block" : "approval");
+    add("liquidity", allowRisky || asset.liquidity_usd >= minLiq, allowed(asset.liquidity_usd >= minLiq, `Liquidity $${fmtUsd(asset.liquidity_usd)} vs min $${fmtUsd(minLiq)}`), ctx.source === "bot" || ctx.source === "agent" ? "block" : "approval");
   const risky = asset.risk_flags.filter((f) => RISKY_FLAGS.includes(f));
-  if (risky.length && intent.side === "buy") add("token_screening", !risk.block_risky_tokens, `Risk flags: ${risky.join(", ")}`, ctx.source === "bot" || ctx.source === "agent" ? "block" : "approval");
+  if (risky.length && intent.side === "buy") add("token_screening", allowRisky || !risk.block_risky_tokens, allowed(!risk.block_risky_tokens, `Risk flags: ${risky.join(", ")}`), ctx.source === "bot" || ctx.source === "agent" ? "block" : "approval");
   if (intent.limitPrice && ref) {
     const dev = Math.abs(intent.limitPrice - ref) / ref;
     add("price_deviation", dev <= 0.5, `Limit ${(dev * 100).toFixed(1)}% from market`, "warn");

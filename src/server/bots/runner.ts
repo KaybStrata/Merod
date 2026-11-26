@@ -133,7 +133,7 @@ async function executeDecision(b: any, a: any, d: Exclude<Decision, { action: "n
   try {
     const { order } = await place(intent, {
       userId: b.user_id, source: "bot", sourceRef: b.id, idempotencyKey: `bot:${b.id}:${a.id}:${d.tag}`, actor: { type: "bot", id: b.id },
-      botLimits: { approvalRequired: b.approval_required, maxSlippageBps: b.max_slippage_bps, minLiquidityUsd: Number(b.min_liquidity_usd), maxPositionUsd: Number(b.max_position_usd) },
+      botLimits: { approvalRequired: b.approval_required, maxSlippageBps: b.max_slippage_bps, minLiquidityUsd: Number(b.min_liquidity_usd), maxPositionUsd: Number(b.max_position_usd), allowRisky: !!b.allow_risky },
     });
     await q("UPDATE trading_bots SET trades_today=trades_today+1 WHERE id=$1", [b.id]);
     await log(b.id, order.status === "filled" ? "result" : "order", `Order ${order.status}${order.status_reason ? `: ${order.status_reason}` : ""}`, { orderId: order.id, qty: order.filled_quantity, price: order.avg_fill_price });

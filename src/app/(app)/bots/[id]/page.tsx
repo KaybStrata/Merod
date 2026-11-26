@@ -105,6 +105,19 @@ export default function BotDetail({ params }: { params: Promise<{ id: string }> 
         </div>
       )}
 
+      <div className={cx("flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3", bot.allow_risky ? "border-down/50 bg-down-soft/30" : "border-line bg-panel/80")}>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-semibold">Never reject trades {bot.allow_risky && <Badge tone="down">ON</Badge>}</div>
+          <p className="mt-0.5 text-xs text-muted">Buys go through even when a coin is flagged (new listing, unverified, low liquidity), below the minimum liquidity, or above the max slippage. Those findings still show in the log as &quot;allowed&quot;. Buying power, the emergency stop and a live price still apply, because a trade can&apos;t execute without them.{!bot.is_paper && " This bot uses real money: risky coins can drop to zero or be impossible to sell."}</p>
+        </div>
+        <Toggle checked={!!bot.allow_risky} disabled={busy === "risky"} onChange={async (v) => {
+          if (v && !bot.is_paper && !confirm("This bot trades real money. Let it buy flagged, low-liquidity coins without rejecting?")) return;
+          setBusy("risky");
+          try { await api(`/api/bots/${id}`, { method: "PATCH", json: { allowRisky: v } }); refresh(); loadLogs(); toast(v ? "This bot won't reject trades for risk flags, liquidity or slippage" : "Risk rejections are back on for this bot", v ? "neutral" : "up"); }
+          catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }
+        }} />
+      </div>
+
       <Pills value={tab} onChange={setTab} options={[{ value: "activity", label: "Activity log" }, { value: "orders", label: `Orders (${orders.length})` }, { value: "config", label: "Configuration" }, { value: "backtest", label: "Backtest" }]} />
 
       {tab === "activity" && (
