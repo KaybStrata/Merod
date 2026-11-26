@@ -8,7 +8,8 @@ import { createBot, type BotConfig } from "../bots/service";
 import { pauseAllBots, resumeAllBots } from "../bots/runner";
 import { parsePrompt, mergeClarification, setCatalog } from "./parser";
 import { attachmentContext, trainingNotes } from "../learning/materials";
-import { AI_MODELS, aiAvailable, llmInterpret, llmResearch, type AIProvider } from "./llm";
+import { isStatusQuestion, statusAnswer, statusPacket, statusSnapshot } from "./status";
+import { AI_MODELS, aiAvailable, llmInterpret, llmResearch, llmStatus, type AIProvider } from "./llm";
 import type { Instruction, TradeLeg } from "./schema";
 import { promptDefaults } from "../training/trainer";
 import { parseMimicRequest, parseMimicTop, topRoiLeaders } from "../copy/leaders";
@@ -220,6 +221,23 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const orig = await one<{ content: string }>("SELECT content FROM trading_prompts WHERE conversation_id=$1 AND role='user' AND created_at < $2 ORDER BY created_at DESC LIMIT 1", [convId, last.created_at]);
       if (orig) originText = `${orig.content} → ${text}`;
     }
+  }
+  // Questions about your own activity — bots, agents, orders, positions, P&L, Auto/Modo, Mimic — are answered from a live
+  // snapshot of your account (by Modo with whichever AI is available, else directly from the data).
+  if (!instruction && isStatusQuestion(text)) {
+    const snap = await statusSnapshot(userId);
+    const packet = statusPacket(snap);
+    const { provider } = await userAI(userId, input);
+    for (const b of await brains(userId, provider)) {
+      try {
+        const t = (await llmStatus(b.provider, b.model, text, input.attached ? `${packet}\n\n${input.attached.block}` : packet, userId)).trim();
+        if (!t) continue;
+        usedProvider = b.provider; usedModel = b.model; fallbackReason = null;
+        return reply(t, { type: "research", text: t }, "info", { kind: "portfolio_question", summary: "Activity status" } as any, { portfolio: true, agents: /agent|fleet/i.test(text) });
+      } catch (e: any) { fallbackReason = `${b.provider === "anthropic" ? "Claude" : "OpenAI"} unavailable (${String(e.message).slice(0, 120)}); answered from your live data`; }
+    }
+    const t = statusAnswer(text, snap);
+    return reply(t, { type: "research", text: t }, "info", { kind: "portfolio_question", summary: "Activity status" } as any, { portfolio: true, agents: /agent|fleet/i.test(text) });
   }
   // App actions: settings, on/off switches, opening pages. Proposed as a card; your browser applies it when you press Approve.
   if (!instruction) {
