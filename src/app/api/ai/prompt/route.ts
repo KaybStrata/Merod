@@ -13,13 +13,15 @@ const Body = z.object({
   book: z.enum(["paper", "live"]).optional(),
   /** Files attached in the prompt box (uploaded first via /api/ai/attachments). */
   attachmentIds: z.array(z.string().uuid()).max(10).optional(),
+  /** The browser's IANA time zone, used when a prompt sets up a schedule without naming one. */
+  tz: z.string().max(60).optional(),
 });
 
 export const POST = route(async (req) => {
   const u = await requireUser();
   await rateLimit(`prompt:${u.id}`, 30, 60);
   const b = await parse(req, Body);
-  const r = await handlePrompt(u.id, { text: b.text, conversationId: b.conversationId ?? undefined, screenAssetId: b.screenAssetId, provider: b.provider, model: b.model, book: b.book, attachmentIds: b.attachmentIds });
+  const r = await handlePrompt(u.id, { text: b.text, conversationId: b.conversationId ?? undefined, screenAssetId: b.screenAssetId, provider: b.provider, model: b.model, book: b.book, attachmentIds: b.attachmentIds, tz: b.tz });
   return ok(r);
 });
 

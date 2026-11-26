@@ -70,7 +70,7 @@ function Talk() {
     setBusy(true); setNote(null);
     setMessages((m) => [...m, { id: `u${Date.now()}`, role: "user", content: `${text}${attachmentIds?.length ? `${text ? "\n" : ""}📎 ${attachmentIds.length} file${attachmentIds.length > 1 ? "s" : ""} attached` : ""}` }]);
     try {
-      const r: any = await api("/api/ai/prompt", { method: "POST", json: { text, conversationId: convId, book, provider: ai, attachmentIds } });
+      const r: any = await api("/api/ai/prompt", { method: "POST", json: { text, conversationId: convId, book, provider: ai, attachmentIds, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } });
       const replies = Array.isArray(r.messages) && r.messages.length ? r.messages : [r.message];
       setMessages((m) => [...m, ...replies]);
       setNote(r.fallbackReason ?? null);

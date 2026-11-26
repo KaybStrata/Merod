@@ -183,7 +183,9 @@ export function parsePrompt(raw: string): Instruction {
 
   // Swing loop: "buy at 3% dip and sell at 5% increase, rinse and repeat"
   const dip = t.match(/(\d+(?:\.\d+)?)\s*%\s*(dip|drop|decline|pullback|down)|(dip|drop|falls?|declines?|down)\s*(of|by)?\s*(\d+(?:\.\d+)?)\s*%/);
-  const rise = t.match(/(\d+(?:\.\d+)?)\s*%\s*(increase|gain|rise|up|profit|pump)|(increase|gain|rise|rises|up|profit)\s*(of|by)?\s*(\d+(?:\.\d+)?)\s*%/);
+  // "sell at 5% profit", "5% gain", and also "sell on a 1% loop", "1% loop", "sell at 2%", "take profit 3%".
+  const rise = t.match(/(\d+(?:\.\d+)?)\s*%\s*(increase|gain|rise|up|profit|pump|loop|target)|(increase|gain|rise|rises|up|profit)\s*(of|by)?\s*(\d+(?:\.\d+)?)\s*%/)
+    ?? (() => { const m = t.match(/\b(?:sell|exit|close)s?\s+(?:on|at|for|when (?:it(?:'s| is)? )?up)\s+(?:a\s+|an\s+)?\+?(\d+(?:\.\d+)?)\s*%|\btake[- ]?profit\s*(?:of|at)?\s*(\d+(?:\.\d+)?)\s*%/); return m ? Object.assign([m[0], m[1] ?? m[2]], { index: m.index }) as RegExpMatchArray : null; })();
   // "buys/buying", "sells/selling" count too; "make a bot … 6% dip … 3% profit" is a loop even without the word "sell".
   const isBot = /\b(bot|bots|agent|agents|strateg(y|ies))\b/.test(t);
   const repeatWords = /\b(rinse|repeat|loop|again|keep (doing|going)|continuous|forever|cycle)\b/.test(t);

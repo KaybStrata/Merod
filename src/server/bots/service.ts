@@ -60,5 +60,6 @@ export async function createBot(userId: string, cfg: BotConfig, actor: "user" | 
     const { setBotStatus } = await import("./runner");
     await setBotStatus(userId, bot.id, "start", actor);
   }
+  await (await import("../skills")).applySkillsToNew(userId, "bot", bot.id, cfg.name ?? "bot").catch(() => {});
   return one<any>("SELECT * FROM trading_bots WHERE id=$1", [bot.id]);
 }

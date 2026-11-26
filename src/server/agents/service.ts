@@ -231,6 +231,8 @@ export async function createAgent(userId: string, raw: AgentInputT, opts: { flee
   await audit({ actorType: "user", actorId: userId, userId, action: "agent.created", target: `agent:${agent.id}`, data: { role: agent.role, autonomy: agent.autonomy_level, capital: agent.capital_usd, lineage: agent.lineage } }).catch(() => {});
   await emit(userId, { agentId: agent.id, fleetId: agent.fleet_id, version: 1, kind: "state", title: `${agent.name} created`,
     body: [`${roleById(agent.role)!.name} agent · autonomy ${agent.autonomy_level} · paper`, ...n.notes, res.unresolved.length ? `Not found: ${res.unresolved.join(", ")}` : ""].filter(Boolean).join(". ") });
+  // Active skills (stop-loss / take-profit / amount / dip) apply to new agents too.
+  await (await import("../skills")).applySkillsToNew(userId, "agent", agent.id, agent.name).catch(() => {});
   return { ...agent, notes: n.notes };
 }
 

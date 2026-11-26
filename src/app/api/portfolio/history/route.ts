@@ -1,6 +1,6 @@
 import { requireUser } from "@/server/auth";
 import { ok, route } from "@/server/http";
-import { q } from "@/server/db";
+import { q, one } from "@/server/db";
 import { HttpError } from "@/server/errors";
 
 /**
@@ -28,6 +28,15 @@ export const GET = route(async (req) => {
     `SELECT p.asset_id, SUM(p.quantity) AS quantity, MAX(a.last_price) AS px FROM positions p JOIN trading_accounts t ON t.id=p.account_id JOIN assets a ON a.id=p.asset_id
       WHERE p.user_id=$1 AND t.kind='paper' AND p.quantity>0 GROUP BY p.asset_id`, [u.id]);
   const liveValue = cash + holdings.reduce((s, h) => s + Number(h.quantity) * Number(h.px ?? 0), 0);
+  // Break-even: what you put in — the starting balance (or the amount of your last reset) plus deposits minus withdrawals since.
+  const be = await one<any>(
+    `WITH acct AS (SELECT id, COALESCE((metadata->>'starting_balance')::numeric, 100000) AS start FROM trading_accounts WHERE user_id=$1 AND kind='paper'),
+          lr AS (SELECT DISTINCT ON (account_id) account_id, amount_usd, created_at FROM transactions WHERE user_id=$1 AND kind='reset' ORDER BY account_id, created_at DESC)
+     SELECT COALESCE(SUM(COALESCE(lr.amount_usd, a.start)), 0)
+            + COALESCE((SELECT SUM(t.amount_usd) FROM transactions t JOIN acct a2 ON a2.id=t.account_id LEFT JOIN lr l2 ON l2.account_id=t.account_id
+                         WHERE t.kind IN ('deposit','withdrawal') AND t.status='confirmed' AND (l2.created_at IS NULL OR t.created_at > l2.created_at)), 0) AS invested
+       FROM acct a LEFT JOIN lr ON lr.account_id=a.id`, [u.id]);
+  const breakEven = Number(be?.invested ?? 0) || null;
 
   // 1) Recorded snapshots, if they reach back to the start of the window.
   const snaps = await q<any>(
@@ -45,7 +54,7 @@ export const GET = route(async (req) => {
       usd: Number(t.quantity) * Number(t.price), feeUsd: Number(t.fee_usd), realizedPnl: t.side === "sell" ? Number(t.realized_pnl) : null }));
   if (resolution > 60 && before.length && snaps.length >= 2) {
     const points = [{ time: start, value: Number(before[0].value) }, ...snaps.map((s) => ({ time: Number(s.time), value: Number(s.value) })), { time: now, value: liveValue }];
-    return ok({ range, seconds: secs, points: dedupe(points), trades, estimated: false, resolutionSec: 300 });
+    return ok({ range, seconds: secs, points: dedupe(points), trades, breakEven, estimated: false, resolutionSec: 300 });
   }
 
   // 2) Estimate from price bars × current holdings (+ cash).
@@ -65,7 +74,7 @@ export const GET = route(async (req) => {
   let points = [...series.entries()].sort((a, b) => a[0] - b[0]).map(([time, v]) => ({ time, value: v + cash }));
   if (!points.length || points[0].time > start) points.unshift({ time: start, value: points[0]?.value ?? liveValue });
   points.push({ time: now, value: liveValue });
-  return ok({ range, seconds: secs, points: dedupe(points), trades, estimated: holdings.length > 0, resolutionSec: resolution,
+  return ok({ range, seconds: secs, points: dedupe(points), trades, breakEven, estimated: holdings.length > 0, resolutionSec: resolution,
     note: holdings.length ? "Estimated from current holdings × historical prices; not a record of past balances." : undefined });
 });
 

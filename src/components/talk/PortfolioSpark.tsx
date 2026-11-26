@@ -30,17 +30,23 @@ const secLabel = (s: number) => s < 3600 ? `${Math.round(s / 60)}m` : s < 86_400
  */
 export function PortfolioSpark({ height = 56, compact = false, className }: { height?: number; compact?: boolean; className?: string }) {
   const [range, setRange] = useState<(typeof RANGES)[number]>("1D");
+  // Break even: measure against what you put in (starting balance + deposits − withdrawals) instead of the range's start.
+  const [beOn, setBeOn] = useState(() => { try { return localStorage.getItem("merod-pnl-breakeven") === "1"; } catch { return false; } });
+  const toggleBe = () => setBeOn((v) => { try { localStorage.setItem("merod-pnl-breakeven", v ? "0" : "1"); } catch { /* ignore */ } return !v; });
   const [dial, setDial] = useState(45);
   const [dialSec, setDialSec] = useState(() => dialToSec(45));
   const { data, refresh } = useApi<any>(range === "Custom" ? `/api/portfolio/history?seconds=${Math.max(60, dialSec)}` : SHORT[range] ? `/api/portfolio/history?seconds=${SHORT[range]}` : `/api/portfolio/history?range=${range}`, { refreshMs: 30_000 });
   useRealtime((e) => { if (e.type === "fill") refresh(); });
   const pts: Pt[] = useMemo(() => (data?.points ?? []).map((p: any) => ({ time: Number(p.time), value: Number(p.value) })).filter((p: Pt) => Number.isFinite(p.value)), [data]);
-  const first = pts[0]?.value ?? 0, last = pts[pts.length - 1]?.value ?? 0, change = last - first;
+  const breakEven: number | null = data?.breakEven ? Number(data.breakEven) : null;
+  const useBe = beOn && !!breakEven;
+  const first = useBe ? breakEven! : pts[0]?.value ?? 0, last = pts[pts.length - 1]?.value ?? 0, change = last - first;
   const up = change >= 0;
   const trades: Trade[] = useMemo(() => (data?.trades ?? []).filter((t: Trade) => Number.isFinite(t.time)), [data]);
   const path = useMemo(() => {
     if (pts.length < 2) return null;
-    const w = 300, h = 100, min = Math.min(...pts.map((p) => p.value)), max = Math.max(...pts.map((p) => p.value));
+    const vals = [...pts.map((p) => p.value), ...(useBe ? [breakEven!] : [])];
+    const w = 300, h = 100, min = Math.min(...vals), max = Math.max(...vals);
     const span = max - min || Math.max(1, Math.abs(max) * 0.001);
     const t0 = pts[0].time, t1 = pts[pts.length - 1].time || t0 + 1;
     const fx = (t: number) => Math.min(1, Math.max(0, (t - t0) / (t1 - t0 || 1)));   // 0..1 across
@@ -48,7 +54,7 @@ export function PortfolioSpark({ height = 56, compact = false, className }: { he
     const xy = pts.map((p) => [fx(p.time) * w, fy(p.value) * h]);
     const line = xy.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
     return { line, area: `${line} L${w},${h} L0,${h} Z`, fx, fy, t0, t1 };
-  }, [pts]);
+  }, [pts, useBe, breakEven]);
   /** Portfolio value at time t (the last recorded point at or before t). */
   const valueAt = (t: number) => {
     let lo = 0, hi = pts.length - 1;
@@ -81,7 +87,15 @@ export function PortfolioSpark({ height = 56, compact = false, className }: { he
   return (
     <div className={className}>
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        {!compact && <span className={cx("num whitespace-nowrap text-[12px] font-semibold", up ? "text-up" : "text-down")}>{pts.length > 1 ? `${up ? "+" : "−"}${usd(Math.abs(change))} (${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%)` : "—"}</span>}
+        {!compact && <span className={cx("num whitespace-nowrap text-[12px] font-semibold", up ? "text-up" : "text-down")}>{pts.length > 1 ? `${up ? "+" : "−"}${usd(Math.abs(change))} (${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%)` : "—"}{useBe && <span className="ml-1 font-normal text-faint">vs {usd(breakEven!)} put in</span>}</span>}
+        {breakEven && (
+          <button onClick={(e) => { e.stopPropagation(); toggleBe(); }} aria-pressed={beOn}
+            title={`Break even: your P&L after your initial investment (${usd(breakEven)} = starting balance + deposits − withdrawals)`}
+            className={cx("flex items-center gap-1 rounded-md border px-1.5 py-px text-[10px]", beOn ? "border-accent/50 bg-accent-soft text-accent-2" : "border-line text-faint hover:text-text")}>
+            <span className={cx("inline-block h-2 w-3.5 rounded-full p-px transition", beOn ? "bg-accent-2" : "bg-line-2")}><span className={cx("block size-1.5 rounded-full bg-bg transition", beOn && "translate-x-1.5")} /></span>
+            Break even
+          </button>
+        )}
         {compact ? (
           <select value={range} aria-label="Time range" onClick={(e) => e.stopPropagation()} onChange={(e) => setRange(e.target.value as (typeof RANGES)[number])}
             className="ml-auto rounded border border-line bg-bg-2 px-1 py-px text-[10px] text-muted outline-none">
@@ -111,6 +125,7 @@ export function PortfolioSpark({ height = 56, compact = false, className }: { he
             <defs><linearGradient id={`pf-${range}-${up}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={color} stopOpacity="0.35" /><stop offset="1" stopColor={color} stopOpacity="0" /></linearGradient></defs>
             <path d={path.area} fill={`url(#pf-${range}-${up})`} />
             <path d={path.line} fill="none" stroke={color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+            {useBe && <line x1="0" x2="300" y1={path.fy(breakEven!) * 100} y2={path.fy(breakEven!) * 100} stroke="currentColor" className="text-muted" strokeWidth="1" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />}
           </svg>
           {/* Trade dots: green = buy, red = sell. */}
           {!compact && trades.map((x) => (
@@ -126,7 +141,7 @@ export function PortfolioSpark({ height = 56, compact = false, className }: { he
                 <div className="text-[10px] text-faint">{stamp(hv.t)}</div>
                 <div className="num font-semibold text-text">{usd(hv.v)}</div>
                 <div className={cx("num text-[10.5px]", hv.v - first >= 0 ? "text-up" : "text-down")}>
-                  {hv.v - first >= 0 ? "+" : "−"}{usd(Math.abs(hv.v - first))} ({hv.v - first >= 0 ? "" : "−"}{pctLabel(Math.abs(hv.v - first), first)}%) since start
+                  {hv.v - first >= 0 ? "+" : "−"}{usd(Math.abs(hv.v - first))} ({hv.v - first >= 0 ? "" : "−"}{pctLabel(Math.abs(hv.v - first), first)}%) {useBe ? "vs break-even" : "since start"}
                 </div>
                 {hv.near.length > 0 && (
                   <div className="mt-1.5 space-y-1 border-t border-line pt-1.5">

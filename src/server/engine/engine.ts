@@ -251,6 +251,15 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
     add("max_order", notional <= maxOrder + 1e-9, `Order $${notional.toFixed(2)} vs limit ${show(maxOrder)}`);
     add("daily_spend", (today?.spend ?? 0) + notional <= lim(risk.max_daily_spend_usd), `Today $${fmtUsd(today?.spend ?? 0)} + $${notional.toFixed(2)} vs daily limit ${show(lim(risk.max_daily_spend_usd))}`);
   }
+  // Skills (your standing instructions): "never buy X", "only trade X, Y", "max $N per trade".
+  if (intent.side === "buy") {
+    const { activeRules } = await import("../skills");
+    const sk = await activeRules(ctx.userId).catch(() => ({} as any));
+    const sym = String(asset.symbol).toUpperCase();
+    if (sk.neverBuy?.length) add("skill_never_buy", !sk.neverBuy.includes(sym), sk.neverBuy.includes(sym) ? `Your skill says never buy ${sym}` : `Not on your never-buy list`);
+    if (sk.onlyTrade?.length) add("skill_only_trade", sk.onlyTrade.includes(sym), sk.onlyTrade.includes(sym) ? `${sym} is on your only-trade list` : `Your skill only allows buying ${sk.onlyTrade.join(", ")}`);
+    if (sk.maxTradeUsd) add("skill_max_trade", notional <= sk.maxTradeUsd + 1e-9, `Order $${notional.toFixed(2)} vs your skill's max $${sk.maxTradeUsd} per trade`);
+  }
   add("daily_loss", (today?.loss ?? 0) < lim(risk.max_daily_loss_usd), `Realized loss today $${fmtUsd(today?.loss ?? 0)} vs limit ${show(lim(risk.max_daily_loss_usd))}`);
   // A bot set to "never reject" lets risk-flag, liquidity and slippage findings through. They stay visible as "allowed".
   // Never reject for risk flags, liquidity or slippage when: the bot is set to "never reject", or you turned risk flagging off (any source: manual, prompt, bot, agent, auto).

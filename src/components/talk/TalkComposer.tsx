@@ -5,6 +5,8 @@ import { useShell } from "@/components/shell/context";
 import { useApi } from "@/lib/api";
 import { cx } from "@/components/ui";
 import { AttachButton, AttachmentChips, filesFrom, useAttachments } from "@/components/shell/Attachments";
+import { GhostText, TypeAheadList, useTypeAhead } from "@/components/shell/TypeAhead";
+import { SkillsMenu } from "@/components/shell/SkillsMenu";
 
 /** Talk composer: text (and optional browser speech-to-text), Attach, Paper badge, @Agents, suggestion pills. Sends via the existing prompt API. */
 export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi }: { onSend: (t: string, attachmentIds?: string[]) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic"; onAi?: (a: "merod" | "openai" | "anthropic") => void }) {
@@ -22,6 +24,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
   useEffect(() => { const el = ta.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(180, el.scrollHeight)}px`; } }, [text]);
 
   const att = useAttachments();
+  const ahead = useTypeAhead(text, (t) => { setText(t); requestAnimationFrame(() => { const el = ta.current; if (el) { el.focus(); el.setSelectionRange(t.length, t.length); } }); });
   // Files can be sent on their own (Merod summarizes them) or with a prompt; it waits while any are still uploading.
   const send = (t = text) => {
     const v = t.trim();
@@ -48,14 +51,19 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
           ))}
         </div>
       )}
-      <div className="rounded-2xl border border-accent/40 bg-panel/80 p-3 shadow-[0_0_40px_-12px_rgba(214,179,122,.35)] focus-within:border-accent/70"
+      <div className="relative rounded-2xl border border-accent/40 bg-panel/80 p-3 shadow-[0_0_40px_-12px_rgba(214,179,122,.35)] focus-within:border-accent/70"
         onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
         onDrop={(e) => { const f = filesFrom(e.dataTransfer); if (f.length) { e.preventDefault(); att.add(f); } }}>
+        <TypeAheadList list={ahead.list} idx={ahead.idx} onPick={ahead.pick} query={text} />
         <AttachmentChips items={att.items} onRemove={att.remove} className="mb-2" />
-        <textarea ref={ta} value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder={placeholder}
-          onPaste={(e) => { const f = filesFrom(e.clipboardData); if (f.length) { e.preventDefault(); att.add(f); } }}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-          className="w-full resize-none bg-transparent px-1 text-[15.5px] outline-none placeholder:font-serif placeholder:italic placeholder:text-faint" />
+        <div className="relative">
+          <GhostText text={text} ghost={ahead.ghost} className="px-1 text-[15.5px]" />
+          <textarea ref={ta} value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder={placeholder}
+            onPaste={(e) => { const f = filesFrom(e.clipboardData); if (f.length) { e.preventDefault(); att.add(f); } }}
+            onBlur={() => setTimeout(ahead.hide, 150)}
+            onKeyDown={(e) => { if (ahead.onKeyDown(e)) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            className="relative w-full resize-none bg-transparent px-1 text-[15.5px] outline-none placeholder:font-serif placeholder:italic placeholder:text-faint" />
+        </div>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {/* Money: where trades and bots from this prompt go */}
           <ControlGroup label="Money">
@@ -87,6 +95,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
               </div>
             )}
           </div>
+          <SkillsMenu onInsert={(t) => { setText(t); ta.current?.focus(); }} />
           <AttachButton onFiles={att.add} />
           <div className="relative">
             <button onClick={() => setAgentsOpen((o) => !o)} className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] text-muted hover:text-text"><AtSign className="size-3.5" /> Agents</button>
@@ -129,11 +138,12 @@ const SUGGESTION_GROUPS: [string, string[]][] = [
 ];
 
 /** A small labelled group of segmented buttons ("Money", "AI"). */
+/** A labelled switch group that collapses to the selected option and expands on hover (or keyboard focus / tap). */
 function ControlGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="group/cg flex items-center gap-1.5" title={`${label}: hover to change`}>
       <span className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-faint">{label}</span>
-      <div role="radiogroup" aria-label={label} className="flex h-8 items-center gap-0.5 rounded-lg border border-line bg-bg/40 p-0.5 text-[12px]">{children}</div>
+      <div role="radiogroup" aria-label={label} className="flex h-8 items-center gap-0.5 rounded-lg border border-line bg-bg/40 p-0.5 text-[12px] transition-all">{children}</div>
     </div>
   );
 }
@@ -142,7 +152,7 @@ function ControlGroup({ label, children }: { label: string; children: React.Reac
 function Seg({ on, onClick, icon: Icon, title, tone, children }: { on: boolean; onClick: () => void; icon: any; title?: string; tone?: "down"; children: React.ReactNode }) {
   return (
     <button role="radio" aria-checked={on} onClick={onClick} title={title}
-      className={cx("flex h-full items-center gap-1.5 rounded-md px-2.5 transition-colors", on ? (tone === "down" ? "bg-down-soft/60 text-down ring-1 ring-down/40" : "bg-accent-soft/60 text-accent-2 ring-1 ring-accent/40") : "text-muted hover:text-text")}>
+      className={cx("h-full items-center gap-1.5 rounded-md px-2.5 transition-colors", on ? (tone === "down" ? "flex bg-down-soft/60 text-down ring-1 ring-down/40" : "flex bg-accent-soft/60 text-accent-2 ring-1 ring-accent/40") : "hidden text-muted hover:text-text group-hover/cg:flex group-focus-within/cg:flex")}>
       <Icon className="size-3.5" />{children}
     </button>
   );

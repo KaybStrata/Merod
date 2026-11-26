@@ -172,6 +172,7 @@ const timers = [
   every("snapshots", 300000, snapshotPortfolios),
   every("auto_training", 60000, runTraining),
   every("ai_learning", 120000, runLearning),
+  every("prompt_schedules", 30_000, async () => (await import("@/server/schedules")).runDueSchedules()),
   every("provider_health", 600000, healthChecks),
   every("heartbeat", 15000, () => q(`INSERT INTO worker_heartbeats (worker_id, kind, last_seen_at, info) VALUES ($1,'worker',now(),$2)
                                      ON CONFLICT (worker_id) DO UPDATE SET last_seen_at=now(), info=$2`, [WORKER_ID, JSON.stringify({ loops: lastRun, ws: subs.size })])),
