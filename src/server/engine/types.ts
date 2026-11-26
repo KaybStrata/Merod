@@ -36,7 +36,7 @@ export const OrderIntentSchema = z.object({
 });
 export type OrderIntent = z.infer<typeof OrderIntentSchema>;
 
-export type OrderSource = "manual" | "prompt" | "shortcut" | "bot" | "conditional" | "system" | "copy" | "auto";
+export type OrderSource = "manual" | "prompt" | "shortcut" | "bot" | "conditional" | "system" | "copy" | "auto" | "agent";
 export interface EngineContext {
   userId: string;
   source: OrderSource;

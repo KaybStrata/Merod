@@ -177,7 +177,7 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
     add("not_demo", !asset.risk_flags.includes("demo_data"), "Demo assets cannot be traded with real money");
   }
   add("asset_class_permitted", perms.allowed_asset_classes.includes(asset.asset_class), `${asset.asset_class} trading permitted by your settings`);
-  const sourcePerm = ctx.source === "prompt" ? perms.allow_ai_prompts : ctx.source === "bot" || ctx.source === "copy" || ctx.source === "auto" ? perms.allow_bots : ctx.source === "shortcut" ? perms.allow_shortcuts : true;
+  const sourcePerm = ctx.source === "prompt" ? perms.allow_ai_prompts : ctx.source === "bot" || ctx.source === "copy" || ctx.source === "auto" || ctx.source === "agent" ? perms.allow_bots : ctx.source === "shortcut" ? perms.allow_shortcuts : true;
   add("source_permitted", sourcePerm, `${ctx.source} trading permitted`);
   add("tradable", simulated ? ["paper_tradable", "live_tradable"].includes(asset.tradability) : asset.tradability !== "restricted" && asset.tradability !== "unsupported" && asset.tradability !== "view_only",
     `Asset is ${asset.tradability.replace("_", " ")}`);
@@ -250,9 +250,9 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
   if (quote) add("slippage", quote.slippageBps <= slippageBps, `Est. slippage ${quote.slippageBps} bps vs max ${slippageBps} bps`);
   const minLiq = Math.max(risk.min_liquidity_usd, ctx.botLimits?.minLiquidityUsd ?? 0);
   if (asset.asset_class === "crypto" && asset.liquidity_usd != null && intent.side === "buy")
-    add("liquidity", asset.liquidity_usd >= minLiq, `Liquidity $${fmtUsd(asset.liquidity_usd)} vs min $${fmtUsd(minLiq)}`, ctx.source === "bot" ? "block" : "approval");
+    add("liquidity", asset.liquidity_usd >= minLiq, `Liquidity $${fmtUsd(asset.liquidity_usd)} vs min $${fmtUsd(minLiq)}`, ctx.source === "bot" || ctx.source === "agent" ? "block" : "approval");
   const risky = asset.risk_flags.filter((f) => RISKY_FLAGS.includes(f));
-  if (risky.length && intent.side === "buy") add("token_screening", !risk.block_risky_tokens, `Risk flags: ${risky.join(", ")}`, ctx.source === "bot" ? "block" : "approval");
+  if (risky.length && intent.side === "buy") add("token_screening", !risk.block_risky_tokens, `Risk flags: ${risky.join(", ")}`, ctx.source === "bot" || ctx.source === "agent" ? "block" : "approval");
   if (intent.limitPrice && ref) {
     const dev = Math.abs(intent.limitPrice - ref) / ref;
     add("price_deviation", dev <= 0.5, `Limit ${(dev * 100).toFixed(1)}% from market`, "warn");
@@ -505,6 +505,8 @@ export async function applyFill(orderId: string, f: { quantity: number; price: n
         [o.user_id, o.account_id, o.asset_id, -platformFee, o.is_paper ? "confirmed" : "pending", orderId,
          JSON.stringify({ type: "platform_fee", basis: (await getFeeConfig()).mode, pct: (await getFeeConfig()).pct, simulated: o.is_paper })]);
     }
+    // Agent accounting (realized P&L per agent)
+    if (o.source === "agent" && o.source_ref) await c.query("UPDATE agents SET realized_pnl_usd=realized_pnl_usd+$2 WHERE id::text=$1", [o.source_ref, realized]);
     // Bot accounting
     if (o.source === "bot" && o.source_ref) {
       await c.query(`UPDATE trading_bots SET pnl_usd=pnl_usd+$2, spent_today_usd=spent_today_usd+$3 WHERE id=$1`, [o.source_ref, realized, o.side === "buy" ? f.quantity * f.price : 0]);

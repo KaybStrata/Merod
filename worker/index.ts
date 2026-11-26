@@ -28,6 +28,7 @@ import { startWorldStream, stopWorldStream, stockStreamStatus } from "@/server/m
 import { processQueuedMaterials } from "@/server/learning/materials";
 import { processCopyTrading } from "@/server/copy/service";
 import { learn as modoLearn } from "@/server/modo/engine";
+import { runAgents, snapshotAgents } from "@/server/agents/runner";
 
 const WORKER_ID = `${hostname()}-${process.pid}`;
 const PORT = Number(process.env.PORT ?? process.env.REALTIME_PORT ?? 4001);
@@ -155,6 +156,8 @@ const timers = [
   every("modo_autopilot", 30_000, () => runModoAutopilot()),
   every("auto_enable_integrations", 300_000, async () => { if ((await getFlags()).auto_enable_integrations) await autoEnableSweep(null); }),
   every("auto_tasks", 30_000, () => runScheduledTasks()),
+  every("agents", 10_000, () => runAgents(WORKER_ID)),
+  every("agent_snapshots", 300_000, () => snapshotAgents()),
   every("modo_learning", 600_000, () => modoLearn()),
   every("simulated_feed", 3000, async () => { const f = await getFlags(); if (f.paper_trading && f.simulated_prices) await tickSimulated(); }),
   every("prune_1m_bars", 3_600_000, () => prune1mBars()),
