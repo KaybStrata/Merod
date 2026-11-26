@@ -18,7 +18,7 @@ test("a bot set to 'never reject' passes risk-flag and liquidity checks; without
     assert.match(blocked.decisionReason, /Risk flags|Liquidity/);
     const allowed = await preview(intent, { ...base, idempotencyKey: `t2${Date.now()}`, botLimits: { ...lim, allowRisky: true } });
     assert.notEqual(allowed.decision, "rejected", allowed.decisionReason);
-    assert.ok(allowed.checks.some((c: any) => /allowed: bot set to never reject/.test(c.message)), "findings stay visible as allowed");
+    assert.ok(allowed.checks.some((c: any) => /allowed: risk flagging is off/.test(c.message)), "findings stay visible as allowed");
     // Only bots: the same flag from a manual order changes nothing.
     const manual = await preview(intent, { ...base, source: "manual" as any, idempotencyKey: `t3${Date.now()}`, botLimits: { ...lim, allowRisky: true } });
     assert.ok(!manual.checks.some((c: any) => /allowed: bot/.test(c.message)));
@@ -40,4 +40,21 @@ test("new bots follow your Risk setting: flagged coins allowed → the bot never
   assert.equal(loose.allow_risky, true);
   const pinned = await mk({ ...base, name: "t3", allowRisky: false });
   assert.equal(pinned.allow_risky, false, "an explicit choice on the card wins");
+});
+
+test("risk flagging off: manual and prompt buys of new/unverified/low-liquidity coins are never rejected for it", async () => {
+  const u = await newUser({ mode: "auto_within_limits" }); await freshPrices();
+  await q("UPDATE risk_settings SET block_risky_tokens=false, min_liquidity_usd=0 WHERE user_id=$1", [u]);
+  const a = (await one<any>("SELECT id, risk_flags, liquidity_usd FROM assets WHERE venue='solana' AND last_price IS NOT NULL AND NOT ('demo_data'=ANY(risk_flags)) ORDER BY symbol LIMIT 1"))!;
+  await q("UPDATE assets SET risk_flags = ARRAY['new_listing','unverified','low_liquidity'], liquidity_usd = 500, price_updated_at=now() WHERE id=$1", [a.id]);
+  try {
+    for (const source of ["manual", "prompt"] as const) {
+      const p = await preview({ asset: { assetId: a.id }, side: "buy", orderType: "market", notionalUsd: 10, timeInForce: "gtc" } as any,
+        { userId: u, source, sourceRef: "t", idempotencyKey: `z${source}${Date.now()}`, actor: { type: "user", id: u }, userConfirmed: true } as any);
+      const blocking = p.checks.filter((c: any) => !c.ok && ["token_screening", "liquidity", "slippage"].includes(c.name));
+      assert.equal(blocking.length, 0, `${source}: ${JSON.stringify(blocking)}`);
+    }
+  } finally {
+    await q("UPDATE assets SET risk_flags=$2, liquidity_usd=$3 WHERE id=$1", [a.id, a.risk_flags, a.liquidity_usd]);
+  }
 });

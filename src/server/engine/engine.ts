@@ -253,8 +253,9 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
   }
   add("daily_loss", (today?.loss ?? 0) < lim(risk.max_daily_loss_usd), `Realized loss today $${fmtUsd(today?.loss ?? 0)} vs limit ${show(lim(risk.max_daily_loss_usd))}`);
   // A bot set to "never reject" lets risk-flag, liquidity and slippage findings through. They stay visible as "allowed".
-  const allowRisky = !!ctx.botLimits?.allowRisky && ctx.source === "bot";
-  const allowed = (ok: boolean, detail: string) => (ok || !allowRisky ? detail : `${detail} (allowed: bot set to never reject)`);
+  // Never reject for risk flags, liquidity or slippage when: the bot is set to "never reject", or you turned risk flagging off (any source: manual, prompt, bot, agent, auto).
+  const allowRisky = (!!ctx.botLimits?.allowRisky && ctx.source === "bot") || !risk.block_risky_tokens;
+  const allowed = (ok: boolean, detail: string) => (ok || !allowRisky ? detail : `${detail} (allowed: risk flagging is off)`);
   if (quote) add("slippage", allowRisky || quote.slippageBps <= slippageBps, allowed(quote.slippageBps <= slippageBps, `Est. slippage ${quote.slippageBps} bps vs max ${slippageBps} bps`));
   // With flagged coins allowed in your Risk settings, a bot's own minimum liquidity doesn't block either (your setting wins).
   const minLiq = risk.block_risky_tokens ? Math.max(risk.min_liquidity_usd, ctx.botLimits?.minLiquidityUsd ?? 0) : Number(risk.min_liquidity_usd) || 0;

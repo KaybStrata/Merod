@@ -6,7 +6,11 @@ import { cx } from "@/components/ui";
 import { usd } from "@/lib/format";
 
 type Pt = { time: number; value: number };
-const RANGES = ["1D", "1W", "1M", "ALL"] as const;
+const RANGES = ["1D", "1W", "1M", "ALL", "Custom"] as const;
+/** Custom dial: 0–100 mapped on a log scale from 5 minutes to 5 years. */
+const MIN_S = 300, MAX_S = 5 * 365 * 86_400;
+const dialToSec = (v: number) => Math.round(MIN_S * Math.pow(MAX_S / MIN_S, v / 100));
+const secLabel = (s: number) => s < 3600 ? `${Math.round(s / 60)}m` : s < 86_400 ? `${+(s / 3600).toFixed(s < 36_000 ? 1 : 0)}h` : s < 30 * 86_400 ? `${+(s / 86_400).toFixed(s < 864_000 ? 1 : 0)}d` : s < 365 * 86_400 ? `${+(s / (30 * 86_400)).toFixed(1)}mo` : `${+(s / (365 * 86_400)).toFixed(1)}y`;
 
 /**
  * Portfolio value / P&L chart (paper book) from /api/portfolio/history. The last point is always the live value.
@@ -14,7 +18,9 @@ const RANGES = ["1D", "1W", "1M", "ALL"] as const;
  */
 export function PortfolioSpark({ height = 56, compact = false, className }: { height?: number; compact?: boolean; className?: string }) {
   const [range, setRange] = useState<(typeof RANGES)[number]>("1D");
-  const { data, refresh } = useApi<any>(`/api/portfolio/history?range=${range}`, { refreshMs: 30_000 });
+  const [dial, setDial] = useState(45);
+  const [dialSec, setDialSec] = useState(() => dialToSec(45));
+  const { data, refresh } = useApi<any>(range === "Custom" ? `/api/portfolio/history?seconds=${Math.max(60, dialSec)}` : `/api/portfolio/history?range=${range}`, { refreshMs: 30_000 });
   useRealtime((e) => { if (e.type === "fill") refresh(); });
   const pts: Pt[] = useMemo(() => (data?.points ?? []).map((p: any) => ({ time: Number(p.time), value: Number(p.value) })).filter((p: Pt) => Number.isFinite(p.value)), [data]);
   const first = pts[0]?.value ?? 0, last = pts[pts.length - 1]?.value ?? 0, change = last - first;
@@ -34,9 +40,20 @@ export function PortfolioSpark({ height = 56, compact = false, className }: { he
       <div className="flex items-center justify-between gap-2">
         {!compact && <span className={cx("num text-[12px] font-semibold", up ? "text-up" : "text-down")}>{pts.length > 1 ? `${up ? "+" : "−"}${usd(Math.abs(change))} (${first ? ((change / first) * 100).toFixed(2) : "0.00"}%)` : "—"}</span>}
         <div className="ml-auto flex gap-0.5 text-[10px]">
-          {RANGES.map((r) => <button key={r} onClick={(e) => { e.stopPropagation(); setRange(r); }} className={cx("rounded px-1.5 py-px", range === r ? "bg-accent-soft text-accent-2" : "text-faint hover:text-text")}>{r}</button>)}
+          {RANGES.map((r) => <button key={r} onClick={(e) => { e.stopPropagation(); setRange(r); }} className={cx("rounded px-1.5 py-px", range === r ? "bg-accent-soft text-accent-2" : "text-faint hover:text-text")}>{r === "Custom" && range === "Custom" ? secLabel(dialSec) : r}</button>)}
         </div>
       </div>
+      {range === "Custom" && (
+        <div className="mt-1.5 flex items-center gap-2 text-[10px] text-faint" onClick={(e) => e.stopPropagation()}>
+          <span>5m</span>
+          <input type="range" min={0} max={100} step={1} value={dial} aria-label="Custom time range"
+            onChange={(e) => setDial(Number(e.target.value))}
+            onPointerUp={() => setDialSec(dialToSec(dial))} onKeyUp={() => setDialSec(dialToSec(dial))} onTouchEnd={() => setDialSec(dialToSec(dial))}
+            className="h-1 flex-1 cursor-pointer accent-[var(--color-accent-2,#d6b37a)]" />
+          <span>5y</span>
+          <span className="num w-12 text-right font-semibold text-accent-2">{secLabel(dialToSec(dial))}</span>
+        </div>
+      )}
       {path ? (
         <svg viewBox="0 0 300 100" preserveAspectRatio="none" className="mt-1 w-full" style={{ height }} aria-label={`Portfolio ${range}: ${up ? "up" : "down"} ${usd(Math.abs(change))}`}>
           <defs><linearGradient id={`pf-${range}-${up}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={color} stopOpacity="0.35" /><stop offset="1" stopColor={color} stopOpacity="0" /></linearGradient></defs>

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, AtSign, Mic, Paperclip, Clock, Loader2, Zap, Sparkles } from "lucide-react";
+import { ArrowUp, AtSign, Mic, Paperclip, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { useApi } from "@/lib/api";
 import { cx } from "@/components/ui";
@@ -11,6 +11,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
   const [text, setText] = useState("");
   const [listening, setListening] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [suggOpen, setSuggOpen] = useState(false);
   const rec = useRef<any>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
   const agents = useApi<any>(agentsOpen ? "/api/agents" : null);
@@ -45,22 +46,37 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
           className="w-full resize-none bg-transparent px-1 text-[15.5px] outline-none placeholder:font-serif placeholder:italic placeholder:text-faint" />
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button disabled title="Attachments are coming soon" className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] text-muted opacity-60"><Paperclip className="size-3.5" /> Attach</button>
-          <div role="radiogroup" aria-label="Paper or real money" className="flex h-8 items-center rounded-lg border border-line p-0.5 text-[12.5px]">
-            <button role="radio" aria-checked={book === "paper"} onClick={() => onBook?.("paper")}
-              className={cx("flex h-full items-center gap-1.5 rounded-md px-2.5", book === "paper" ? "border border-accent/50 bg-accent-soft/40 text-accent-2" : "text-muted hover:text-text")}><Clock className="size-3.5" />Paper</button>
-            <button role="radio" aria-checked={book === "live"} title="Trades and bots from your prompts use your real accounts: crypto through your exchange or Merod Wallet, stocks through your broker. Needs the Real money switch and 2FA."
-              onClick={() => { if (book !== "live" && !confirm("Use real money for trades and bots from your prompts? Crypto goes through your exchange or Merod Wallet, stocks through your broker.")) return; onBook?.("live"); }}
-              className={cx("flex h-full items-center gap-1.5 rounded-md px-2.5", book === "live" ? "border border-down/50 bg-down-soft/40 text-down" : "text-muted hover:text-text")}><Zap className="size-3.5" />Real money / crypto</button>
+          {/* Money: where trades and bots from this prompt go */}
+          <ControlGroup label="Money">
+            <Seg on={book === "paper"} onClick={() => onBook?.("paper")} icon={FlaskConical} title="Practice with virtual funds">Paper</Seg>
+            <Seg on={book === "live"} tone="down" icon={Zap} title="Trades and bots from your prompts use your real accounts: crypto through your exchange or Merod Wallet, stocks through your broker. Needs the Real money switch and 2FA."
+              onClick={() => { if (book !== "live" && !confirm("Use real money for trades and bots from your prompts? Crypto goes through your exchange or Merod Wallet, stocks through your broker.")) return; onBook?.("live"); }}>Real money</Seg>
+          </ControlGroup>
+          {/* AI: who answers */}
+          <ControlGroup label="AI">
+            <Seg on={ai === "merod"} onClick={() => onAi?.("merod")} icon={Sparkles} title="Merod's built-in rules: trades, bots, settings, mimic and market data. No key needed.">Modo</Seg>
+            <Seg on={ai === "openai"} onClick={() => onAi?.("openai")} icon={Bot} title="Answers and plans from OpenAI, using your own OpenAI key (Broker & AI keys).">OpenAI</Seg>
+            <Seg on={ai === "anthropic"} onClick={() => onAi?.("anthropic")} icon={Brain} title="Answers and plans from Claude, using your own Claude key (Broker & AI keys).">Claude</Seg>
+          </ControlGroup>
+          {ai !== "merod" && <a href={ai === "openai" ? "https://platform.openai.com/settings/organization/billing/" : "https://console.anthropic.com/settings/billing"} target="_blank" rel="noreferrer noopener" className="text-[11px] text-accent-2 underline underline-offset-2 hover:text-text">{ai === "openai" ? "OpenAI" : "Claude"} credits →</a>}
+          <span className="hidden h-6 w-px bg-line sm:block" aria-hidden />
+          {/* Tools */}
+          <div className="relative">
+            <button onClick={() => setSuggOpen((o) => !o)} aria-expanded={suggOpen} className={cx("flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px]", suggOpen ? "border-accent/50 text-accent-2" : "border-line text-muted hover:text-text")}><Lightbulb className="size-3.5" /> Suggestions</button>
+            {suggOpen && (
+              <div className="absolute bottom-10 left-0 z-30 max-h-72 w-80 overflow-y-auto rounded-xl border border-line bg-panel p-1 shadow-2xl" onMouseLeave={() => setSuggOpen(false)}>
+                {SUGGESTION_GROUPS.map(([group, items]) => (
+                  <div key={group} className="mb-1">
+                    <div className="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">{group}</div>
+                    {(group === "For you" ? [...new Set([...suggestions, ...items])].slice(0, 6) : items).map((s) => (
+                      <button key={s} onClick={() => { setText(s); setSuggOpen(false); ta.current?.focus(); }} className="block w-full rounded-lg px-2 py-1.5 text-left text-[12.5px] hover:bg-panel-2">{s}</button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div role="radiogroup" aria-label="Which AI answers" className="flex h-8 items-center rounded-lg border border-line p-0.5 text-[12.5px]">
-            {([["merod", "Modo"], ["openai", "OpenAI"], ["anthropic", "Claude"]] as const).map(([k, l]) => (
-              <button key={k} role="radio" aria-checked={ai === k} onClick={() => onAi?.(k)}
-                title={k === "merod" ? "Merod's built-in rules: trades, bots, settings, mimic and market data. No key needed." : `Answers and plans from ${l}, using your own ${l} key (Broker & AI keys).`}
-                className={cx("flex h-full items-center gap-1 rounded-md px-2.5", ai === k ? "border border-accent/50 bg-accent-soft/40 text-accent-2" : "text-muted hover:text-text")}><Sparkles className="size-3.5" />{l}</button>
-            ))}
-          </div>
-          {ai !== "merod" && <a href={ai === "openai" ? "https://platform.openai.com/settings/organization/billing/" : "https://console.anthropic.com/settings/billing"} target="_blank" rel="noreferrer noopener" className="text-[11.5px] text-accent-2 underline underline-offset-2 hover:text-text">{ai === "openai" ? "OpenAI" : "Claude"} credits →</a>}
+          <button disabled title="Attachments are coming soon" className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] text-muted opacity-50"><Paperclip className="size-3.5" /> Attach</button>
           <div className="relative">
             <button onClick={() => setAgentsOpen((o) => !o)} className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] text-muted hover:text-text"><AtSign className="size-3.5" /> Agents</button>
             {agentsOpen && (
@@ -89,5 +105,34 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
         </div>
       </div>
     </div>
+  );
+}
+
+/** Ready-made prompts for the Suggestions menu, grouped by what they do. */
+const SUGGESTION_GROUPS: [string, string[]][] = [
+  ["For you", ["How is my portfolio doing?", "What moved my portfolio today?"]],
+  ["Trade", ["Buy $100 of SOL", "Sell 25% of my biggest winner", "Buy $500 of NVDA if it dips 3%, take profit at 8%"]],
+  ["Bots & agents", ["Pick the top 20 Solana meme coin gainers, buy $10 each, sell at 2% profit, repeat", "Create 3 agents that trade Solana meme coins", "Make a bot that buys ETH at a 3% dip and sells at 5% profit"]],
+  ["Mimic", ["Mimic the top 50 stock and crypto traders this week", "Mimic the top ROI earner for Solana meme coins this week"]],
+  ["Settings", ["Turn off risk flagging for all bots", "Turn Modo Autopilot on", "Risk level 80, per trade $50, take profit 10%, stop loss 3%", "Open purchase history"]],
+];
+
+/** A small labelled group of segmented buttons ("Money", "AI"). */
+function ControlGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-faint">{label}</span>
+      <div role="radiogroup" aria-label={label} className="flex h-8 items-center gap-0.5 rounded-lg border border-line bg-bg/40 p-0.5 text-[12px]">{children}</div>
+    </div>
+  );
+}
+
+/** One option inside a ControlGroup. */
+function Seg({ on, onClick, icon: Icon, title, tone, children }: { on: boolean; onClick: () => void; icon: any; title?: string; tone?: "down"; children: React.ReactNode }) {
+  return (
+    <button role="radio" aria-checked={on} onClick={onClick} title={title}
+      className={cx("flex h-full items-center gap-1.5 rounded-md px-2.5 transition-colors", on ? (tone === "down" ? "bg-down-soft/60 text-down ring-1 ring-down/40" : "bg-accent-soft/60 text-accent-2 ring-1 ring-accent/40") : "text-muted hover:text-text")}>
+      <Icon className="size-3.5" />{children}
+    </button>
   );
 }
