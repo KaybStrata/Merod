@@ -6,10 +6,11 @@ import { TradeHistory } from "@/components/activity/TradeHistory";
 import { api } from "@/lib/api";
 import { capFeed } from "@/lib/feed";
 import { ItemHeader, type FeedCoin } from "@/components/activity/ItemHeader";
+import { WhyLine } from "@/components/agents/Why";
 import { usePageTitle, useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 
-type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: string; pnl?: number; coin?: FeedCoin };
+type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: string; pnl?: number; coin?: FeedCoin; eventId?: number };
 const SOURCES: [string, string, any][] = [["all", "Everything", Activity], ["agent", "Agents", Sparkles], ["bot", "Bots", Bot], ["auto", "Auto trading", Cpu], ["modo", "Modo", Brain], ["order", "Orders", ArrowLeftRight], ["copy", "Mimic & copy", Repeat], ["merod", "Merod", Landmark]];
 const KINDS: [string, string, any, string][] = [
   ["thought", "Thoughts", Brain, "text-[#c9b6ff] bg-[rgba(185,163,240,.14)]"],
@@ -135,6 +136,7 @@ export default function LiveActivity() {
                     </div>
                     <div className="mt-0.5 text-[13px] leading-snug">{i.title}</div>
                     {i.body && <div className="mt-1 line-clamp-2 rounded-lg border border-line/60 bg-bg-2/50 px-2.5 py-1.5 text-[11.5px] text-muted">{i.body}</div>}
+                    {i.eventId && <WhyLine eventId={i.eventId} />}
                   </div>
                 </div>
               );

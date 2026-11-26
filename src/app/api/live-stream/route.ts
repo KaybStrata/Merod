@@ -9,7 +9,7 @@ import { getSettings } from "@/server/auto/engine";
  * your orders and fills, copy/mimic trades, and Merod itself (platform trades, worker/system events for admins).
  * Newest first; `since` (ms) returns only newer items for live polling.
  */
-type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: Coin };
+type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: Coin; /** agent decision with a Why card */ eventId?: number };
 /** The coin a bot line is about, with its live price and move (since the bot bought it, or 24h). */
 type Coin = { symbol: string; price?: number; move?: number | null; basis?: string };
 const BOT_KIND: Record<string, Item["kind"]> = { observation: "analysis", trigger: "decision", instruction: "decision", order: "execution", result: "execution", warning: "warning", error: "warning", control: "state" };
@@ -45,7 +45,7 @@ export const GET = route(async (req) => {
     : filter === "profit" ? " AND o.side='sell' AND o.realized_pnl > 0" : filter === "loss" ? " AND o.side='sell' AND o.realized_pnl < 0" : "";
   const pnlOnly = filter === "profit" || filter === "loss";
   const [agents, bots, orders, copies, platform, system] = await Promise.all([
-    want("agent") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT e.id, e.created_at, e.kind, e.title, e.body, e.agent_id, a.name FROM agent_events e LEFT JOIN agents a ON a.id=e.agent_id WHERE e.user_id=$1 AND e.created_at > $2 ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]) : none,
+    want("agent") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT e.id, e.created_at, e.kind, e.title, e.body, e.agent_id, a.name, (e.data ? 'orderId' OR (e.data ? 'signal' AND e.data ? 'inputs')) AS explainable FROM agent_events e LEFT JOIN agents a ON a.id=e.agent_id WHERE e.user_id=$1 AND e.created_at > $2 ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]) : none,
     want("bot") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT l.id, l.created_at, l.level, l.message, l.data, b.id AS bot_id, b.name FROM bot_activity_logs l JOIN trading_bots b ON b.id=l.bot_id WHERE b.user_id=$1 AND l.created_at > $2 ORDER BY l.id DESC LIMIT $3`, [u.id, since, lim]) : none,
     want("order") ? q<any>(`SELECT o.id, o.updated_at, o.side, o.status, o.source, o.is_paper, o.filled_quantity, o.avg_fill_price, o.notional_usd, o.status_reason, o.realized_pnl, a.symbol, a.id AS asset_id
               FROM orders o JOIN assets a ON a.id=o.asset_id WHERE o.user_id=$1 AND o.updated_at > $2${orderCond} ORDER BY o.updated_at DESC LIMIT $3`, [u.id, since, lim]) : none,
@@ -55,7 +55,7 @@ export const GET = route(async (req) => {
     isAdminRole(u.role) && filter === "all" ? q<any>(`SELECT id, created_at, source, level, message FROM system_events WHERE created_at > $1 ORDER BY id DESC LIMIT 40`, [since]) : none,
   ]);
   const items: Item[] = [];
-  for (const e of agents) items.push({ id: `ag${e.id}`, at: e.created_at, source: "agent", kind: AGENT_KIND[e.kind] ?? "state", actor: e.name ?? "Agent", title: e.title, body: e.body || undefined, link: e.agent_id ? `/agents/${e.agent_id}` : "/agents" });
+  for (const e of agents) items.push({ id: `ag${e.id}`, eventId: e.explainable ? Number(e.id) : undefined, at: e.created_at, source: "agent", kind: AGENT_KIND[e.kind] ?? "state", actor: e.name ?? "Agent", title: e.title, body: e.body || undefined, link: e.agent_id ? `/agents/${e.agent_id}` : "/agents" });
   for (const l of bots) {
     // Older lines carried the coin in the text ("ZERO @ 0.000270100 (dexscreener) — …"): lift it into the header too.
     let coin: Coin | undefined = l.data?.coin ?? undefined, title = l.message as string;

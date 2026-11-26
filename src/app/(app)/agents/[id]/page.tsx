@@ -8,6 +8,7 @@ import { useRealtime, usePageTitle } from "@/components/shell/context";
 import { Modal, Skeleton, cx, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
 import { LiveExecution } from "@/components/agents/LiveExecution";
+import { AgreementBadge, WhyLine } from "@/components/agents/Why";
 import { ActivityFeed } from "@/components/agents/ActivityFeed";
 import { agentAct } from "@/components/agents/AgentCard";
 import { AgentAvatar, AreaChart, KindBadge, StatusDot, GoldButton, GhostButton, fmtPct, fmtSigned, fmtUsd, toneOf, clock } from "@/components/agents/common";
@@ -35,7 +36,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
       <div className="flex flex-wrap items-center gap-4">
         <AgentAvatar agent={{ ...a, symbols: data.assets.map((x: any) => x.symbol) }} size={40} />
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2"><h2 className="text-[1.15rem] font-semibold tracking-tight">{a.name}</h2><StatusDot status={a.status} /><span className="rounded-md border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[10px] font-semibold text-warn">PAPER</span></div>
+          <div className="flex flex-wrap items-center gap-2"><h2 className="text-[1.15rem] font-semibold tracking-tight">{a.name}</h2><StatusDot status={a.status} /><span className="rounded-md border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[10px] font-semibold text-warn">PAPER</span><AgreementBadge agentId={id} name={a.name} /></div>
           <div className="text-[12px] text-muted">{a.roleName} · autonomy {a.autonomy_level} ({AUT[a.autonomy_level]}) · v{a.version} · model {a.routedModel}{a.fleet_id && <> · <Link href={`/agents/fleets/${a.fleet_id}`} className="underline">fleet</Link></>}{a.stop_reason && <span className="text-warn"> · {a.stop_reason}</span>}</div>
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
@@ -137,7 +138,7 @@ function BlackBox({ events }: { events: any[] }) {
       {events.map((e) => (
         <div key={e.id} className="flex items-start gap-3 rounded-xl px-3 py-2 hover:bg-panel-2">
           <span className="num w-16 shrink-0 text-[11px] text-faint">{clock(e.created_at)}</span><KindBadge kind={e.kind} />
-          <div className="min-w-0 flex-1"><div className="text-sm">{e.title} <span className="text-[10px] text-faint">v{e.version ?? "?"}</span></div>{e.body && <div className="text-xs text-muted">{e.body}</div>}</div>
+          <div className="min-w-0 flex-1"><div className="text-sm">{e.title} <span className="text-[10px] text-faint">v{e.version ?? "?"}</span></div>{e.body && <div className="text-xs text-muted">{e.body}</div>}{(e.data?.orderId || (e.data?.inputs && ["decision", "execution", "warning", "approval"].includes(e.kind) && e.data?.signal)) && <WhyLine eventId={e.id} />}</div>
           {e.data?.inputs && <button onClick={() => run(e.id)} className="flex shrink-0 items-center gap-1 text-xs text-accent-2"><Repeat2 className="size-3.5" /> Replay</button>}
         </div>
       ))}

@@ -5,11 +5,12 @@ import { Activity, X, Brain, Target, CheckCircle2, AlertTriangle, BarChart3, Gau
 import { api } from "@/lib/api";
 import { capFeed } from "@/lib/feed";
 import { ItemHeader, type FeedCoin } from "@/components/activity/ItemHeader";
+import { WhyLine } from "@/components/agents/Why";
 import { useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 import { PortfolioSpark } from "./PortfolioSpark";
 
-type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: FeedCoin };
+type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: FeedCoin; eventId?: number };
 const KIND: Record<string, [any, string]> = {
   thought: [Brain, "text-[#c9b6ff]"], analysis: [BarChart3, "text-up"], decision: [Target, "text-[#8fbcff]"],
   execution: [CheckCircle2, "text-up"], warning: [AlertTriangle, "text-warn"], state: [Gauge, "text-muted"],
@@ -110,6 +111,7 @@ export function TalkActivity() {
                         )}
                       </div>
                       {i.body && <div className="line-clamp-2 text-[11px] text-muted">{i.body}</div>}
+                      {i.eventId && <WhyLine eventId={i.eventId} />}
                     </div>
                   </div>
                 );
