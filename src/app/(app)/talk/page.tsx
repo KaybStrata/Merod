@@ -31,6 +31,40 @@ function Talk() {
   const [book, setBookState] = useState<"paper" | "live">("paper");
   useEffect(() => { try { if (localStorage.getItem("merod-talk-book") === "live") setBookState("live"); } catch { /* ignore */ } }, []);
   const setBook = (b: "paper" | "live") => { setBookState(b); try { localStorage.setItem("merod-talk-book", b); } catch { /* ignore */ } };
+  // Talk switch: bots, agents and trades post what they do into this conversation (remembered in this browser).
+  const [narrate, setNarrateState] = useState(false);
+  useEffect(() => { try { setNarrateState(localStorage.getItem("merod-talk-narrate") === "1"); } catch { /* ignore */ } }, []);
+  const setNarrate = (on: boolean) => { setNarrateState(on); try { localStorage.setItem("merod-talk-narrate", on ? "1" : "0"); } catch { /* ignore */ }
+    setMessages((m) => [...m, { id: `n-sys-${Date.now()}`, role: "assistant", narration: true, content: on ? "Talk is on: your bots, agents, Auto/Modo, Mimic and trades will tell you here what they do, as it happens." : "Talk is off. Everything is still in Activity." }]); };
+  const narrSince = useRef(0);
+  useEffect(() => {
+    if (!narrate) return;
+    let live = true;
+    narrSince.current = Date.now();
+    const pull = async () => {
+      try {
+        const r: any = await api(`/api/live-stream?since=${narrSince.current - 1000}`);
+        if (!live) return;
+        narrSince.current = r.now;
+        // Meaningful steps only: trades, decisions, warnings — not the per-tick "watching" lines.
+        const items = (r.items ?? []).filter((i: any) => ["execution", "decision", "warning"].includes(i.kind) && i.source !== "merod").reverse();
+        if (!items.length) return;
+        setMessages((m) => {
+          const seen = new Set(m.map((x: any) => x.id));
+          const add = items.filter((i: any) => !seen.has(`n-${i.id}`)).slice(-8).map((i: any) => ({
+            id: `n-${i.id}`, role: "assistant", narration: true, created_at: i.at,
+            content: `${i.coin?.symbol ? `${i.coin.symbol} · ` : ""}${i.actor}: ${i.title}${i.pnl != null ? ` (${i.pnl >= 0 ? "+" : "−"}$${Math.abs(i.pnl).toFixed(2)})` : ""}`,
+          }));
+          if (add.length && talk?.talkPrefs.voice && typeof window !== "undefined" && "speechSynthesis" in window) {
+            for (const a of add.slice(-2)) window.speechSynthesis.speak(new SpeechSynthesisUtterance(a.content.replace(/\$/g, " dollars ").slice(0, 200)));
+          }
+          return add.length ? [...m, ...add] : m;
+        });
+      } catch { /* try again */ }
+    };
+    const t = setInterval(pull, 5000);
+    return () => { live = false; clearInterval(t); };
+  }, [narrate]); // eslint-disable-line react-hooks/exhaustive-deps
   // Which AI answers Talk prompts (remembered in this browser). Modo = built-in rules, no key needed.
   const [ai, setAiState] = useState<"merod" | "openai" | "anthropic">("merod");
   useEffect(() => { try { const v = localStorage.getItem("merod-talk-ai"); if (v === "openai" || v === "anthropic" || v === "merod") setAiState(v); } catch { /* ignore */ } }, []);
@@ -119,7 +153,7 @@ function Talk() {
       </div>
       <div className="shrink-0 px-4 pb-4 pt-2 sm:px-6">
         <div className="mx-auto w-full max-w-[860px]">
-          <TalkComposer onSend={send} busy={busy} suggestions={suggestions} voice={!!talk?.talkPrefs.voice} book={book} onBook={setBook} ai={ai} onAi={setAi}
+          <TalkComposer onSend={send} busy={busy} suggestions={suggestions} voice={!!talk?.talkPrefs.voice} book={book} onBook={setBook} ai={ai} onAi={setAi} narrate={narrate} onNarrate={setNarrate}
             placeholder={messages.length ? "Reply, or ask Merod anything…" : "Ask Merod anything, or just talk…"} />
           <p className="mt-1.5 text-center text-[10.5px] text-faint">Every plan runs through the same preview, risk checks, approval and audit log as Classic mode.</p>
         </div>

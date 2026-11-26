@@ -87,12 +87,12 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
     <div className={className}>
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         {!compact && <span className={cx("num whitespace-nowrap text-[12px] font-semibold", up ? "text-up" : "text-down")}>{pts.length > 1 ? `${up ? "+" : "−"}${usd(Math.abs(change))} (${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%)` : "—"}{useBe && <span className="ml-1 font-normal text-faint">vs {usd(breakEven!)} put in</span>}</span>}
-        {breakEven && (
+        {!compact && (
           <button onClick={(e) => { e.stopPropagation(); toggleBe(); }} aria-pressed={beOn}
-            title={`Break even: your P&L after your initial investment (${usd(breakEven)} = starting balance + deposits − withdrawals)`}
+            title={breakEven ? `Break-even P&L: how much you've made after your initial investment (${usd(breakEven)} = starting balance + deposits − withdrawals)` : "Break-even P&L: how much you've made after your initial investment"}
             className={cx("flex items-center gap-1 rounded-md border px-1.5 py-px text-[10px]", beOn ? "border-accent/50 bg-accent-soft text-accent-2" : "border-line text-faint hover:text-text")}>
             <span className={cx("inline-block h-2 w-3.5 rounded-full p-px transition", beOn ? "bg-accent-2" : "bg-line-2")}><span className={cx("block size-1.5 rounded-full bg-bg transition", beOn && "translate-x-1.5")} /></span>
-            Break even
+            Break-even P&L
           </button>
         )}
         {seconds ? <span className="ml-auto text-[10px] text-faint">last {secLabel(seconds)}</span> : compact ? (
@@ -106,6 +106,23 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
           </div>
         )}
       </div>
+      {/* Break-even P&L meter: what you've made after your initial investment, on a gauge centred at break-even. */}
+      {beOn && !compact && breakEven != null && pts.length > 0 && (() => {
+        const after = last - breakEven, p = (after / breakEven) * 100, w = 50 * Math.min(1, Math.sqrt(Math.abs(p) / 10));
+        return (
+          <div className="mt-1.5 rounded-lg border border-line bg-bg-2/60 px-2.5 py-1.5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-baseline justify-between gap-2 text-[11px]">
+              <span className="text-muted">After your initial {usd(breakEven)}</span>
+              <span className={cx("num font-semibold", after >= 0 ? "text-up" : "text-down")}>{after >= 0 ? "+" : "−"}{usd(Math.abs(after))} ({after >= 0 ? "+" : "−"}{pctLabel(Math.abs(after), breakEven)}%)</span>
+            </div>
+            <div className="relative mt-1 h-1.5 rounded-full bg-panel-2" role="meter" aria-valuenow={after} aria-label="Break-even P&L">
+              <span className="absolute inset-y-[-3px] left-1/2 w-px bg-text/40" />
+              <span className={cx("absolute inset-y-0 rounded-full", after >= 0 ? "left-1/2 bg-up/80" : "right-1/2 bg-down/80")} style={{ width: `${Math.max(0.6, w)}%` }} />
+            </div>
+            <div className="mt-0.5 flex justify-between text-[9px] text-faint"><span>−10%</span><span>break even</span><span>+10%</span></div>
+          </div>
+        );
+      })()}
       {range === "Custom" && !seconds && <TimeDial value={dialSec} onChange={setDialSec} className="mt-1.5" />}
       {path ? (
         <div ref={boxRef} className="relative mt-1 cursor-crosshair touch-none select-none" style={{ height }}

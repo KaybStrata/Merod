@@ -1,5 +1,5 @@
 "use client";
-import { CheckCircle2, Sparkles } from "lucide-react";
+import { CheckCircle2, Megaphone, Sparkles } from "lucide-react";
 import { PlanCard } from "@/components/shell/PlanCard";
 import { cx } from "@/components/ui";
 import { MerodAvatar } from "./Digest";
@@ -15,7 +15,9 @@ export function TalkThread({ messages, onSend, onDone, allowed }: { messages: an
     <div className="space-y-5">
       {messages.map((m) => m.role === "user"
         ? <div key={m.id} className="flex justify-end"><div className="max-w-[85%] whitespace-pre-wrap rounded-2xl border border-line-2 bg-panel-2/80 px-4 py-2.5 text-[14.5px]">{m.content}</div></div>
-        : <MerodMessage key={m.id} m={m} onSend={onSend} onDone={onDone} allowed={allowed} />)}
+        : m.narration
+          ? <div key={m.id} className="flex items-start gap-2 pl-11 text-[12.5px] text-muted"><Megaphone className="mt-0.5 size-3.5 shrink-0 text-accent-2" /><span className="whitespace-pre-wrap">{m.content}</span>{m.created_at && <span className="ml-auto shrink-0 text-[10.5px] text-faint">{new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}</div>
+          : <MerodMessage key={m.id} m={m} onSend={onSend} onDone={onDone} allowed={allowed} />)}
     </div>
   );
 }

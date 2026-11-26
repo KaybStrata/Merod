@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, AtSign, Mic, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb, MessageSquare, Wand2, Crosshair } from "lucide-react";
+import { ArrowUp, AtSign, Mic, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb, MessageSquare, Wand2, Crosshair, Megaphone, BellOff } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { useApi } from "@/lib/api";
 import { cx } from "@/components/ui";
@@ -9,7 +9,7 @@ import { GhostText, TypeAheadList, useTypeAhead } from "@/components/shell/TypeA
 import { SkillsMenu } from "@/components/shell/SkillsMenu";
 
 /** Talk composer: text (and optional browser speech-to-text), Attach, Paper badge, @Agents, suggestion pills. Sends via the existing prompt API. */
-export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi }: { onSend: (t: string, attachmentIds?: string[]) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic"; onAi?: (a: "merod" | "openai" | "anthropic") => void }) {
+export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi, narrate = false, onNarrate }: { onSend: (t: string, attachmentIds?: string[]) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic"; onAi?: (a: "merod" | "openai" | "anthropic") => void; narrate?: boolean; onNarrate?: (on: boolean) => void }) {
   const { user } = useShell();
   const [text, setText] = useState("");
   const [listening, setListening] = useState(false);
@@ -79,6 +79,13 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
             <Seg on={ai === "openai"} onClick={() => onAi?.("openai")} icon={Bot} title="Answers and plans from OpenAI, using your own OpenAI key (Broker & AI keys).">OpenAI</Seg>
             <Seg on={ai === "anthropic"} onClick={() => onAi?.("anthropic")} icon={Brain} title="Answers and plans from Claude, using your own Claude key (Broker & AI keys).">Claude</Seg>
           </ControlGroup>
+          {/* Talk: every bot, agent and trade (current and future) reports to you in this conversation as it happens */}
+          {onNarrate && (
+            <ControlGroup label="Talk">
+              <Seg on={!narrate} onClick={() => onNarrate(false)} icon={BellOff} title="Off: bots, agents and trades don't post here (everything is still in Activity)">Off</Seg>
+              <Seg on={narrate} onClick={() => onNarrate(true)} icon={Megaphone} title="On: every bot, agent, Auto/Modo, Mimic and trade action is posted into this conversation as it happens (and spoken if voice is on). Applies to all current and future bots and agents.">On</Seg>
+            </ControlGroup>
+          )}
           {/* Send as: what this message becomes */}
           <ControlGroup label="Send as">
             <Seg on={sendAs === "prompt"} onClick={() => setSendAs("prompt")} icon={MessageSquare} title="A normal prompt: Merod does it now">Prompt</Seg>
