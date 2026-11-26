@@ -37,10 +37,12 @@ const money = (n: number) => `$${Number(n).toLocaleString("en-US", { maximumFrac
 /** Risk mode scales trade size and exit width: level 25 = normal, 1 ≈ 0.5×, 100 = 2.5×. Off = 1×. */
 export const riskFactor = (cfg: any) => (cfg?.risk_mode ? +(0.5 + Number(cfg.risk_level ?? 25) / 50).toFixed(2) : 1);
 const round2 = (x: number) => Math.round(x * 100) / 100;
-export const sizeOf = (cfg: any) => round2(Number(cfg.trade_usd) * riskFactor(cfg));
-export const tpOf = (cfg: any) => round2(Number(cfg.take_profit_pct) * riskFactor(cfg));
-export const slOf = (cfg: any) => round2(Number(cfg.stop_loss_pct) * riskFactor(cfg));
-const riskNote = (cfg: any) => (cfg?.risk_mode ? ` Risk dial at ${cfg.risk_level} (×${riskFactor(cfg)}): ${money(sizeOf(cfg))} per trade, exits at +${tpOf(cfg)}% / −${slOf(cfg)}%.` : "");
+/** A custom value (set next to the dial) always wins over the dial for that one number. */
+const custom = (x: unknown) => (x != null && Number(x) > 0 ? Number(x) : null);
+export const sizeOf = (cfg: any) => custom(cfg?.custom_trade_usd) ?? round2(Number(cfg.trade_usd) * riskFactor(cfg));
+export const tpOf = (cfg: any) => custom(cfg?.custom_take_profit_pct) ?? round2(Number(cfg.take_profit_pct) * riskFactor(cfg));
+export const slOf = (cfg: any) => custom(cfg?.custom_stop_loss_pct) ?? round2(Number(cfg.stop_loss_pct) * riskFactor(cfg));
+const riskNote = (cfg: any) => (cfg?.risk_mode || custom(cfg?.custom_trade_usd) || custom(cfg?.custom_take_profit_pct) || custom(cfg?.custom_stop_loss_pct) ? ` Risk dial at ${cfg.risk_level} (×${riskFactor(cfg)}): ${money(sizeOf(cfg))} per trade, exits at +${tpOf(cfg)}% / −${slOf(cfg)}%.` : "");
 
 /* ───────────────────────── Settings & switch ───────────────────────── */
 export async function getSettings(userId: string) {
@@ -51,7 +53,8 @@ export async function getSettings(userId: string) {
 }
 
 export async function saveSettings(userId: string, patch: Partial<{ enabled: boolean; accountId: string | null; markets: string; tradeUsd: number; maxDailyUsd: number; maxOpen: number;
-  minConfidence: number; minTheoryTrades: number; minTheoryWinRate: number; takeProfitPct: number; stopLossPct: number; forceTrading: boolean; riskMode: boolean; riskLevel: number }>) {
+  minConfidence: number; minTheoryTrades: number; minTheoryWinRate: number; takeProfitPct: number; stopLossPct: number; forceTrading: boolean; riskMode: boolean; riskLevel: number;
+  customTradeUsd: number | null; customTakeProfitPct: number | null; customStopLossPct: number | null }>) {
   if (patch.accountId) {
     const a = await one("SELECT 1 FROM trading_accounts WHERE id=$1 AND user_id=$2 AND status='active'", [patch.accountId, userId]);
     if (!a) throw new HttpError(400, "That trading account isn't yours or isn't active");
@@ -73,6 +76,12 @@ export async function saveSettings(userId: string, patch: Partial<{ enabled: boo
   if (patch.riskMode !== undefined || patch.riskLevel !== undefined) {
     await q("UPDATE auto_trading SET risk_mode=COALESCE($2, risk_mode), risk_level=COALESCE($3, risk_level) WHERE user_id=$1", [userId, patch.riskMode ?? null, patch.riskLevel != null ? Math.max(1, Math.min(100, Math.round(patch.riskLevel))) : null]);
     if (patch.riskMode !== undefined && patch.riskMode !== !!cur.risk_mode) await audit({ actorType: "user", actorId: userId, userId, action: patch.riskMode ? "auto.risk_on" : "auto.risk_off", data: { level: patch.riskLevel ?? cur.risk_level } });
+  }
+  if (patch.customTradeUsd !== undefined || patch.customTakeProfitPct !== undefined || patch.customStopLossPct !== undefined) {
+    const v = (x: number | null | undefined, cur: any) => (x === undefined ? cur ?? null : x != null && x > 0 ? x : null);
+    await q("UPDATE auto_trading SET custom_trade_usd=$2, custom_take_profit_pct=$3, custom_stop_loss_pct=$4 WHERE user_id=$1",
+      [userId, v(patch.customTradeUsd, cur.custom_trade_usd), v(patch.customTakeProfitPct, cur.custom_take_profit_pct), v(patch.customStopLossPct, cur.custom_stop_loss_pct)]);
+    await audit({ actorType: "user", actorId: userId, userId, action: "auto.custom_exits", data: { tradeUsd: patch.customTradeUsd, takeProfitPct: patch.customTakeProfitPct, stopLossPct: patch.customStopLossPct } });
   }
   if (patch.forceTrading !== undefined && patch.forceTrading !== !!cur.force_trading) {
     await q("UPDATE auto_trading SET force_trading=$2 WHERE user_id=$1", [userId, patch.forceTrading]);

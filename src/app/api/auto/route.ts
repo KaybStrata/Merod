@@ -26,6 +26,10 @@ const Patch = z.object({
   forceTrading: z.boolean().optional(),
   riskMode: z.boolean().optional(),
   riskLevel: z.number().int().min(1).max(100).optional(),
+  // Custom values next to the risk dial; null clears (back to the dial).
+  customTradeUsd: z.number().positive().max(1e12).nullable().optional(),
+  customTakeProfitPct: z.number().positive().max(10000).nullable().optional(),
+  customStopLossPct: z.number().positive().max(100).nullable().optional(),
   modoMinConfidence: z.number().min(0.01).max(0.99).optional(),
 }).strict();
 

@@ -649,6 +649,35 @@ function Dial({ value, min, max, onChange, onCommit, disabled, size = 120, capti
   );
 }
 
+/** One risk tile: shows the value in use (custom if set, else the dial's) and lets you type your own. */
+function CustomTile({ label, field, saved, dial, unit, tone, sub, patch, busy }: { label: string; field: string; saved: any; dial: number; unit: "$" | "+%" | "−%"; tone: string; sub?: string;
+  patch: (body: any, msg: string) => Promise<void>; busy: boolean }) {
+  const has = saved != null && Number(saved) > 0;
+  const [v, setV] = useState<string>(has ? String(Number(saved)) : "");
+  useEffect(() => setV(has ? String(Number(saved)) : ""), [saved]); // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = has ? Number(saved) : dial;
+  const fmt = (x: number) => unit === "$" ? `$${x.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : `${unit[0]}${+x.toFixed(2)}%`;
+  const commit = () => {
+    const n = v.trim() === "" ? null : Number(v);
+    if (n !== null && !(n > 0)) { setV(has ? String(Number(saved)) : ""); return; }
+    if ((n ?? null) === (has ? Number(saved) : null)) return;
+    patch({ [field]: n }, n === null ? `${label}: back to the dial` : `${label}: ${fmt(n)} (custom)`);
+  };
+  return (
+    <div className={cx("rounded-lg border bg-bg/40 p-2", has ? "border-accent/50" : "border-line")}>
+      <div className="flex items-center justify-center gap-1 text-faint">{label}{has && <span className="rounded bg-accent-soft px-1 text-[9px] font-semibold text-accent-2">CUSTOM</span>}</div>
+      <div className={cx("num text-sm font-semibold", tone)}>{fmt(shown)}</div>
+      {sub && !has && <div className="text-faint">{sub}</div>}
+      <div className="mt-1.5 flex items-center gap-1">
+        <input value={v} onChange={(e) => setV(e.target.value.replace(/[^0-9.]/g, ""))} onBlur={commit} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          disabled={busy} inputMode="decimal" placeholder={`Custom ${unit === "$" ? "$" : "%"}`} aria-label={`Custom ${label}`}
+          className="h-7 w-full min-w-0 rounded-md border border-line bg-panel-2 px-2 text-center text-[11.5px] outline-none placeholder:text-faint focus:border-accent/60" />
+        {has && <button onClick={() => { setV(""); patch({ [field]: null }, `${label}: back to the dial`); }} disabled={busy} className="shrink-0 rounded-md px-1.5 text-[10px] text-muted hover:text-text" title="Use the dial again">Reset</button>}
+      </div>
+    </div>
+  );
+}
+
 /** Risk taking: toggle + 1–100 dial that scales trade size and exit width (25 = normal). */
 function RiskControl({ s, busy, patch }: { s: any; busy: boolean; patch: (body: any, msg: string) => Promise<void> }) {
   const on = !!s?.risk_mode;
@@ -676,11 +705,11 @@ function RiskControl({ s, busy, patch }: { s: any; busy: boolean; patch: (body: 
           </button>
         </div>
         <div className="mt-2 grid grid-cols-3 gap-2 text-center text-[11px]">
-          <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Per trade</div><div className="num text-sm font-semibold">${(base.usd * f).toLocaleString(undefined, { maximumFractionDigits: 2 })}</div><div className="text-faint">×{f}</div></div>
-          <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Take profit</div><div className="num text-sm font-semibold text-up">+{+(base.tp * f).toFixed(2)}%</div></div>
-          <div className="rounded-lg border border-line bg-bg/40 p-2"><div className="text-faint">Stop loss</div><div className="num text-sm font-semibold text-down">−{+(base.sl * f).toFixed(2)}%</div></div>
+          <CustomTile label="Per trade" field="customTradeUsd" saved={s?.custom_trade_usd} dial={base.usd * (on ? f : 1)} unit="$" tone="" patch={patch} busy={busy || !s} sub={`×${on ? f : 1}`} />
+          <CustomTile label="Take profit" field="customTakeProfitPct" saved={s?.custom_take_profit_pct} dial={base.tp * (on ? f : 1)} unit="+%" tone="text-up" patch={patch} busy={busy || !s} />
+          <CustomTile label="Stop loss" field="customStopLossPct" saved={s?.custom_stop_loss_pct} dial={base.sl * (on ? f : 1)} unit="−%" tone="text-down" patch={patch} busy={busy || !s} />
         </div>
-        {!on && <p className="mt-1 text-[10px] text-faint">Off: trades use your normal settings. The numbers above show what the dial would do once it&apos;s on.</p>}
+        <p className="mt-1 text-[10px] text-faint">{on ? "Custom values replace the dial for that number only. Clear one to hand it back to the dial." : "Off: trades use your normal settings, or your custom values if set."} Applies to auto trading and Modo Autopilot.</p>
       </div>
     </div>
   );
