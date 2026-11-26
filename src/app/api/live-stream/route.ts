@@ -76,6 +76,14 @@ export const GET = route(async (req) => {
     items.push({ id: `or${o.id}`, at: o.updated_at, source: "order", side: o.side, pnl, pnlPct: pnl !== undefined && cost > 0 ? (pnl / cost) * 100 : undefined, kind: filled ? "execution" : ["rejected", "failed"].includes(o.status) ? "warning" : "decision",
       actor: `${o.is_paper ? "Paper" : "Real money"} · ${o.source}`, title: what, body: o.status_reason || undefined, link: `/terminal/${o.asset_id}` });
   }
+  // New mimics / watches show up in Activity → Mimic right away, before the first copied trade.
+  if (filter === "all" || filter === "copy") {
+    const follows = await q<any>(`SELECT id, created_at, label, kind, mode, wallet_address, status FROM copy_follows WHERE follower_id=$1 AND created_at > $2 ORDER BY created_at DESC LIMIT 200`, [u.id, since]);
+    const n = follows.length;
+    for (const f of n > 25 ? follows.slice(0, 1) : follows) items.push({ id: `cf${f.id}`, at: f.created_at, source: "copy", kind: "decision", actor: `Mimic · ${f.label}`,
+      title: n > 25 ? `Started mimicking ${n} wallets/traders` : `${f.mode === "watch" ? "Now watching" : "Now mimicking"} ${f.label}${f.status !== "active" ? ` (${f.status})` : ""}`,
+      body: f.kind === "wallet" ? (f.mode === "watch" ? "Every swap they make is reported here; nothing is copied." : "Every swap they make is copied with your mimic settings.") : undefined, link: "/mimic" });
+  }
   for (const c of copies) items.push({ id: `cp${c.id}`, at: c.created_at, source: "copy", side: c.side, kind: c.status === "copied" ? "execution" : c.status === "failed" ? "warning" : "decision", actor: `Mimic · ${c.label}`, title: `${c.label} ${c.side === "buy" ? "bought" : "sold"} ${c.symbol ?? "a token"} on ${c.venue ?? "?"} → ${c.status.replace("_", " ")}`, body: c.reason || undefined, link: "/mimic" });
   for (const p of platform) items.push({ id: `pl${p.id}`, at: p.executed_at, source: "merod", side: p.side, kind: "execution", actor: `Merod trader${p.is_paper ? " (paper)" : ""}`, title: `${p.side === "buy" ? "Bought" : "Sold"} ${Number(p.quantity).toPrecision(4)} ${p.symbol} @ $${Number(p.price).toPrecision(6)} · via ${p.source}`, link: `/terminal/${p.asset_id}` });
   for (const s of system) items.push({ id: `sy${s.id}`, at: s.created_at, source: "merod", kind: s.level === "info" ? "state" : "warning", actor: `Merod · ${s.source}`, title: s.message });

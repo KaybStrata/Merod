@@ -15,6 +15,43 @@ const money = (n: number | null | undefined) => (n == null || !Number.isFinite(n
 const signed = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : `${n >= 0 ? "+" : "-"}${money(Math.abs(n))}`);
 const tone = (n: number | null | undefined) => (n == null || n === 0 ? "text-text" : n > 0 ? "text-up" : "text-down");
 
+/** Paste any number of wallet addresses (any separator) → mimic, watch, stop or get stats for all of them at once. */
+function BulkWallets({ live, perTrade, onDone }: { live: boolean; perTrade: string; onDone: () => void }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const count = useMemo(() => new Set([...(text.match(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g) ?? []), ...(text.match(/\b0x[a-fA-F0-9]{40}\b/g) ?? [])]).size, [text]);
+  async function run(action: "mimic" | "watch" | "stop" | "stats") {
+    if (!count) return toast("Paste at least one wallet address", "down");
+    if (action === "mimic" && live && !confirm(`Mimic ${count} wallet${count === 1 ? "" : "s"} with REAL money?`)) return;
+    setBusy(action); setResult(null);
+    try { const r: any = await api("/api/copy/bulk", { method: "POST", json: { text, action, live, perTradeUsd: perTrade ? Number(perTrade) : undefined } }); setResult(r.message); if (action !== "stats") onDone(); }
+    catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }
+  }
+  return (
+    <section className="surface rounded-2xl p-3">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2 text-left text-[13px] font-semibold"><Wallet className="size-4 text-accent-2" />Mimic or look up any wallets <span className="font-normal text-muted">· paste as many addresses as you like</span><span className="ml-auto text-[11px] text-faint">{open ? "▾" : "▸"}</span></button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} placeholder="Paste wallet addresses, one per line or separated by commas/spaces. Solana wallets can be mimicked; Solana and Ethereum (0x…) wallets can be looked up."
+            className="w-full resize-y rounded-lg border border-line bg-bg-2 px-2.5 py-2 font-mono text-[12px] outline-none focus:border-accent/60" />
+          <div className="flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="text-muted">{count} address{count === 1 ? "" : "es"}{live ? " · real money" : " · paper"}{perTrade ? ` · $${perTrade}/trade` : ""}</span>
+            <button disabled={!!busy} onClick={() => run("mimic")} className="ml-auto rounded-lg bg-grad px-3 py-1.5 font-semibold text-bg disabled:opacity-50">{busy === "mimic" ? "Starting…" : `Mimic all`}</button>
+            <button disabled={!!busy} onClick={() => run("watch")} className="rounded-lg border border-line px-3 py-1.5 text-muted hover:text-text disabled:opacity-50">{busy === "watch" ? "…" : "Watch only"}</button>
+            <button disabled={!!busy} onClick={() => run("stats")} className="rounded-lg border border-line px-3 py-1.5 text-muted hover:text-text disabled:opacity-50">{busy === "stats" ? "Looking up…" : "Get stats"}</button>
+            <button disabled={!!busy} onClick={() => run("stop")} className="rounded-lg border border-line px-3 py-1.5 text-muted hover:text-down disabled:opacity-50">{busy === "stop" ? "…" : "Stop mimicking"}</button>
+          </div>
+          {result && <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-bg-2/60 p-2.5 font-sans text-[12px] leading-relaxed">{result}</pre>}
+          <p className="text-[10.5px] text-faint">Uses the sizing and Paper / Real money setting on the right. Copying swaps needs a Helius key; holdings need Birdeye; Ethereum wallets need Alchemy (Broker &amp; AI keys).</p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /** Mimic: copy the best traders on and off Merod (featured trader, leaderboard, settings, Modo, your mimic bots). */
 export default function MimicTradingPage() {
   const { user } = useShell();
@@ -49,6 +86,7 @@ export default function MimicTradingPage() {
 
   return (
     <div className="space-y-4">
+      <BulkWallets live={live} perTrade={perTrade} onDone={() => setNonce((n) => n + 1)} />
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-4">
           <FeaturedTrader pick={featured} row={freshRow} data={data} busy={busy} onMimic={mimic} />

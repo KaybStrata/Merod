@@ -185,6 +185,13 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   const sk = input.part ? null : await skillCommand(userId, text, input.tz || "UTC").catch((e: any) => `Couldn't save that skill: ${e.message}`);
   if (sk) return early(sk, { type: "executed", detail: "Skills updated" }, "executed", null);
   // Schedules: "show my schedules", "cancel schedule 2"; and "every morning at 2am LA time, buy … " creates one.
+  // Wallet addresses (any number): "mimic <addr> <addr> …", "stop mimicking <addr>", or stats for every address pasted.
+  if (!input.part && /[1-9A-HJ-NP-Za-km-z]{32,44}|0x[a-fA-F0-9]{40}/.test(text)) {
+    const { walletCommand } = await import("../copy/wallets");
+    const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role;
+    const w = await walletCommand(userId, text, { isOwner: role === "super_admin" }).catch((e: any) => `Couldn't do that with those wallets: ${e.message}`);
+    if (w) return early(w, { type: "executed", detail: "Wallets" }, "executed");
+  }
   const sc = input.part ? null : await scheduleCommand(userId, text);
   if (sc) return early(sc, { type: "executed", detail: "Schedules" }, "executed", null);
   if (!input.part) {

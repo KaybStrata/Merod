@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { Children, cloneElement, isValidElement, useEffect, useRef, useState } from "react";
 import { ArrowUp, AtSign, Mic, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb, MessageSquare, Wand2, Crosshair, Megaphone, BellOff } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { useApi } from "@/lib/api";
@@ -155,10 +155,25 @@ const SUGGESTION_GROUPS: [string, string[]][] = [
 /** A small labelled group of segmented buttons ("Money", "AI"). */
 /** A labelled switch group that collapses to the selected option and expands on hover (or keyboard focus / tap). */
 function ControlGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  // Collapsed: only the selected option sits in the row (so the row never jumps). Hover, focus or tap opens all the
+  // options in a small pop-up above it; picking one closes it.
+  const [open, setOpen] = useState(false);
+  const closeT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const items = Children.toArray(children).filter(isValidElement) as React.ReactElement<any>[];
+  const selected = items.find((c) => c.props.on) ?? items[0];
+  const show = () => { if (closeT.current) clearTimeout(closeT.current); setOpen(true); };
+  const hide = () => { if (closeT.current) clearTimeout(closeT.current); closeT.current = setTimeout(() => setOpen(false), 120); };
   return (
-    <div className="group/cg flex items-center gap-1.5" title={`${label}: hover to change`}>
+    <div className="relative flex items-center gap-1.5" onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}>
       <span className="text-[9.5px] font-semibold uppercase tracking-[0.12em] text-faint">{label}</span>
-      <div role="radiogroup" aria-label={label} className="flex h-8 items-center gap-0.5 rounded-lg border border-line bg-bg/40 p-0.5 text-[12px] transition-all">{children}</div>
+      <div role="radiogroup" aria-label={label} className="flex h-8 items-center rounded-lg border border-line bg-bg/40 p-0.5 text-[12px]">
+        {selected && cloneElement(selected, { onClick: () => setOpen((o) => !o), title: `${label}: ${typeof selected.props.children === "string" ? selected.props.children : ""} — tap or hover to change` })}
+      </div>
+      {open && (
+        <div role="radiogroup" aria-label={`${label} options`} className="absolute bottom-full left-0 z-40 mb-1.5 flex h-9 items-center gap-0.5 rounded-lg border border-line bg-panel p-0.5 text-[12px] shadow-2xl" onMouseEnter={show} onMouseLeave={hide}>
+          {items.map((c) => cloneElement(c, { key: c.key, onClick: () => { c.props.onClick(); setOpen(false); } }))}
+        </div>
+      )}
     </div>
   );
 }
@@ -167,7 +182,7 @@ function ControlGroup({ label, children }: { label: string; children: React.Reac
 function Seg({ on, onClick, icon: Icon, title, tone, children }: { on: boolean; onClick: () => void; icon: any; title?: string; tone?: "down"; children: React.ReactNode }) {
   return (
     <button role="radio" aria-checked={on} onClick={onClick} title={title}
-      className={cx("h-full items-center gap-1.5 rounded-md px-2.5 transition-colors", on ? (tone === "down" ? "flex bg-down-soft/60 text-down ring-1 ring-down/40" : "flex bg-accent-soft/60 text-accent-2 ring-1 ring-accent/40") : "hidden text-muted hover:text-text group-hover/cg:flex group-focus-within/cg:flex")}>
+      className={cx("flex h-full items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 transition-colors", on ? (tone === "down" ? "bg-down-soft/60 text-down ring-1 ring-down/40" : "bg-accent-soft/60 text-accent-2 ring-1 ring-accent/40") : "text-muted hover:bg-panel-2 hover:text-text")}>
       <Icon className="size-3.5" />{children}
     </button>
   );
