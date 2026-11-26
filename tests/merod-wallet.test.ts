@@ -24,7 +24,7 @@ test("Merod Wallet: key stored encrypted only, one per user, caps editable", asy
   assert.equal(after.metadata.limits.perTradeUsd, 25);
   assert.equal(after.metadata.pay_with, "SOL");
   assert.equal(after.label, "Memes");
-  assert.equal((await getMerodWallet(me, w.id)).metadata.limits.perTradeUsd, 100, "other wallets keep their own caps");
+  assert.equal((await getMerodWallet(me, w.id)).metadata.limits.perTradeUsd, 0, "other wallets keep their own caps (default: no limit)");
 });
 
 test("Merod Wallet auto-sign refuses buys above the per-trade cap and signs within it", async () => {

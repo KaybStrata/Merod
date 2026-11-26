@@ -18,7 +18,7 @@ export const POST = route(async (req) => {
   const u = await requireUser();
   if (u.role !== "super_admin") throw new HttpError(403, "Mimic trading is available to the owner account only");
   await rateLimit(`mimic-many:${u.id}`, 20, 60);
-  const Opts = { live: z.boolean().default(false), perTradeUsd: z.number().positive().max(1_000_000).nullable().optional(), maxDailyUsd: z.number().positive().max(10_000_000).nullable().optional() };
+  const Opts = { live: z.boolean().default(false), perTradeUsd: z.number().positive().max(1e12).nullable().optional(), maxDailyUsd: z.number().min(0).max(1e12).nullable().optional() };
   const b = await parse(req, z.union([
     z.object({ group: z.enum(["wallets", "merod", "stocks"]), on: z.boolean(), targets: z.array(z.string().min(1).max(60)).min(1).max(500), ...Opts }),
     z.object({ token: z.string().uuid(), count: z.number().int().min(1).max(100).default(3), onlyThisToken: z.boolean().default(false), ...Opts }),

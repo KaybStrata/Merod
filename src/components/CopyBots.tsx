@@ -9,7 +9,7 @@ import { ago, price, qty, usd, tone } from "@/lib/format";
 
 type Settings = { accountId: string | null; sizing: "fixed" | "percent"; fixedUsd: number; percent: number; maxTradeUsd: number; maxDailyUsd: number; copySells: boolean; includeExternal: boolean; includePaper: boolean };
 // No per-trade cap (removed by request); the daily limit is the safety cap.
-const DEFAULTS: Settings = { accountId: null, sizing: "percent", fixedUsd: 50, percent: 100, maxTradeUsd: 1000000, maxDailyUsd: 1000, copySells: true, includeExternal: true, includePaper: true };
+const DEFAULTS: Settings = { accountId: null, sizing: "percent", fixedUsd: 50, percent: 100, maxTradeUsd: 0, maxDailyUsd: 0, copySells: true, includeExternal: true, includePaper: true };
 
 /** Create a copy-trading bot: copy a Merod trader (incl. their outside-Merod broker/exchange trades, with consent) or any public Solana wallet. */
 export type CopyPreset = "copy" | "mimic" | "watch";

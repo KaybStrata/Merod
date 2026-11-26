@@ -231,10 +231,10 @@ async function mirror(f: Follow, t: LeaderTrade) {
   if (t.side === "buy") {
     const leaderNotional = t.qty * px;
     notional = f.sizing === "fixed" ? Number(f.fixed_usd) : leaderNotional * Number(f.percent) / 100;
-    notional = Math.min(notional, Number(f.max_trade_usd));
+    if (Number(f.max_trade_usd) > 0) notional = Math.min(notional, Number(f.max_trade_usd)); // 0 = no limit
     if (!(notional >= 1)) return record(f, t, "skipped", "Copy size is under $1", { assetId: asset.id, symbol: asset.symbol });
     const spent = await one<{ s: string }>("SELECT COALESCE(sum(copy_notional),0) AS s FROM copy_trade_events WHERE follow_id=$1 AND status IN ('copied','pending_approval') AND created_at > now() - interval '24 hours'", [f.id]);
-    if (Number(spent?.s ?? 0) + notional > Number(f.max_daily_usd)) return record(f, t, "skipped", `Daily copy limit of $${Number(f.max_daily_usd)} reached`, { assetId: asset.id, symbol: asset.symbol });
+    if (Number(f.max_daily_usd) > 0 && Number(spent?.s ?? 0) + notional > Number(f.max_daily_usd)) return record(f, t, "skipped", `Daily copy limit of $${Number(f.max_daily_usd)} reached`, { assetId: asset.id, symbol: asset.symbol });
     intent = { asset: { assetId: asset.id }, side: "buy", orderType: "market", notionalUsd: +notional.toFixed(2), timeInForce: "gtc" };
   } else {
     if (!f.copy_sells) return record(f, t, "skipped", "Copying sells is turned off", { assetId: asset.id, symbol: asset.symbol });

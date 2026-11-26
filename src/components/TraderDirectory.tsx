@@ -60,7 +60,7 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
     try {
       if (on && live && !confirm(`Mimic ${targets.length} trader${targets.length === 1 ? "" : "s"} with REAL money?`)) { setBusy(null); return; }
       const r: any = await api("/api/traders", { method: "POST", json: { group: g, on, targets: [...new Set(targets)], live, perTradeUsd: perTrade ? Number(perTrade) : null } });
-      toast(on ? `Mimicking ${r.done} ${g === "wallets" ? "wallet" : "trader"}${r.done === 1 ? "" : "s"}: their new trades are repeated at the same size (paper, $1,000/day cap each)` : `Paused ${r.done}`, on ? "up" : "neutral");
+      toast(on ? `Mimicking ${r.done} ${g === "wallets" ? "wallet" : "trader"}${r.done === 1 ? "" : "s"}: their new trades are repeated at the same size (no spending cap)` : `Paused ${r.done}`, on ? "up" : "neutral");
       if (r.skipped?.length) toast(`Skipped ${r.skipped.length}: ${r.skipped[0]}`, "down");
       refresh();
     } catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }

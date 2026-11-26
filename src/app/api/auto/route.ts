@@ -14,9 +14,9 @@ const Patch = z.object({
   enabled: z.boolean().optional(),
   accountId: z.string().uuid().nullable().optional(),
   markets: z.enum(["crypto", "stocks", "both"]).optional(),
-  tradeUsd: z.number().min(1).max(1_000_000).optional(),
-  maxDailyUsd: z.number().min(1).max(10_000_000).optional(),
-  maxOpen: z.number().int().min(1).max(50).optional(),
+  tradeUsd: z.number().min(1).max(1e12).optional(),
+  maxDailyUsd: z.number().min(0).max(1e12).optional(), // 0 = no limit
+  maxOpen: z.number().int().min(1).max(100000).optional(),
   minConfidence: z.number().min(0.01).max(0.99).optional(),
   minTheoryTrades: z.number().int().min(0).max(500).optional(),
   minTheoryWinRate: z.number().min(0).max(1).optional(),

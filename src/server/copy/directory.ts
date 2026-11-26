@@ -16,7 +16,7 @@ import { CopySettings } from "./schema";
  * Off-Merod stock and centralized-exchange trades are private (brokers don't publish who traded), so they can't be listed or mimicked.
  */
 const SOL_MINT = "So11111111111111111111111111111111111111112";
-const MIMIC = CopySettings.parse({ sizing: "percent", percent: 100, maxTradeUsd: 1_000_000, maxDailyUsd: 1000, copySells: true, includeExternal: false, includePaper: false });
+const MIMIC = CopySettings.parse({ sizing: "percent", percent: 100, maxTradeUsd: 0, maxDailyUsd: 0, copySells: true, includeExternal: false, includePaper: false });
 let walletCache: { at: number; key: string; rows: any[] } | null = null;
 
 async function birdeyeWallets(userId: string) {
@@ -215,7 +215,7 @@ export async function mimicSettings(userId: string, kind: "crypto" | "stock", o:
     accountId = (await one<any>("SELECT id FROM trading_accounts WHERE user_id=$1 AND kind='paper' ORDER BY created_at LIMIT 1", [userId]))?.id ?? null;
   }
   const settings = CopySettings.parse({
-    accountId, includeExternal: false, includePaper: false, copySells: true, maxTradeUsd: 1_000_000, maxDailyUsd: o.maxDailyUsd ?? 1000,
+    accountId, includeExternal: false, includePaper: false, copySells: true, maxTradeUsd: 0, maxDailyUsd: o.maxDailyUsd ?? 0,
     ...(o.perTradeUsd ? { sizing: "fixed", fixedUsd: o.perTradeUsd } : { sizing: "percent", percent: 100 }),
   });
   return { settings, note };

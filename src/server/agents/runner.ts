@@ -15,7 +15,7 @@ import { emit, positionsFor, metricsFor, postMessage, addKnowledge, remember, up
  * agent daily loss → stale data → autonomy level → capital budget → open-position cap → conflict detection →
  * Universal Trading Engine (permissions, risk, reservation, idempotency). Risk-reducing exits stay allowed when blocked.
  */
-const MAX_ASSETS = 10;
+const MAX_ASSETS = 1000;
 const STALE_SEC = { crypto: 180, stock: 900 };
 const NOTE_EVERY_MS = 10 * 60_000;
 

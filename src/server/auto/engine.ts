@@ -299,7 +299,7 @@ export async function runFor(userId: string) {
     if (sc.score <= 0 || (!force && sc.confidence < Number(cfg.min_confidence))) continue; // opens are buys only; no shorting
     const px = await livePrice(a.id);
     if (!px) continue;
-    const canReal = proven && realOpen + made < Number(cfg.max_open) && spent + sizeOf(cfg) * (made + 1) <= Number(cfg.max_daily_usd);
+    const canReal = proven && realOpen + made < Number(cfg.max_open) && (!(Number(cfg.max_daily_usd) > 0) || spent + sizeOf(cfg) * (made + 1) <= Number(cfg.max_daily_usd));
     const why = canReal && force
       ? `force trading is on, so placing a ${money(sizeOf(cfg))} order now (no theoretical record or confidence bar required).`
       : canReal

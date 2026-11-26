@@ -41,7 +41,7 @@ export async function createMerodWallet(userId: string, name?: string) {
   const acct = await one<any>(
     `INSERT INTO trading_accounts (user_id, kind, provider_id, label, external_ref, network, status, metadata)
      VALUES ($1,'wallet','merod_wallet',$4,$2,'solana','active',$3) RETURNING id`,
-    [userId, pub, JSON.stringify({ environment: "production", merod_wallet: true, limits: { perTradeUsd: 100, dailyUsd: 500 }, pay_with: "USDC" }), label]);
+    [userId, pub, JSON.stringify({ environment: "production", merod_wallet: true, limits: { perTradeUsd: 0, dailyUsd: 0 }, pay_with: "USDC" }), label]);
   await q("INSERT INTO merod_wallet_keys (account_id, user_id, public_key, enc_secret) VALUES ($1,$2,$3,$4)",
     [acct.id, userId, pub, encrypt(Buffer.from(kp.secretKey).toString("base64"), aad(acct.id))]);
   await audit({ actorType: "user", actorId: userId, userId, action: "merod_wallet.created", target: acct.id, data: { publicKey: pub } });
@@ -81,7 +81,7 @@ async function oneStatus(w: any) {
   let bal: any = null, error: string | null = null;
   try { bal = await balances(w.external_ref); } catch (e: any) { error = `Couldn't read balances: ${String(e.message).slice(0, 120)}`; }
   const spent = await one<any>("SELECT COALESCE(SUM(notional_usd),0) AS s FROM orders WHERE account_id=$1 AND side='buy' AND status IN ('filled','submitted','partially_filled') AND created_at > date_trunc('day', now())", [w.id]);
-  return { id: w.id, name: w.label, address: w.external_ref, limits: w.metadata?.limits ?? { perTradeUsd: 100, dailyUsd: 500 }, payWith: w.metadata?.pay_with ?? "USDC", spentTodayUsd: Number(spent?.s ?? 0), balances: bal, error, createdAt: w.created_at };
+  return { id: w.id, name: w.label, address: w.external_ref, limits: w.metadata?.limits ?? { perTradeUsd: 0, dailyUsd: 0 }, payWith: w.metadata?.pay_with ?? "USDC", spentTodayUsd: Number(spent?.s ?? 0), balances: bal, error, createdAt: w.created_at };
 }
 export async function walletStatus(userId: string) {
   const list = await listMerodWallets(userId);
@@ -93,7 +93,7 @@ export async function walletStatus(userId: string) {
 export async function updateSettings(userId: string, accountId: string, s: { perTradeUsd?: number; dailyUsd?: number; payWith?: "USDC" | "SOL"; name?: string }) {
   const w = await getMerodWallet(userId, accountId);
   if (!w) throw new HttpError(404, "Merod Wallet not found");
-  const limits = { ...(w.metadata?.limits ?? {}), ...(s.perTradeUsd ? { perTradeUsd: s.perTradeUsd } : {}), ...(s.dailyUsd ? { dailyUsd: s.dailyUsd } : {}) };
+  const limits = { ...(w.metadata?.limits ?? {}), ...(s.perTradeUsd !== undefined ? { perTradeUsd: s.perTradeUsd } : {}), ...(s.dailyUsd !== undefined ? { dailyUsd: s.dailyUsd } : {}) };
   await q("UPDATE trading_accounts SET metadata = metadata || $2::jsonb, label=COALESCE($3, label) WHERE id=$1", [w.id, JSON.stringify({ limits, ...(s.payWith ? { pay_with: s.payWith } : {}) }), s.name?.trim()?.slice(0, 60) || null]);
   await audit({ actorType: "user", actorId: userId, userId, action: "merod_wallet.settings", target: w.id, data: { limits, payWith: s.payWith, name: s.name } });
   return walletStatus(userId);
@@ -104,12 +104,12 @@ export async function autoSign(orderId: string) {
   const o = await one<any>("SELECT o.*, t.metadata AS acct_meta, t.user_id AS owner FROM orders o JOIN trading_accounts t ON t.id=o.account_id WHERE o.id=$1", [orderId]);
   if (!o?.unsigned_tx?.tx) return;
   const { submitSigned } = await import("../engine/engine");
-  const limits = o.acct_meta?.limits ?? { perTradeUsd: 100, dailyUsd: 500 };
+  const limits = o.acct_meta?.limits ?? { perTradeUsd: 0, dailyUsd: 0 };
   const usd = Number(o.notional_usd ?? o.quote?.notionalUsd ?? 0);
   if (o.side === "buy") {
-    if (usd > Number(limits.perTradeUsd)) return reject(o, `Above your Merod Wallet per-trade cap ($${limits.perTradeUsd})`);
+    if (Number(limits.perTradeUsd) > 0 && usd > Number(limits.perTradeUsd)) return reject(o, `Above your Merod Wallet per-trade cap ($${limits.perTradeUsd})`);
     const spent = await one<any>("SELECT COALESCE(SUM(notional_usd),0) AS s FROM orders WHERE account_id=$1 AND side='buy' AND id<>$2 AND status IN ('filled','submitted','partially_filled') AND created_at > date_trunc('day', now())", [o.account_id, o.id]);
-    if (Number(spent?.s ?? 0) + usd > Number(limits.dailyUsd)) return reject(o, `Would exceed your Merod Wallet daily cap ($${limits.dailyUsd})`);
+    if (Number(limits.dailyUsd) > 0 && Number(spent?.s ?? 0) + usd > Number(limits.dailyUsd)) return reject(o, `Would exceed your Merod Wallet daily cap ($${limits.dailyUsd})`);
   }
   const kp = await keypairFor(o.account_id);
   const tx = VersionedTransaction.deserialize(Buffer.from(o.unsigned_tx.tx, "base64"));

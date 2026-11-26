@@ -53,7 +53,7 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
   const [busy, setBusy] = useState<"approve" | "dismiss" | null>(null);
   const [status, setStatus] = useState<string>(message.status);
   const [result, setResult] = useState<any>(card?.result ?? null);
-  const [mimic, setMimic] = useState({ percent: card?.settings?.percent ?? 100, maxDailyUsd: card?.settings?.maxDailyUsd ?? 1000 });
+  const [mimic, setMimic] = useState({ percent: card?.settings?.percent ?? 100, maxDailyUsd: card?.settings?.maxDailyUsd ?? 0 });
   if (!card) return null;
 
   async function approve() {

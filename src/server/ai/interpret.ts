@@ -147,7 +147,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       if (r.stocks) lines.push(`Stock traders: ${r.stocks.done} now mimicked${r.stocks.note ? `. ${r.stocks.note}` : ""}`);
       const skipped = [r.crypto?.skipped, r.merodCrypto?.skipped, r.stocks?.skipped].flat().filter(Boolean);
       const acct = r.crypto?.account ?? r.stocks?.account ?? (bulk.live ? "real money" : "paper");
-      return reply(`Done. ${lines.join(". ")}.\nAccount: ${acct}. Sizing: ${bulk.perTradeUsd ? `$${bulk.perTradeUsd} per trade` : "same size as each trader"}, $${bulk.maxDailyUsd ?? 1000}/day cap each.${skipped.length ? `\nSkipped ${skipped.length} (e.g. ${skipped[0]}).` : ""}\nOnly public Solana wallets and Merod traders who allow copying can be mimicked: trades at outside brokers and exchanges aren't public. Pause any of them in Mimic trading.`, null, "info", null);
+      return reply(`Done. ${lines.join(". ")}.\nAccount: ${acct}. Sizing: ${bulk.perTradeUsd ? `$${bulk.perTradeUsd} per trade` : "same size as each trader"}, ${bulk.maxDailyUsd ? `$${bulk.maxDailyUsd}/day cap each` : "no spending cap"}.${skipped.length ? `\nSkipped ${skipped.length} (e.g. ${skipped[0]}).` : ""}\nOnly public Solana wallets and Merod traders who allow copying can be mimicked: trades at outside brokers and exchanges aren't public. Pause any of them in Mimic trading.`, null, "info", null);
     } catch (e: any) { return reply(`Couldn't start the mimics: ${e.message}`, null, "info", null); }
   }
   // "Mimic the top ROI earner for Solana meme coins this week" → find the trader, propose a mimic bot (owner only).
@@ -160,7 +160,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       { type: "clarify", question: "Try a different window or market?", suggestions: [`Mimic the top ROI earner for ${mimicReq.scope.label} this month`, "Mimic the top ROI trader this week"] }, "clarify", null);
     const [top, ...rest] = ranked;
     const card: PlanCard = { type: "mimic", handle: top.handle, displayName: top.displayName, roi: top.roi, pnl: top.pnl, invested: top.invested, trades: top.trades,
-      scope: mimicReq.scope, windowLabel: mimicReq.windowLabel, settings: { percent: 100, maxDailyUsd: 1000 },
+      scope: mimicReq.scope, windowLabel: mimicReq.windowLabel, settings: { percent: 100, maxDailyUsd: 0 },
       alternatives: rest.map((l) => ({ handle: l.handle, roi: l.roi, trades: l.trades })) };
     return reply(`Top ROI for ${mimicReq.scope.label} ${mimicReq.windowLabel}: @${top.handle}, ${(top.roi * 100).toFixed(1)}% on ${top.trades} trade${top.trades === 1 ? "" : "s"}. Approve to start a mimic bot that repeats their ${mimicReq.scope.label === "all markets" ? "" : mimicReq.scope.label + " "}trades at the same size.`, card, "needs_approval", null);
   }
@@ -363,7 +363,7 @@ export async function approvePlan(userId: string, messageId: string, overrides?:
     const pct = Math.min(1000, Math.max(0.1, Number(overrides?.mimic?.percent ?? card.settings.percent) || 100));
     const daily = Math.min(1_000_000, Math.max(1, Number(overrides?.mimic?.maxDailyUsd ?? card.settings.maxDailyUsd) || 1000));
     const followId = await createFollow(userId, { kind: "user", handle: card.handle },
-      { accountId: null, sizing: "percent", fixedUsd: 50, percent: pct, maxTradeUsd: 1_000_000, maxDailyUsd: daily, copySells: true, includeExternal: true, includePaper: true },
+      { accountId: null, sizing: "percent", fixedUsd: 50, percent: pct, maxTradeUsd: 0, maxDailyUsd: daily, copySells: true, includeExternal: true, includePaper: true },
       "copy", card.scope.label === "all markets" ? null : card.scope);
     result = { followId, handle: card.handle };
   } else if (card.type === "confirm_action") {

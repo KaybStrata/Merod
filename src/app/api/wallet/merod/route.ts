@@ -13,7 +13,7 @@ export const GET = route(async () => {
 });
 const Body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("create"), name: z.string().max(60).optional() }),
-  z.object({ action: z.literal("settings"), accountId: z.string().uuid(), name: z.string().max(60).optional(), perTradeUsd: z.number().min(1).max(1_000_000).optional(), dailyUsd: z.number().min(1).max(10_000_000).optional(), payWith: z.enum(["USDC", "SOL"]).optional() }),
+  z.object({ action: z.literal("settings"), accountId: z.string().uuid(), name: z.string().max(60).optional(), perTradeUsd: z.number().min(0).max(1e12).optional(), dailyUsd: z.number().min(0).max(1e12).optional(), payWith: z.enum(["USDC", "SOL"]).optional() }),
   z.object({ action: z.literal("withdraw"), accountId: z.string().uuid(), to: z.string().min(32).max(44), amountSol: z.number().positive().max(1_000_000), code: z.string().min(6).max(8) }),
 ]);
 export const POST = route(async (req) => {

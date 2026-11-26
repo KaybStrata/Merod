@@ -210,7 +210,7 @@ export const FleetDraftSchema = z.object({
   operationMode: z.enum(["independent", "parallel", "collaborative", "competition", "supervisor", "sequential"]),
   capitalUsd: z.number().min(0).max(100_000_000).default(0), reserveUsd: z.number().min(0).max(100_000_000).default(0), dailyLossPct: z.number().gt(0).max(100).default(2),
   agents: z.array(z.object({
-    key: z.string().max(20), name: z.string().min(1).max(60), role: z.enum(ROLE_IDS), assets: z.array(z.string().max(120)).max(50).default([]), wallets: z.array(z.string()).max(20).optional(),
+    key: z.string().max(20), name: z.string().min(1).max(60), role: z.enum(ROLE_IDS), assets: z.array(z.string().max(120)).max(1000).default([]), wallets: z.array(z.string()).max(1000).optional(),
     strategy: z.record(z.string(), z.any()).optional(), autonomy: z.number().int().min(1).max(6), capitalUsd: z.number().min(0).max(100_000_000).default(0),
     instructions: z.string().max(4000).default(""), dependsOn: z.array(z.string().max(20)).default([]), scan: z.any().optional(),
   })).min(1).max(25),
