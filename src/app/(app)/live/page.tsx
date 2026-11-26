@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Brain, Target, CheckCircle2, AlertTriangle, Gauge, Bot, Sparkles, Cpu, Repeat, ArrowLeftRight, Landmark, Pause, Play, Search, BarChart3 } from "lucide-react";
+import { Activity, Brain, Target, CheckCircle2, AlertTriangle, Gauge, Bot, Sparkles, Cpu, Repeat, ArrowLeftRight, Landmark, Pause, Play, Search, BarChart3, TrendingUp, ArrowUpRight, ShoppingCart } from "lucide-react";
+import { TradeHistory } from "@/components/activity/TradeHistory";
 import { api } from "@/lib/api";
 import { usePageTitle, useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
@@ -17,6 +18,8 @@ const KINDS: [string, string, any, string][] = [
   ["state", "Status", Gauge, "text-muted bg-panel-2"],
 ];
 const SRC_ICON: Record<string, any> = Object.fromEntries(SOURCES.map(([k, , I]) => [k, I]));
+/** Trade-history tabs: a full table of your filled trades instead of the live stream. */
+const HISTORY: [string, string, any, "profit" | "sell" | "buy"][] = [["profit", "Profit", TrendingUp, "profit"], ["sold", "Sold", ArrowUpRight, "sell"], ["purchases", "Purchase history", ShoppingCart, "buy"]];
 const BAR: Record<string, string> = { thought: "bg-[#c9b6ff]", analysis: "bg-up/70", decision: "bg-[#8fbcff]", execution: "bg-up", warning: "bg-warn", state: "bg-faint" };
 const SINGULAR: Record<string, string> = { thought: "Thought", analysis: "Analysis", decision: "Decision", execution: "Execution", warning: "Warning", state: "Status" };
 const time = (t: string) => {
@@ -80,6 +83,10 @@ export default function LiveActivity() {
               <I className="size-3.5" />{l}<span className="num text-[10.5px] text-faint">{k === "all" ? items.length : counts(k)}</span>
             </button>
           ))}
+          <span className="mx-1 my-1 w-px bg-line" aria-hidden />
+          {HISTORY.map(([k, l, I]) => (
+            <button key={k} onClick={() => setSrc(k)} className={cx("flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px]", src === k ? "nav-active" : "text-muted hover:text-text")}><I className="size-3.5" />{l}</button>
+          ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
           <div className="relative"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search thoughts, tickers, agents…" className="h-8 w-60 rounded-lg border border-line bg-panel-2/60 pl-8 pr-3 text-[12.5px] outline-none placeholder:text-faint focus:border-accent/60" /></div>
@@ -89,6 +96,7 @@ export default function LiveActivity() {
           <button onClick={() => { setPaused(!paused); if (paused) pull(); }} className="flex h-8 items-center gap-1.5 rounded-lg border border-line-2 px-3 text-[12.5px] hover:border-accent/50">{paused ? <><Play className="size-3.5" /> Resume stream</> : <><Pause className="size-3.5" /> Pause stream</>}</button>
         </div>
       </div>
+      {HISTORY.some(([k]) => k === src) ? <TradeHistory type={HISTORY.find(([k]) => k === src)![3]} q={q} /> : <>
       <div className="flex flex-wrap items-center gap-1.5">
         {KINDS.map(([k, l, I, cls]) => (
           <button key={k} onClick={() => setKinds((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; })}
@@ -158,6 +166,7 @@ export default function LiveActivity() {
           <p className="px-1 text-[10.5px] leading-relaxed text-faint">Updates every 3 seconds and instantly on live events. Decision summaries and rule checks only, never private model chain-of-thought. Platform trades from other Merod traders are anonymous.</p>
         </aside>
       </div>
+      </>}
     </div>
   );
 }

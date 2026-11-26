@@ -2,21 +2,24 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { User, ShieldCheck, KeyRound, Gauge, Bell, Palette, CreditCard, Database, OctagonX, Download, Plus, Sun, Moon, Cpu, Wallet, ArrowRight } from "lucide-react";
+import { User, ShieldCheck, KeyRound, Gauge, Bell, Palette, CreditCard, Database, OctagonX, Download, Plus, Sun, Moon, Cpu, Wallet, ArrowRight, Sparkles } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { Badge, Button, Card, Empty, Input, Select, Skeleton, Toggle, cx, useToast } from "@/components/ui";
 import { UserApiKeys } from "@/components/UserApiKeys";
 import { AccountTab as AccountTabUI, ChangePassword } from "@/components/settings/AccountSecurity";
 import { SecurityOverview, useSecurityScore, Panel } from "@/components/settings/SecurityOverview";
-import { usePageTitle, useShell } from "@/components/shell/context";
+import { usePageTitle, useShell, TALK_FLAG } from "@/components/shell/context";
+import { InterfaceSettings } from "@/components/talk/InterfaceSettings";
 
 const TABS = [
   { id: "account", label: "Profile", icon: User }, { id: "security", label: "Security", icon: ShieldCheck },
   { id: "keys", label: "Broker & AI keys", icon: KeyRound }, { id: "risk", label: "Risk limits", icon: Gauge },
-  { id: "notifications", label: "Notifications", icon: Bell }, { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "interface", label: "Interface", icon: Sparkles }, { id: "notifications", label: "Notifications", icon: Bell }, { id: "appearance", label: "Appearance", icon: Palette },
   { id: "billing", label: "Billing", icon: CreditCard }, { id: "data", label: "Data & export", icon: Database },
 ];
 /** Old links (?tab=trading etc.) still land on the right tab. */
+/** The Interface tab (Classic | Talk) exists only when Talk mode is switched on for the deployment. */
+const VISIBLE = TABS.filter((t) => t.id !== "interface" || TALK_FLAG);
 const ALIAS: Record<string, string> = { trading: "risk", automation: "risk", accounts: "keys", ai: "keys", apikeys: "keys", privacy: "data" };
 
 function SettingsInner() {
@@ -24,7 +27,7 @@ function SettingsInner() {
   const router = useRouter();
   const { user } = useShell();
   const raw = sp.get("tab") ?? "security";
-  const tab = TABS.some((t) => t.id === (ALIAS[raw] ?? raw)) ? (ALIAS[raw] ?? raw) : "security";
+  const tab = VISIBLE.some((t) => t.id === (ALIAS[raw] ?? raw)) ? (ALIAS[raw] ?? raw) : "security";
   const { data, error, loading, refresh } = useApi<any>("/api/settings");
   const score = useSecurityScore(data);
   usePageTitle({ section: "Account · Settings", title: "Security & keys", accent: "keys" });
@@ -33,7 +36,7 @@ function SettingsInner() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav className="-mx-1 flex max-w-full gap-0.5 overflow-x-auto px-1" aria-label="Settings sections">
-          {TABS.map((t) => (
+          {VISIBLE.map((t) => (
             <button key={t.id} onClick={() => router.replace(`/settings?tab=${t.id}`)}
               className={cx("flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium", tab === t.id ? "nav-active" : "text-muted hover:bg-panel-2 hover:text-text")}>
               <t.icon className={cx("size-3.5", tab === t.id ? "text-accent-2" : "text-faint")} />{t.label}
@@ -57,6 +60,7 @@ function SettingsInner() {
           )}
           {tab === "keys" && <KeysTab data={data} refresh={refresh} />}
           {tab === "risk" && <div className="space-y-4"><TradingTab data={data} /><RiskTab data={data} refresh={refresh} /><AutomationTab data={data} refresh={refresh} /></div>}
+          {tab === "interface" && <InterfaceSettings />}
           {tab === "notifications" && <NotificationsTab data={data} refresh={refresh} />}
           {tab === "appearance" && <AppearanceTab data={data} refresh={refresh} />}
           {tab === "billing" && <BillingTab />}

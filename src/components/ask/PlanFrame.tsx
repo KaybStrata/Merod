@@ -42,7 +42,7 @@ function Pipeline({ message }: { message: any }) {
 /** Merod reply in the Ask Merod thread: text, then the plan (PlanCard keeps all approve / dismiss logic). */
 export function MerodReply({ message, onChip }: { message: any; onChip: (t: string) => void }) {
   const t = message.plan?.type;
-  const showHeader = t && t !== "clarify";
+  const showHeader = t && t !== "clarify" && t !== "info"; // "info" = Talk-mode widgets only; nothing to show in Classic
   return (
     <div className="flex items-start gap-3">
       <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-accent/40 bg-accent-soft"><Sparkles className="size-3.5 text-accent-2" /></span>
@@ -54,7 +54,7 @@ export function MerodReply({ message, onChip }: { message: any; onChip: (t: stri
         </div>
         <div className={cx("mt-1 whitespace-pre-wrap text-[13.5px] leading-relaxed", message.status === "error" && "text-down")}>{message.content}</div>
         {t === "order" && <Pipeline message={message} />}
-        {message.plan && (
+        {message.plan && t !== "info" && (
           <div className={cx(showHeader && t !== "executed" && "surface mt-2 rounded-xl p-1")}>
             <PlanCard message={message} onChip={onChip} />
           </div>

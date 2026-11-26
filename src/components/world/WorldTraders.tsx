@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Users, Wallet, ExternalLink, Info } from "lucide-react";
+import { Users, Wallet, ExternalLink, Info, Trophy } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { useRealtime, useShell } from "@/components/shell/context";
 import { Badge, Card, Empty, cx, useToast } from "@/components/ui";
@@ -20,10 +20,12 @@ const short = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
  */
 export function WorldTraders({ cryptoSymbols }: { cryptoSymbols: string[] }) {
   const { connected } = useShell();
-  const [tab, setTab] = useState<"merod" | "wallets">("wallets");
+  const [tab, setTab] = useState<"merod" | "wallets" | "profitable">("wallets");
+  const [period, setPeriod] = useState<"today" | "24h" | "7d">("today");
   // Owner's existing wallet bots, so each wallet's Mimic switch shows its real state.
   const { user: me } = useShell();
-  const copyFollows = useApi<any>(me.role === "super_admin" && tab === "wallets" ? "/api/copy" : null, { refreshMs: 30000 });
+  const copyFollows = useApi<any>(me.role === "super_admin" && tab !== "merod" ? "/api/copy" : null, { refreshMs: 30000 });
+  const gainers = useApi<any>(tab === "profitable" ? `/api/traders?period=${period}` : null, { refreshMs: 60000 });
   const walletFollows = useMemo(() => new Map<string, any>((copyFollows.data?.follows ?? []).filter((f: any) => f.kind === "wallet").map((f: any) => [f.wallet_address, f])), [copyFollows.data]);
   const toast = useToast();
   const platform = useApi<any>(tab === "merod" ? "/api/activity?scope=platform&limit=300" : null, { refreshMs: connected ? 20000 : 8000 });
@@ -66,16 +68,17 @@ export function WorldTraders({ cryptoSymbols }: { cryptoSymbols: string[] }) {
     <Card title={<span className="flex items-center gap-2">Who's trading</span>} icon={<Users className="size-4 text-accent-2" />}
       action={
         <div className="flex gap-1 rounded-lg border border-line bg-bg-2/60 p-0.5">
-          {([["wallets", "On-chain wallets", Wallet], ["merod", "Merod traders", Users]] as const).map(([k, label, Icon]) => (
+          {([["profitable", "Profitable wallets", Trophy], ["wallets", "On-chain wallets", Wallet], ["merod", "Merod traders", Users]] as const).map(([k, label, Icon]) => (
             <button key={k} onClick={() => setTab(k)} className={cx("flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium", tab === k ? "bg-accent-soft text-text" : "text-muted hover:text-text")}><Icon className="size-3.5" />{label}</button>
           ))}
         </div>
       }>
       <p className="mb-2 flex gap-1.5 text-[11px] text-faint"><Info className="mt-px size-3 shrink-0" />
-        {tab === "wallets" ? "Public Solana wallets swapping the coins you're watching, biggest first. Exchange trades (Coinbase, Kraken, Binance) are anonymous by design, so they can't be traced to a person."
+        {tab === "profitable" ? "Public Solana wallets that made the most money in the chosen window (from Birdeye), most profitable first. Mimic repeats their new trades in your account." : tab === "wallets" ? "Public Solana wallets swapping the coins you're watching, biggest first. Exchange trades (Coinbase, Kraken, Binance) are anonymous by design, so they can't be traced to a person."
           : "Merod traders who chose to make their trading public. Copy and Mimic need the trader's permission (“Let others copy my trades”)."}</p>
 
-      {tab === "wallets" && onchain.data && !onchain.data.connected ? (
+      {tab === "profitable" ? <ProfitableWallets data={gainers.data} period={period} setPeriod={setPeriod} follows={walletFollows} onChange={copyFollows.refresh} />
+      : tab === "wallets" && onchain.data && !onchain.data.connected ? (
         <div className="space-y-3">
           <p className="text-xs text-muted">Paste a <b className="text-text">Birdeye</b> API key to see which Solana wallets are buying and selling, so you can follow, copy or mimic them. Get one at birdeye.so (API / data services). Press <b className="text-text">Save</b>, then <b className="text-text">Test my keys</b>; wallets appear within seconds.</p>
           <UserApiKeys providers={["birdeye"]} title="Paste your Birdeye API key" onChange={onchain.refresh} />
@@ -100,5 +103,38 @@ export function WorldTraders({ cryptoSymbols }: { cryptoSymbols: string[] }) {
       )}
       {tab === "merod" && merod.anon > 0 && <p className="mt-2 text-[11px] text-faint">+ {merod.anon} trades by traders who keep their activity private.</p>}
     </Card>
+  );
+}
+
+/** Most profitable public Solana wallets for a window, each with a Mimic switch (owner) and Copy/Follow actions. */
+function ProfitableWallets({ data, period, setPeriod, follows, onChange }: { data: any; period: "today" | "24h" | "7d"; setPeriod: (p: "today" | "24h" | "7d") => void;
+  follows: Map<string, any>; onChange: () => void }) {
+  const rows: any[] = (data?.gainers ?? []).filter((g: any) => Number(g.value ?? 0) > 0).slice(0, 100);
+  const isPnl = rows[0]?.kind === "pnl";
+  return (
+    <div>
+      <div className="mb-2 flex items-center gap-1 text-[11px]">
+        <span className="mr-1 text-faint">Window</span>
+        {(["today", "24h", "7d"] as const).map((p) => (
+          <button key={p} onClick={() => setPeriod(p)} className={cx("rounded-md px-2 py-0.5", period === p ? "bg-accent-soft text-text" : "text-muted hover:text-text")}>{p === "today" ? "Today" : p}</button>
+        ))}
+        {rows.length > 0 && !isPnl && <span className="ml-auto text-faint">Ranked by net money in (Birdeye PnL isn&apos;t available on this key)</span>}
+      </div>
+      {!data ? <div className="py-4 text-xs text-muted">Loading…</div>
+        : !rows.length ? <div className="py-4 text-xs text-muted">No profitable wallets found for this window. Connect Birdeye in Admin → Integrations (or paste your key on Broker &amp; AI keys) to rank public wallets.</div> : (
+        <ul className="divide-y divide-line/60">
+          {rows.map((g, i) => (
+            <li key={g.address} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+              <span className="num w-6 text-[11px] text-faint">{i + 1}</span>
+              <a href={`https://solscan.io/account/${g.address}`} target="_blank" rel="noreferrer noopener" className="flex min-w-0 flex-1 items-center gap-1 font-mono text-sm hover:text-accent-2">{short(g.address)}<ExternalLink className="size-3" /></a>
+              <span className="text-[11px] text-muted">{g.trades ? `${g.trades} trades` : ""}{g.volume ? ` · ${usd(g.volume, { compact: true })} volume` : ""}</span>
+              <span className="num w-28 text-right text-[13px] font-semibold text-up">+{usd(Number(g.value), { compact: true })}<span className="block text-[10px] font-normal text-faint">{isPnl ? "profit" : "net in"} · {g.window ?? period}</span></span>
+              <MimicToggle wallet={g.address} follow={follows.get(g.address)} onChange={onChange} />
+              <TraderActions wallet={g.address} copyable />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

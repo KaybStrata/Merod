@@ -1,10 +1,16 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 
 export interface ShellUser { id: string; handle: string; displayName: string; role: string; tradingMode: "paper" | "live"; totpEnabled: boolean }
 export interface ScreenAsset { id: string; symbol: string; name?: string }
 /** Top-bar title: small section crumb, title, and the word drawn in gold serif italic (must appear in the title). */
+export type UiMode = "classic" | "talk";
+export interface TalkState { enabled: boolean; uiModeDefault: "classic" | "talk" | "last"; uiLastMode: UiMode; talkPrefs: { showSwitch: boolean; digest: boolean; voice: boolean; widgets: string[] } }
+export const TALK_FLAG = process.env.NEXT_PUBLIC_MEROD_TALK_MODE === "1";
+/** The mode Merod should open in, from Settings › Interface (stored in localStorage["merod-mode"] for the no-flash script). */
+export const startupMode = (t: TalkState | null): UiMode => (t && t.enabled && (t.uiModeDefault === "talk" || (t.uiModeDefault === "last" && t.uiLastMode === "talk")) ? "talk" : "classic");
 export interface PageTitle { section?: string; title: string; accent?: string; extra?: ReactNode }
 
 type Listener = (evt: { channel: string; type: string; payload: any }) => void;
@@ -18,6 +24,11 @@ interface Ctx {
   openPrompt: (text?: string) => void;
   promptRequest: { text: string; n: number } | null;
   title: PageTitle | null;
+  /** Classic | Talk (Talk = the /talk route; only when NEXT_PUBLIC_MEROD_TALK_MODE=1). */
+  mode: UiMode;
+  setMode: (m: UiMode) => void;
+  talk: TalkState | null;
+  refreshTalk: () => void;
   setTitle: (t: PageTitle | null) => void;
 }
 const ShellCtx = createContext<Ctx | null>(null);
@@ -56,6 +67,41 @@ export function ShellProvider({ user, children }: { user: ShellUser; children: R
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify({ type: "subscribe", channel }));
   }, []);
   const openPrompt = useCallback((text = "") => setPromptRequest({ text, n: Date.now() }), []);
+  // Talk mode (secondary, flag-gated). The mode is derived from the route: /talk = Talk, everything else = Classic.
+  const pathname = usePathname();
+  const router = useRouter();
+  const mode: UiMode = TALK_FLAG && pathname.startsWith("/talk") ? "talk" : "classic";
+  const [talk, setTalk] = useState<TalkState | null>(null);
+  const refreshTalk = useCallback(() => {
+    if (!TALK_FLAG) return;
+    api<TalkState>("/api/talk/mode").then((t) => { setTalk(t); try { localStorage.setItem("merod-mode", startupMode(t)); } catch {} }).catch(() => {});
+  }, []);
+  useEffect(() => { refreshTalk(); }, [refreshTalk]);
+  const setMode = useCallback((m: UiMode) => {
+    if (!TALK_FLAG || m === mode) return;
+    try {
+      if (m === "talk") localStorage.setItem("merod-last-classic", `${window.location.pathname}${window.location.search}`);
+      if (talk?.uiModeDefault === "last") localStorage.setItem("merod-mode", m);
+    } catch {}
+    api("/api/talk/mode", { method: "POST", json: { mode: m } }).catch(() => {});
+    setTalk((t) => (t ? { ...t, uiLastMode: m } : t));
+    let back = "/";
+    try { back = localStorage.getItem("merod-last-classic") || "/"; } catch {}
+    router.push(m === "talk" ? "/talk" : back.startsWith("/talk") ? "/" : back);
+  }, [mode, router, talk?.uiModeDefault]);
+  // ⌘. / Ctrl+. toggles Classic ⇄ Talk (ignored while typing). Works even when the switch is hidden.
+  useEffect(() => {
+    if (!TALK_FLAG) return;
+    const k = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== ".") return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
+      e.preventDefault();
+      setMode(mode === "talk" ? "classic" : "talk");
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [mode, setMode]);
 
   useEffect(() => {
     let stop = false, retry = 1000, timer: any;
@@ -75,7 +121,7 @@ export function ShellProvider({ user, children }: { user: ShellUser; children: R
   }, []);
 
   return (
-    <ShellCtx.Provider value={{ user, screenAsset, setScreenAsset, subscribe, wsSubscribe, connected, openPrompt, promptRequest, title, setTitle }}>
+    <ShellCtx.Provider value={{ user, screenAsset, setScreenAsset, subscribe, wsSubscribe, connected, openPrompt, promptRequest, title, setTitle, mode, setMode, talk, refreshTalk }}>
       {children}
     </ShellCtx.Provider>
   );
