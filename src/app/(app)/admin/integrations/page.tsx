@@ -16,7 +16,7 @@ const STATUS: Record<Status, { label: string; tone: "neutral" | "accent" | "info
   credentials_configured: { label: "Credentials configured", tone: "accent", help: "Keys saved but not yet verified by a connection test." },
   testing: { label: "Testing", tone: "info", help: "A connection test is running." },
   sandbox_connected: { label: "Sandbox connected", tone: "up", help: "A real test against the sandbox/paper environment passed." },
-  awaiting_approval: { label: "Awaiting approval", tone: "warn", help: "Production test passed; compliance approval is still required before use." },
+  awaiting_approval: { label: "Awaiting approval", tone: "warn", help: "Production test passed. Press Approve to start using it." },
   production_connected: { label: "Production connected", tone: "up", help: "Production test passed and (where required) approval recorded." },
   restricted: { label: "Restricted", tone: "down", help: "Production approval was denied or the account is restricted." },
   connection_error: { label: "Connection error", tone: "down", help: "The last connection test failed — see the error below." },
@@ -195,6 +195,11 @@ function EnvPanel({ p, env, onChange }: { p: any; env: any; onChange: () => void
         <div className="ml-auto flex items-center gap-3">
           <Toggle checked={env.enabled} label={<span className="text-xs">Enabled</span>} disabled={busy !== null}
             onChange={(v) => post({ action: v ? "enable" : "disable" }, "toggle").then((r) => r && toast(v ? "Enabled" : "Disabled", "neutral"))} />
+          {env.status === "awaiting_approval" && (
+            <Button size="sm" variant="success" loading={busy === "ok"} onClick={() => post({ action: "approval", approval: "approved", reference: ref || undefined }, "ok").then((r) => r && toast("Approved for production", "up"))}>
+              <ShieldCheck className="size-3.5" /> Approve
+            </Button>
+          )}
           <Button size="sm" variant="primary" loading={busy === "test"} onClick={test}><Activity className="size-3.5" /> Test connection</Button>
         </div>
       </div>
@@ -262,9 +267,9 @@ function EnvPanel({ p, env, onChange }: { p: any; env: any; onChange: () => void
           </div>
           <p className="mt-1 text-[11px] text-muted">{p.commercialRequirements}</p>
           <div className="mt-2 flex flex-wrap items-end gap-2">
-            <Input className="min-w-56 flex-1" label="Agreement / approval reference" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="e.g. Broker agreement #, ticket ID" />
+            <Input className="min-w-56 flex-1" label="Agreement / approval reference" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Optional: broker agreement #, ticket ID" />
             <Button size="sm" loading={busy === "req"} onClick={() => post({ action: "approval", approval: "requested", reference: ref || undefined }, "req")}>Mark requested</Button>
-            <Button size="sm" variant="success" loading={busy === "ok"} disabled={!ref.trim()} onClick={() => post({ action: "approval", approval: "approved", reference: ref }, "ok").then((r) => r && toast("Approval recorded", "up"))}>Approve</Button>
+            <Button size="sm" variant="success" loading={busy === "ok"} onClick={() => post({ action: "approval", approval: "approved", reference: ref || undefined }, "ok").then((r) => r && toast("Approval recorded", "up"))}>Approve</Button>
             <Button size="sm" variant="danger" loading={busy === "deny"} onClick={() => post({ action: "approval", approval: "denied", reference: ref || undefined }, "deny")}>Deny</Button>
           </div>
         </div>

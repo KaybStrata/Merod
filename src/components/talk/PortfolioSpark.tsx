@@ -6,9 +6,17 @@ import { cx } from "@/components/ui";
 import { usd } from "@/lib/format";
 
 type Pt = { time: number; value: number };
-const RANGES = ["1D", "1W", "1M", "ALL", "Custom"] as const;
-/** Custom dial: 0–100 mapped on a log scale from 5 minutes to 5 years. */
-const MIN_S = 300, MAX_S = 5 * 365 * 86_400;
+const RANGES = ["1m", "15m", "30m", "1H", "6H", "12H", "1D", "1W", "1M", "ALL", "Custom"] as const;
+/** Short windows are sent as ?seconds= so the API's preset names (1m = minute, 1M = month) never get confused. */
+const SHORT: Record<string, number> = { "1m": 60, "15m": 900, "30m": 1800, "1H": 3600, "6H": 21_600, "12H": 43_200 };
+/** Change in percent, with enough digits that a small move on a big balance doesn't read as 0.00%. */
+const pctLabel = (change: number, base: number) => {
+  if (!base) return "0.00";
+  const p = (change / base) * 100, a = Math.abs(p);
+  return a === 0 ? "0.00" : a >= 0.01 ? p.toFixed(2) : a >= 0.0001 ? p.toFixed(4) : "<0.0001";
+};
+/** Custom dial: 0–100 mapped on a log scale from 1 minute to 5 years. */
+const MIN_S = 60, MAX_S = 5 * 365 * 86_400;
 const dialToSec = (v: number) => Math.round(MIN_S * Math.pow(MAX_S / MIN_S, v / 100));
 const secLabel = (s: number) => s < 3600 ? `${Math.round(s / 60)}m` : s < 86_400 ? `${+(s / 3600).toFixed(s < 36_000 ? 1 : 0)}h` : s < 30 * 86_400 ? `${+(s / 86_400).toFixed(s < 864_000 ? 1 : 0)}d` : s < 365 * 86_400 ? `${+(s / (30 * 86_400)).toFixed(1)}mo` : `${+(s / (365 * 86_400)).toFixed(1)}y`;
 
@@ -20,7 +28,7 @@ export function PortfolioSpark({ height = 56, compact = false, className }: { he
   const [range, setRange] = useState<(typeof RANGES)[number]>("1D");
   const [dial, setDial] = useState(45);
   const [dialSec, setDialSec] = useState(() => dialToSec(45));
-  const { data, refresh } = useApi<any>(range === "Custom" ? `/api/portfolio/history?seconds=${Math.max(60, dialSec)}` : `/api/portfolio/history?range=${range}`, { refreshMs: 30_000 });
+  const { data, refresh } = useApi<any>(range === "Custom" ? `/api/portfolio/history?seconds=${Math.max(60, dialSec)}` : SHORT[range] ? `/api/portfolio/history?seconds=${SHORT[range]}` : `/api/portfolio/history?range=${range}`, { refreshMs: 30_000 });
   useRealtime((e) => { if (e.type === "fill") refresh(); });
   const pts: Pt[] = useMemo(() => (data?.points ?? []).map((p: any) => ({ time: Number(p.time), value: Number(p.value) })).filter((p: Pt) => Number.isFinite(p.value)), [data]);
   const first = pts[0]?.value ?? 0, last = pts[pts.length - 1]?.value ?? 0, change = last - first;
@@ -37,15 +45,22 @@ export function PortfolioSpark({ height = 56, compact = false, className }: { he
   const color = up ? "var(--color-up, #22c55e)" : "var(--color-down, #f0506e)";
   return (
     <div className={className}>
-      <div className="flex items-center justify-between gap-2">
-        {!compact && <span className={cx("num text-[12px] font-semibold", up ? "text-up" : "text-down")}>{pts.length > 1 ? `${up ? "+" : "−"}${usd(Math.abs(change))} (${first ? ((change / first) * 100).toFixed(2) : "0.00"}%)` : "—"}</span>}
-        <div className="ml-auto flex gap-0.5 text-[10px]">
-          {RANGES.map((r) => <button key={r} onClick={(e) => { e.stopPropagation(); setRange(r); }} className={cx("rounded px-1.5 py-px", range === r ? "bg-accent-soft text-accent-2" : "text-faint hover:text-text")}>{r === "Custom" && range === "Custom" ? secLabel(dialSec) : r}</button>)}
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+        {!compact && <span className={cx("num whitespace-nowrap text-[12px] font-semibold", up ? "text-up" : "text-down")}>{pts.length > 1 ? `${up ? "+" : "−"}${usd(Math.abs(change))} (${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%)` : "—"}</span>}
+        {compact ? (
+          <select value={range} aria-label="Time range" onClick={(e) => e.stopPropagation()} onChange={(e) => setRange(e.target.value as (typeof RANGES)[number])}
+            className="ml-auto rounded border border-line bg-bg-2 px-1 py-px text-[10px] text-muted outline-none">
+            {RANGES.map((r) => <option key={r} value={r}>{r === "Custom" && range === "Custom" ? secLabel(dialSec) : r}</option>)}
+          </select>
+        ) : (
+          <div className="ml-auto flex flex-wrap justify-end gap-0.5 text-[10px]">
+            {RANGES.map((r) => <button key={r} onClick={(e) => { e.stopPropagation(); setRange(r); }} className={cx("rounded px-1.5 py-px", range === r ? "bg-accent-soft text-accent-2" : "text-faint hover:text-text")}>{r === "Custom" && range === "Custom" ? secLabel(dialSec) : r}</button>)}
+          </div>
+        )}
       </div>
       {range === "Custom" && (
         <div className="mt-1.5 flex items-center gap-2 text-[10px] text-faint" onClick={(e) => e.stopPropagation()}>
-          <span>5m</span>
+          <span>1m</span>
           <input type="range" min={0} max={100} step={1} value={dial} aria-label="Custom time range"
             onChange={(e) => setDial(Number(e.target.value))}
             onPointerUp={() => setDialSec(dialToSec(dial))} onKeyUp={() => setDialSec(dialToSec(dial))} onTouchEnd={() => setDialSec(dialToSec(dial))}

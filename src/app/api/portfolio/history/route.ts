@@ -34,14 +34,15 @@ export const GET = route(async (req) => {
     `SELECT extract(epoch from ts)::bigint AS time, total_value AS value FROM portfolio_snapshots
       WHERE user_id=$1 AND is_paper AND ts >= to_timestamp($2) ORDER BY ts`, [u.id, start]);
   const before = await q<any>("SELECT total_value AS value FROM portfolio_snapshots WHERE user_id=$1 AND is_paper AND ts < to_timestamp($2) ORDER BY ts DESC LIMIT 1", [u.id, start]);
-  const resolution = secs <= 2 * 86_400 ? 300 : secs <= 60 * 86_400 ? 3600 : 86_400;
-  if (before.length && snaps.length >= 2) {
+  // Windows up to 6h use 1-minute price bars (snapshots are only every 5 minutes, too coarse for 1m–6h views).
+  const resolution = secs <= 21_600 ? 60 : secs <= 2 * 86_400 ? 300 : secs <= 60 * 86_400 ? 3600 : 86_400;
+  if (resolution > 60 && before.length && snaps.length >= 2) {
     const points = [{ time: start, value: Number(before[0].value) }, ...snaps.map((s) => ({ time: Number(s.time), value: Number(s.value) })), { time: now, value: liveValue }];
     return ok({ range, seconds: secs, points: dedupe(points), estimated: false, resolutionSec: 300 });
   }
 
   // 2) Estimate from price bars × current holdings (+ cash).
-  const tf = resolution === 300 ? "5m" : resolution === 3600 ? "1h" : "1d";
+  const tf = resolution === 60 ? "1m" : resolution === 300 ? "5m" : resolution === 3600 ? "1h" : "1d";
   const series = new Map<number, number>();
   for (const h of holdings) {
     const bars = await q<any>(

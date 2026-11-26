@@ -37,8 +37,7 @@ export const POST = route<Ctx>(async (req, { params }) => {
       case "enable": await setEnabled(admin.id, provider, b.environment, true); return ok({ ok: true });
       case "disable": await setEnabled(admin.id, provider, b.environment, false); return ok({ ok: true });
       case "approval":
-        if (b.approval === "approved" && !b.reference?.trim()) throw new HttpError(400, "Record the agreement / approval reference before approving production use");
-        await setApproval(admin.id, provider, b.approval, b.reference?.trim());
+        await setApproval(admin.id, provider, b.approval, b.reference?.trim() || (b.approval === "approved" ? `Approved by ${admin.role === "super_admin" ? "platform owner" : "admin"} ${new Date().toISOString().slice(0, 10)}` : undefined));
         return ok({ ok: true });
     }
   } catch (e: any) {

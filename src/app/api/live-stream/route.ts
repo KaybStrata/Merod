@@ -9,7 +9,7 @@ import { getSettings } from "@/server/auto/engine";
  * your orders and fills, copy/mimic trades, and Merod itself (platform trades, worker/system events for admins).
  * Newest first; `since` (ms) returns only newer items for live polling.
  */
-type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string };
+type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell" };
 const BOT_KIND: Record<string, Item["kind"]> = { observation: "analysis", trigger: "decision", instruction: "decision", order: "execution", result: "execution", warning: "warning", error: "warning", control: "state" };
 const AGENT_KIND: Record<string, Item["kind"]> = { thought: "thought", analysis: "analysis", decision: "decision", execution: "execution", warning: "warning", approval: "decision", training: "analysis", state: "state", message: "analysis", system: "state" };
 
@@ -35,19 +35,19 @@ export const GET = route(async (req) => {
   for (const o of orders) {
     const filled = Number(o.filled_quantity) > 0;
     const what = filled ? `${o.side === "buy" ? "Bought" : "Sold"} ${Number(o.filled_quantity).toPrecision(5)} ${o.symbol} @ $${Number(o.avg_fill_price).toPrecision(6)}` : `${o.side === "buy" ? "Buy" : "Sell"} ${o.symbol}${o.notional_usd ? ` $${Number(o.notional_usd).toFixed(2)}` : ""}: ${String(o.status).replace("_", " ")}`;
-    items.push({ id: `or${o.id}`, at: o.updated_at, source: "order", kind: filled ? "execution" : ["rejected", "failed"].includes(o.status) ? "warning" : "decision",
+    items.push({ id: `or${o.id}`, at: o.updated_at, source: "order", side: o.side, kind: filled ? "execution" : ["rejected", "failed"].includes(o.status) ? "warning" : "decision",
       actor: `${o.is_paper ? "Paper" : "Real money"} · ${o.source}`, title: what, body: o.status_reason || undefined, link: `/terminal/${o.asset_id}` });
   }
-  for (const c of copies) items.push({ id: `cp${c.id}`, at: c.created_at, source: "copy", kind: c.status === "copied" ? "execution" : c.status === "failed" ? "warning" : "decision", actor: `Mimic · ${c.label}`, title: `${c.label} ${c.side === "buy" ? "bought" : "sold"} ${c.symbol ?? "a token"} on ${c.venue ?? "?"} → ${c.status.replace("_", " ")}`, body: c.reason || undefined, link: "/mimic" });
-  for (const p of platform) items.push({ id: `pl${p.id}`, at: p.executed_at, source: "merod", kind: "execution", actor: `Merod trader${p.is_paper ? " (paper)" : ""}`, title: `${p.side === "buy" ? "Bought" : "Sold"} ${Number(p.quantity).toPrecision(4)} ${p.symbol} @ $${Number(p.price).toPrecision(6)} · via ${p.source}`, link: `/terminal/${p.asset_id}` });
+  for (const c of copies) items.push({ id: `cp${c.id}`, at: c.created_at, source: "copy", side: c.side, kind: c.status === "copied" ? "execution" : c.status === "failed" ? "warning" : "decision", actor: `Mimic · ${c.label}`, title: `${c.label} ${c.side === "buy" ? "bought" : "sold"} ${c.symbol ?? "a token"} on ${c.venue ?? "?"} → ${c.status.replace("_", " ")}`, body: c.reason || undefined, link: "/mimic" });
+  for (const p of platform) items.push({ id: `pl${p.id}`, at: p.executed_at, source: "merod", side: p.side, kind: "execution", actor: `Merod trader${p.is_paper ? " (paper)" : ""}`, title: `${p.side === "buy" ? "Bought" : "Sold"} ${Number(p.quantity).toPrecision(4)} ${p.symbol} @ $${Number(p.price).toPrecision(6)} · via ${p.source}`, link: `/terminal/${p.asset_id}` });
   for (const s of system) items.push({ id: `sy${s.id}`, at: s.created_at, source: "merod", kind: s.level === "info" ? "state" : "warning", actor: `Merod · ${s.source}`, title: s.message });
   if (owner) {
     const auto = await q<any>(`SELECT id, created_at, closed_at, symbol, mode, origin, confidence, return_pct, explain_during FROM auto_trades WHERE user_id=$1 AND greatest(created_at, COALESCE(closed_at, created_at)) > $2 ORDER BY created_at DESC LIMIT 60`, [u.id, since]);
     for (const t of auto) {
       const who = t.origin === "modo" ? "modo" : "auto";
-      items.push({ id: `at${t.id}`, at: t.created_at, source: who, kind: t.mode === "real" && t.explain_during ? "execution" : "decision", actor: who === "modo" ? "Modo Autopilot" : "Auto trading",
+      items.push({ id: `at${t.id}`, at: t.created_at, source: who, side: "buy", kind: t.mode === "real" && t.explain_during ? "execution" : "decision", actor: who === "modo" ? "Modo Autopilot" : "Auto trading",
         title: t.mode === "real" && t.explain_during ? `${t.symbol}: ${String(t.explain_during).split(".")[0]}` : `Decided to buy ${t.symbol}${t.mode === "theory" ? " (theoretical)" : ""} · ${Math.round(Number(t.confidence) * 100)}% confidence`, link: "/auto" });
-      if (t.closed_at && new Date(t.closed_at) > since) items.push({ id: `ac${t.id}`, at: t.closed_at, source: who, kind: "execution", actor: who === "modo" ? "Modo Autopilot" : "Auto trading", title: `Closed ${t.symbol} ${Number(t.return_pct) >= 0 ? "+" : ""}${Number(t.return_pct).toFixed(2)}%${t.mode === "theory" ? " (theoretical)" : ""}`, link: "/auto" });
+      if (t.closed_at && new Date(t.closed_at) > since) items.push({ id: `ac${t.id}`, at: t.closed_at, source: who, side: "sell", kind: "execution", actor: who === "modo" ? "Modo Autopilot" : "Auto trading", title: `Closed ${t.symbol} ${Number(t.return_pct) >= 0 ? "+" : ""}${Number(t.return_pct).toFixed(2)}%${t.mode === "theory" ? " (theoretical)" : ""}`, link: "/auto" });
     }
     const s = await getSettings(u.id);
     for (const [i, th] of (s.modo_thoughts ?? []).slice(-80).entries()) {

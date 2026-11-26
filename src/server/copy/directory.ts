@@ -137,7 +137,8 @@ export async function gainersForPeriod(userId: string, period: GainerPeriod) {
     .filter((w) => w.value > 0).sort((a, b) => b.value - a.value).slice(0, 200);
 }
 
-export async function directory(userId: string, period: GainerPeriod = "today") {
+/** `limit` caps how many Merod traders come back (the page shows the top 200; mimic-top asks for everyone it may need). */
+export async function directory(userId: string, period: GainerPeriod = "today", limit = 200) {
   const [bird, follows] = await Promise.all([
     birdeyeWallets(userId),
     q<any>(`SELECT f.id, f.kind, f.wallet_address, f.leader_user_id, f.status, f.mode, f.sizing, f.label,
@@ -165,9 +166,9 @@ export async function directory(userId: string, period: GainerPeriod = "today") 
        LEFT JOIN assets a ON a.id=o.asset_id
       WHERE p.user_id <> $1 AND COALESCE(p.is_public, true)
       GROUP BY p.user_id, p.handle, p.display_name, p.avatar_color, p.allow_copy_trading
-      ORDER BY (COALESCE(SUM(o.realized_pnl),0)) DESC, COUNT(o.*) DESC LIMIT 200`, [userId]).catch(async () => q<any>(
+      ORDER BY (COALESCE(SUM(o.realized_pnl),0)) DESC, COUNT(o.*) DESC LIMIT $2`, [userId, limit]).catch(async () => q<any>(
     `SELECT p.user_id, p.handle, p.display_name, p.avatar_color, p.allow_copy_trading, 0 AS trades, 0 AS wins, 0 AS closes, 0 AS crypto_pnl, 0 AS stock_pnl, 0 AS crypto_trades, 0 AS stock_trades, 0 AS volume, false AS has_live, NULL AS last_at, false AS outside_broker
-       FROM user_profiles p WHERE p.user_id <> $1 LIMIT 200`, [userId]));
+       FROM user_profiles p WHERE p.user_id <> $1 LIMIT $2`, [userId, limit]));
   const userFollow = new Map(follows.filter((f) => f.kind === "user").map((f) => [f.leader_user_id, f]));
   const walletFollow = new Map(follows.filter((f) => f.kind === "wallet").map((f) => [f.wallet_address, f]));
   const mimicking = (f: any) => !!f && f.status === "active" && f.mode !== "watch" && f.sizing !== "fixed";
@@ -257,7 +258,7 @@ export async function mimicTop(userId: string, o: { count: number; crypto: boole
   const n = Math.max(1, Math.min(MAX_TARGETS, o.count));
   const out: { crypto?: any; stocks?: any; merodCrypto?: any } = {};
   // Each market runs on its own: a missing wallet/broker for one never cancels the other.
-  const dir = await directory(userId, o.period).catch(() => null);
+  const dir = await directory(userId, o.period, MAX_TARGETS).catch(() => null);
   if (o.crypto) {
     try {
       const { settings, note } = await mimicSettings(userId, "crypto", o);

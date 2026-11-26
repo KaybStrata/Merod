@@ -507,6 +507,12 @@ export const PROVIDERS: ProviderDefinition[] = [
 ];
 
 /** Production requires an explicit compliance approval for these categories even after a successful test. */
-export const APPROVAL_GATED = new Set(["crypto_execution", "crypto_exchange", "stock_execution", "wallet"]);
+/**
+ * Categories that need a signed agreement (exchange, broker, custodial wallet / on-ramp) before production use.
+ * DEX routers (crypto_execution: Jupiter, Pump.fun, 0x, SwapKit, Cetus, Panora) are public, non-custodial APIs —
+ * every swap is signed by the user's own wallet — so a passing production test is enough. Real-money swaps are
+ * still gated by the live_crypto_trading flag, the Real money switch and 2FA.
+ */
+export const APPROVAL_GATED = new Set(["crypto_exchange", "stock_execution", "wallet"]);
 
 export const getProvider = (id: string) => PROVIDERS.find((p) => p.id === id);
