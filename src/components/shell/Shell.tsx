@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useEffect, useState } from "react";
 import {
   Home, Compass, CandlestickChart, Sparkles, Zap, Bot, Users, PieChart, Wallet, Settings, Shield, Bell, Search, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare, Copy, Repeat, LineChart, Bitcoin, Newspaper,
+  Radio, GraduationCap, Percent, Brain, KeyRound, Globe2, Gauge, Cpu, MessagesSquare, Copy, Repeat, Layers, LineChart, Bitcoin, Newspaper,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -68,7 +68,7 @@ function Frame({ children }: { children: React.ReactNode }) {
   const isAdmin = user.role === "admin" || user.role === "super_admin";
   const owner = user.role === "super_admin";
   const main = NAV.flatMap((n) => n.href === "/bots" && owner
-    ? [n, { href: "/mimic", label: "Mimic Trading", icon: Repeat, also: ["/copy", "/auto"] }]
+    ? [n, { href: "/mimic", label: "Mimic Trading", icon: Repeat, also: ["/copy", "/auto", "/sessions"] }]
     : [n]);
   const nav = [...main,
     ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
@@ -97,7 +97,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           </Link>
           {n.href === "/discover" && <Suspense fallback={null}><DiscoverSubLinks /></Suspense>}
           {n.href === "/admin" && <AdminSubLinks pathname={pathname} superAdmin={user.role === "super_admin"} />}
-          {n.href === "/mimic" && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }, { href: "/auto", label: "Auto trading", icon: Cpu, extra: <AutoTradingSwitch />, below: <AutoActivityFeed /> }]} />}
+          {n.href === "/mimic" && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }, { href: "/auto", label: "Auto trading", icon: Cpu, extra: <AutoTradingSwitch />, below: <AutoActivityFeed /> }, { href: "/sessions", label: "Sessions", icon: Layers }]} />}
           </Fragment>
         );
       })}
