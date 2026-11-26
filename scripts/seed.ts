@@ -18,7 +18,9 @@ if (process.env.MEROD_ALLOW_LIVE_FLAGS !== "true") {
   await q(`UPDATE feature_flags SET enabled=false WHERE key IN ('live_crypto_trading','live_brokerage_trading','automated_real_money','copy_trading','funding','withdrawals')`);
 }
 await q("UPDATE feature_flags SET enabled=true WHERE key='paper_trading'");
-console.log("✔ feature flags (real-money disabled, paper enabled)");
+console.log(process.env.MEROD_ALLOW_LIVE_FLAGS === "true"
+  ? "✔ feature flags (real-money flags kept as set by the owner, paper enabled)"
+  : "✔ feature flags (real-money disabled, paper enabled)");
 
 for (const s of STRATEGIES) {
   await q(`INSERT INTO bot_strategies (id, name, description, category, param_schema) VALUES ($1,$2,$3,$4,$5)
