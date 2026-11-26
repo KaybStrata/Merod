@@ -27,8 +27,12 @@ export function Switch({ on, onClick, disabled, label = "Mimic", title }: { on: 
  * each with stats and a Mimic switch, plus Mimic all per list.
  */
 export function TraderDirectory({ compact = false }: { compact?: boolean }) {
-  const { data, refresh } = useApi<any>("/api/traders", { refreshMs: 60000 });
+  const [period, setPeriod] = useState<"today" | "1h" | "4h" | "12h" | "24h" | "7d">("today");
+  const { data, refresh } = useApi<any>(`/api/traders?period=${period}`, { refreshMs: 60000 });
   const [tab, setTab] = useState<Tab>("gainers");
+  // PnL dial: 0 = no minimum; otherwise a log scale from $10 to $1,000,000 accumulated in the window.
+  const [dial, setDial] = useState(0);
+  const minPnl = dial <= 0 ? 0 : Math.round(10 ** (1 + (dial / 100) * 5));
   const onchain = useApi<any>(tab === "cryptoTrades" ? "/api/world/onchain?symbols=SOL" : null, { refreshMs: 15000 });
   const [qs, setQs] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -40,6 +44,8 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
   let rows: any[] = data?.[tab] ?? [];
   if (tab === "cryptoTrades") rows = [...rows, ...(onchain.data?.trades ?? []).map((t: any) => ({ id: t.tx, wallet: t.wallet, side: t.side, symbol: t.symbol, usd: t.usd, at: t.at, onchain: true }))].sort((a, b) => +new Date(b.at) - +new Date(a.at));
   rows = rows.filter((r: any) => !qs || JSON.stringify([r.address, r.handle, r.name, r.tokens, r.symbol, r.wallet]).toLowerCase().includes(qs.toLowerCase()));
+  const gainersTotal = tab === "gainers" ? rows.length : 0;
+  if (tab === "gainers" && minPnl > 0) rows = rows.filter((r: any) => (r.value ?? 0) >= minPnl);
   const targetOf = (r: any) => (isWallet ? r.address : r.onchain ? r.wallet : r.handle);
   const eligible = isFeed ? [] : rows.filter((r) => isWallet || r.copyable);
   const allOn = eligible.length > 0 && eligible.every((r) => r.mimic);
@@ -68,11 +74,27 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
         {can && !isFeed && <Switch on={allOn} disabled={!eligible.length || busy === "all"} onClick={() => flip(group(tab), eligible.map(targetOf), !allOn, "all")} label={`Mimic all (${eligible.length})`} title="Turn mimic on or off for every eligible trader in this list" />}
       </header>
       {isWallet && !data?.birdeye && <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-panel-2 px-3 py-2 text-[11.5px] text-muted"><Info className="mt-0.5 size-3.5 shrink-0" /><span>Top public wallets come from Birdeye. Connect it in Admin → Integrations or paste your own key on <Link href="/broker-keys" className="underline">Broker & AI Keys</Link>. Wallets you follow are listed either way. Mimicking a wallet&apos;s swaps also needs a Helius key.</span></p>}
-      {tab === "gainers" && rows[0]?.source === "Net flow (not PnL)" && <p className="mt-2 text-[11px] text-faint">Birdeye&apos;s gainers ranking isn&apos;t available on this key, so wallets are ranked by 24h net flow (sold − bought). That&apos;s cash taken out, not verified profit.</p>}
+      {tab === "gainers" && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-line bg-bg-2/50 px-3 py-2.5">
+          <div className="flex items-center gap-1 text-[12px]">
+            <span className="mr-1 text-muted">Window</span>
+            {([["today", "Today"], ["1h", "1h"], ["4h", "4h"], ["12h", "12h"], ["24h", "24h"], ["7d", "7d"]] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setPeriod(k)} className={cx("rounded-lg px-2.5 py-1", period === k ? "nav-active" : "text-muted hover:text-text")}>{l}</button>
+            ))}
+          </div>
+          <div className="flex min-w-[280px] flex-1 items-center gap-3 text-[12px]">
+            <span className="shrink-0 text-muted">Min PnL accumulated</span>
+            <input type="range" min={0} max={100} step={1} value={dial} onChange={(e) => setDial(Number(e.target.value))} className="flex-1 accent-[#d6b37a]" aria-label="Minimum PnL accumulated" />
+            <span className="flex shrink-0 items-center gap-1">$<input type="number" min={0} value={minPnl} onChange={(e) => { const v = Number(e.target.value); setDial(v <= 10 ? (v > 0 ? 1 : 0) : Math.min(100, Math.max(0, ((Math.log10(v) - 1) / 5) * 100))); }} className="num h-7 w-24 rounded-md border border-line bg-panel-2 px-1.5 text-right" /></span>
+            <span className="shrink-0 text-faint">{rows.length}/{gainersTotal} wallets</span>
+          </div>
+        </div>
+      )}
+      {tab === "gainers" && rows[0]?.kind === "net_flow" && <p className="mt-2 text-[11px] text-faint">* Birdeye&apos;s PnL ranking isn&apos;t available on this key for this window, so wallets are ranked by net flow (sold − bought) over {rows[0].window}. That&apos;s cash taken out, not verified profit.</p>}
       <div className={cx("mt-3 overflow-x-auto overflow-y-auto", compact ? "max-h-[420px]" : "max-h-[620px]")}>
         <table className="w-full min-w-[720px] text-[12.5px]">
           <thead className="sticky top-0 bg-panel text-left text-[11px] text-muted">
-            {tab === "gainers" ? <tr><th className="py-1.5">#</th><th>Wallet</th><th className="text-right">PnL (7d)</th><th className="text-right">PnL (today)</th><th className="text-right">Trades</th><th className="text-right">Volume</th><th className="pl-3">Source</th><th /></tr>
+            {tab === "gainers" ? <tr><th className="py-1.5">#</th><th>Wallet</th><th className="text-right">{rows[0]?.kind === "net_flow" ? "Net flow" : "PnL"} ({rows[0]?.window ?? period})</th><th>Coins</th><th className="text-right">Trades</th><th className="text-right">Volume</th><th className="pl-3">Source</th><th /></tr>
               : tab === "wallets" ? <tr><th className="py-1.5">Wallet</th><th>Coins (24h)</th><th className="text-right">Trades</th><th className="text-right">Bought</th><th className="text-right">Sold</th><th className="text-right">Volume</th><th className="pl-3">Source</th><th /></tr>
               : isFeed ? <tr><th className="py-1.5">Time</th><th>Trader</th><th>Side</th><th>Asset</th><th className="text-right">Amount</th><th className="text-right">Price</th><th className="pl-3">Where</th><th /></tr>
               : <tr><th className="py-1.5">Trader</th><th className="text-right">Crypto P&L</th><th className="text-right">Stock P&L</th><th className="text-right">Trades</th><th className="text-right">Win rate</th><th className="text-right">Volume</th><th className="pl-3">Book</th><th /></tr>}
@@ -82,8 +104,8 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
               <tr key={r.address} className="border-t border-line/60">
                 <td className="py-2 font-semibold text-accent-2">{i + 1}</td>
                 <td><a href={`https://solscan.io/account/${r.address}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 font-mono hover:underline">{short(r.address)} <ExternalLink className="size-3 text-faint" /></a></td>
-                <td className={cx("num text-right font-semibold", tone(r.pnl ?? r.netFlow))}>{r.pnl != null ? signed(r.pnl) : r.netFlow != null ? `${signed(r.netFlow)}*` : "—"}</td>
-                <td className={cx("num text-right", tone(r.pnlToday))}>{signed(r.pnlToday)}</td>
+                <td className={cx("num text-right font-semibold", tone(r.value))}>{signed(r.value)}{r.kind === "net_flow" ? "*" : ""}</td>
+                <td className="text-muted">{r.tokens?.length ? [...new Set(r.tokens)].join(", ") : "—"}</td>
                 <td className="num text-right">{r.trades?.toLocaleString() ?? "—"}</td>
                 <td className="num text-right">{money(r.volume)}</td>
                 <td className="pl-3 text-[11px] text-muted">{r.source}</td>

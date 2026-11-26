@@ -85,7 +85,59 @@ async function recentTrades(userId: string, stock: boolean) {
       ORDER BY o.updated_at DESC LIMIT 60`, [userId]);
 }
 
-export async function directory(userId: string) {
+export type GainerPeriod = "today" | "1h" | "4h" | "12h" | "24h" | "7d";
+const TF_ALLOWED: [string, number][] = [["30m", 0.5], ["1h", 1], ["2h", 2], ["4h", 4], ["6h", 6], ["8h", 8], ["12h", 12], ["24h", 24]];
+const flowCache = new Map<string, { at: number; rows: any[] }>();
+
+/** Net flow (sold − bought, USD) per wallet over a Birdeye top-traders window, across SOL + the 5 most active Solana tokens. */
+async function netFlowWallets(userId: string, tf: string) {
+  const own = await one("SELECT 1 FROM user_provider_secrets WHERE user_id=$1 AND provider_id='birdeye' AND environment='production' AND status='connected'", [userId]);
+  if (!own && !(await providerUsable("birdeye", "production"))) return [];
+  const ck = `${own ? userId : "platform"}:${tf}`;
+  const hit = flowCache.get(ck);
+  if (hit && Date.now() - hit.at < 120_000) return hit.rows;
+  const key = await getCredential("birdeye", "production", "BIRDEYE_API_KEY", own ? userId : undefined);
+  const ctx = contextFor("birdeye", "production", own ? { userId, userOnly: true } : {});
+  const tokens = [{ symbol: "SOL", identifier: SOL_MINT }, ...(await q<any>(
+    `SELECT upper(symbol) AS symbol, identifier FROM assets WHERE venue='solana' AND identifier <> 'native' AND last_price IS NOT NULL AND NOT ('demo_data'=ANY(risk_flags)) ORDER BY volume_24h DESC NULLS LAST LIMIT 5`))];
+  const by = new Map<string, any>();
+  for (const t of tokens) {
+    try {
+      const j = await readJson(await ctx.fetch(`https://public-api.birdeye.so/defi/v2/tokens/top_traders?address=${t.identifier}&time_frame=${tf}&sort_type=desc&sort_by=volume&offset=0&limit=10`,
+        { headers: { "X-API-KEY": key!, "x-chain": "solana", accept: "application/json" } }), "birdeye");
+      for (const it of j?.data?.items ?? []) {
+        if (!it.owner) continue;
+        const c = by.get(it.owner) ?? { address: it.owner, buyUsd: 0, sellUsd: 0, trades: 0, volume: 0, tokens: [] as string[] };
+        c.buyUsd += Number(it.volumeBuy ?? 0); c.sellUsd += Number(it.volumeSell ?? 0); c.trades += Number(it.trade ?? 0); c.volume += Number(it.volume ?? 0); c.tokens.push(t.symbol);
+        by.set(it.owner, c);
+      }
+    } catch { /* skip token */ }
+  }
+  const rows = [...by.values()];
+  flowCache.set(ck, { at: Date.now(), rows });
+  return rows;
+}
+
+/**
+ * Top gainer wallets for a window. Uses Birdeye's PnL ranking where it exists (today, 7d) and the key allows it;
+ * otherwise ranks by net flow over the closest supported window, clearly labelled "not PnL".
+ */
+export async function gainersForPeriod(userId: string, period: GainerPeriod) {
+  if (period === "today" || period === "7d") {
+    const pnl = (await birdeyeGainers(userId)).filter((g) => (period === "today" ? g.pnlToday != null : g.pnl != null))
+      .map((g) => ({ ...g, value: period === "today" ? g.pnlToday : g.pnl, kind: "pnl", window: period === "today" ? "Today" : "7 days" }));
+    if (pnl.length) return pnl.sort((a, b) => b.value - a.value);
+  }
+  const hoursToday = (Date.now() - new Date().setUTCHours(0, 0, 0, 0)) / 3_600_000;
+  const want = period === "today" ? Math.max(0.5, hoursToday) : period === "7d" ? 24 : Number(period.replace("h", ""));
+  const [tf, hrs] = TF_ALLOWED.find(([, h]) => h >= want) ?? TF_ALLOWED[TF_ALLOWED.length - 1];
+  const rows = await netFlowWallets(userId, tf);
+  const label = period === "today" ? `Today (since 00:00 UTC, ${tf} window)` : period === "7d" ? "Last 24h (7-day flow not available)" : `Last ${hrs}h`;
+  return rows.map((w) => ({ address: w.address, value: w.sellUsd - w.buyUsd, kind: "net_flow", window: label, trades: w.trades, volume: w.volume, tokens: w.tokens, source: "Net flow (not PnL)" }))
+    .filter((w) => w.value > 0).sort((a, b) => b.value - a.value).slice(0, 40);
+}
+
+export async function directory(userId: string, period: GainerPeriod = "today") {
   const [bird, follows] = await Promise.all([
     birdeyeWallets(userId),
     q<any>(`SELECT f.id, f.kind, f.wallet_address, f.leader_user_id, f.status, f.mode, f.sizing, f.label,
@@ -124,11 +176,8 @@ export async function directory(userId: string) {
     cryptoPnl: Number(t.crypto_pnl), stockPnl: Number(t.stock_pnl), cryptoTrades: t.crypto_trades, stockTrades: t.stock_trades, volume: Number(t.volume), live: !!t.has_live,
     outsideBroker: !!t.outside_broker && !!t.allow_copy_trading, lastAt: t.last_at, follow: userFollow.get(t.user_id) ?? null, mimic: mimicking(userFollow.get(t.user_id)),
   }));
-  const [gainersRaw, cryptoTrades, stockTrades] = await Promise.all([birdeyeGainers(userId), recentTrades(userId, false), recentTrades(userId, true)]);
-  // Fallback when the gainers endpoint isn't available: rank the top wallets by 24h net flow (sold − bought), labelled as such.
-  const gainers = gainersRaw.length ? gainersRaw
-    : bird.rows.filter((w) => w.sellUsd != null).map((w) => ({ address: w.address, pnl: null, netFlow: w.sellUsd - w.buyUsd, trades: w.trades, volume: w.volume, period: "24h", source: "Net flow (not PnL)" }))
-      .filter((w) => w.netFlow > 0).sort((a, b) => b.netFlow - a.netFlow).slice(0, 15);
+  const [gainersRaw, cryptoTrades, stockTrades] = await Promise.all([gainersForPeriod(userId, period), recentTrades(userId, false), recentTrades(userId, true)]);
+  const gainers = gainersRaw;
   const shape = (t: any) => ({ ...t, qty: Number(t.qty), price: Number(t.price), usd: Number(t.usd), realized_pnl: Number(t.realized_pnl), mimic: mimicking([...userFollow.entries()].find(([, f]) => f.label === `@${t.handle}`)?.[1]) });
   return {
     wallets: wallets.map((w) => ({ ...w, follow: walletFollow.get(w.address) ?? null, mimic: mimicking(walletFollow.get(w.address)) })),
