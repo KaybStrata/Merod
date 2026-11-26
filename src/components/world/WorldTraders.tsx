@@ -5,7 +5,7 @@ import { Users, Wallet, ExternalLink, Info } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { useRealtime, useShell } from "@/components/shell/context";
 import { Badge, Card, Empty, cx, useToast } from "@/components/ui";
-import { TraderActions } from "@/components/CopyBots";
+import { TraderActions, MimicToggle } from "@/components/CopyBots";
 import { UserApiKeys } from "@/components/UserApiKeys";
 import { ago, usd, qty } from "@/lib/format";
 
@@ -21,6 +21,10 @@ const short = (w: string) => `${w.slice(0, 4)}…${w.slice(-4)}`;
 export function WorldTraders({ cryptoSymbols }: { cryptoSymbols: string[] }) {
   const { connected } = useShell();
   const [tab, setTab] = useState<"merod" | "wallets">("wallets");
+  // Owner's existing wallet bots, so each wallet's Mimic switch shows its real state.
+  const { user: me } = useShell();
+  const copyFollows = useApi<any>(me.role === "super_admin" && tab === "wallets" ? "/api/copy" : null, { refreshMs: 30000 });
+  const walletFollows = useMemo(() => new Map<string, any>((copyFollows.data?.follows ?? []).filter((f: any) => f.kind === "wallet").map((f: any) => [f.wallet_address, f])), [copyFollows.data]);
   const toast = useToast();
   const platform = useApi<any>(tab === "merod" ? "/api/activity?scope=platform&limit=300" : null, { refreshMs: connected ? 20000 : 8000 });
   const onchain = useApi<any>(tab === "wallets" ? `/api/world/onchain?symbols=${encodeURIComponent(cryptoSymbols.slice(0, 8).join(","))}` : null, { refreshMs: 12000 });
@@ -88,6 +92,7 @@ export function WorldTraders({ cryptoSymbols }: { cryptoSymbols: string[] }) {
               </span>
               <span className="w-full text-[11px] text-muted sm:w-auto sm:flex-[2]">{a.lastText} · {ago(a.last)}</span>
               <span className="text-[11px]"><span className="text-up">{a.buys}B</span> / <span className="text-down">{a.sells}S</span>{a.usd ? <span className="ml-1 text-faint">{usd(a.usd, { compact: true })}</span> : null}</span>
+              {a.wallet && <MimicToggle wallet={a.wallet} follow={walletFollows.get(a.wallet)} onChange={copyFollows.refresh} />}
               <TraderActions handle={a.handle} wallet={a.wallet} copyable={a.copyable} following={a.handle ? following.has(a.handle) : undefined} onFollow={a.handle ? () => follow(a.handle!) : undefined} />
             </li>
           ))}

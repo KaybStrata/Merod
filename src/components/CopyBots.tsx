@@ -160,6 +160,7 @@ export function CopyBotsPanel({ compact = false, variant = "mimic" }: { compact?
                     {f.kind === "user" && f.leader_allows === false && <Badge tone="warn">trader turned copying off</Badge>}
                   </div>
                   <div className="flex items-center gap-1">
+                    {f.kind === "wallet" && <MimicToggle wallet={f.wallet_address} follow={f} onChange={refresh} />}
                     <button onClick={() => patch(f.id, { status: f.status === "active" ? "paused" : "active" })} className="rounded-lg p-1.5 text-muted hover:text-text" title={f.status === "active" ? "Pause" : "Resume"}>{f.status === "active" ? <Pause className="size-4" /> : <Play className="size-4" />}</button>
                     <button onClick={() => remove(f.id, f.label)} className="rounded-lg p-1.5 text-muted hover:text-down" title="Delete"><Trash2 className="size-4" /></button>
                   </div>
@@ -221,5 +222,39 @@ export function CopyBotsPanel({ compact = false, variant = "mimic" }: { compact?
 
       <Modal open={creating} onClose={() => setCreating(false)} title={variant === "mimic" ? "New mimic bot" : "New copy-trading bot"}><CopyBotForm preset={variant === "mimic" ? "mimic" : "copy"} onDone={() => { setCreating(false); refresh(); }} /></Modal>
     </div>
+  );
+}
+
+/** Is this follow an active mimic bot (same size as theirs, not notify-only)? */
+export const isActiveMimic = (f: any) => !!f && f.status === "active" && f.mode !== "watch" && f.sizing !== "fixed";
+
+/**
+ * One-tap Mimic switch for a public wallet. On: create (or turn back on / upgrade a follow to) a mimic bot that repeats
+ * the wallet's trades at the same size, sells included, in the paper account with a $1,000 daily limit. Off: pause it.
+ */
+export function MimicToggle({ wallet, follow, onChange, label = true }: { wallet: string; follow?: any; onChange?: () => void; label?: boolean }) {
+  const { user } = useShell();
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  if (user.role !== "super_admin" || !wallet) return null;
+  const on = isActiveMimic(follow);
+  async function flip(e: React.MouseEvent) {
+    e.preventDefault(); e.stopPropagation();
+    setBusy(true);
+    try {
+      if (on) { await api(`/api/copy/${follow.id}`, { method: "PATCH", json: { status: "paused" } }); toast("Mimic paused for this wallet", "neutral"); }
+      else {
+        await api("/api/copy", { method: "POST", json: { target: { kind: "wallet", network: "solana", address: wallet }, settings: { ...DEFAULTS, ...PRESET.mimic }, mode: "copy" } });
+        toast("Mimicking this wallet: its new trades are repeated at the same size", "up");
+      }
+      onChange?.();
+    } catch (err: any) { toast(err.message, "down"); } finally { setBusy(false); }
+  }
+  return (
+    <button onClick={flip} disabled={busy} role="switch" aria-checked={on} aria-label="Mimic this wallet" title={on ? "Mimicking: tap to pause" : "Mimic this wallet's trades"}
+      className={cx("flex shrink-0 items-center gap-1.5 rounded-full border px-1.5 py-0.5 text-[11px] font-medium disabled:opacity-50", on ? "border-up/50 text-up" : "border-line text-muted hover:text-text")}>
+      <span className={cx("relative h-3.5 w-6 rounded-full transition-colors", on ? "bg-up" : "bg-panel-2 ring-1 ring-line")}><span className={cx("absolute top-0.5 size-2.5 rounded-full bg-white transition-all", on ? "left-[12px]" : "left-0.5")} /></span>
+      {label && "Mimic"}
+    </button>
   );
 }
