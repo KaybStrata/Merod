@@ -219,12 +219,18 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   // "Create 5 agents that trade Solana meme coins" → a fleet of paper agents, waiting for your approval in Agents.
   if (!instruction && isAgentRequest(text)) {
     try {
-      const { planFleet, createFleet } = await import("../agents/fleets");
+      const { planFleet, createFleet, fleetAction } = await import("../agents/fleets");
       const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role;
       const draft = await planFleet(text);
+      // With automation set to run on its own: Supervised (level 4) trading agents execute automatically (level 5), and the fleet starts right away.
+      const auto = perms?.mode !== "manual";
+      if (auto) for (const ag of draft.agents) if (ag.autonomy === 4) ag.autonomy = 5;
       const fleet: any = await createFleet(userId, draft as any, { isOwner: role === "super_admin" });
       const id = fleet?.fleet?.id ?? fleet?.id;
-      return reply(`Created fleet "${draft.name}" with ${draft.agents.length} agent${draft.agents.length === 1 ? "" : "s"} (${draft.agents.slice(0, 6).map((a) => a.name).join(", ")}${draft.agents.length > 6 ? ", …" : ""}). Agents trade on paper. Approve the fleet in Agents${id ? ` → /agents/fleets/${id}` : ""} to start it.`, null, "executed", null, { agents: true });
+      let started = false;
+      if (auto && id) { try { await fleetAction(userId, id, "approve", { isOwner: role === "super_admin" }); started = true; } catch { /* stays waiting for approval */ } }
+      const names = `${draft.agents.slice(0, 6).map((a) => a.name).join(", ")}${draft.agents.length > 6 ? ", …" : ""}`;
+      return reply(`Created fleet "${draft.name}" with ${draft.agents.length} agent${draft.agents.length === 1 ? "" : "s"} (${names}). Agents trade on paper. ${started ? "It's running now, no approval needed." : `Approve the fleet in Agents${id ? ` → /agents/fleets/${id}` : ""} to start it.`}`, null, "executed", null, { agents: true });
     } catch (e: any) { return reply(`Couldn't create those agents: ${e.message}`, null, "rejected", null); }
   }
   // "Create a strategy that buys SOL on a 4% dip and takes 6% profit" → a saved, versioned strategy (never an order).
@@ -419,7 +425,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const config: BotConfig = { name: b.name, description: ins.summary, strategyId: b.strategy === "dip_rebound_loop" ? "dip_rebound_loop" : b.strategy, params: b.min_liquidity_usd ? { min_liquidity_usd: b.min_liquidity_usd } : {},
         assetIds: input.screenAssetId && !["watchlist_monitor", "meme_discovery"].includes(b.strategy) ? [input.screenAssetId] : [], markets: b.strategy === "meme_discovery" ? ["solana", "solana-demo"] : [],
         isPaper: true, budgetUsd: 500, maxPositionUsd: 50, maxDailySpendUsd: 200, maxDailyLossUsd: 100, maxTradesPerDay: null, minLiquidityUsd: b.min_liquidity_usd ?? 50000,
-        maxSlippageBps: 150, maxPriceDeviationPct: 5, schedule: "every_1m", approvalRequired: true, notify: { trades: true, errors: true }, createdFromPrompt: originText, start: true } as BotConfig;
+        maxSlippageBps: 150, maxPriceDeviationPct: 5, schedule: "every_1m", approvalRequired: perms?.mode === "manual", notify: { trades: true, errors: true }, createdFromPrompt: originText, start: true } as BotConfig;
       return reply(`${ins.summary}. Review and activate below.`, { type: "bot", config, strategyName: b.strategy.replace(/_/g, " "), assetLabel: config.assetIds.length ? "Asset on screen" : "Your watchlist / new launches" }, "needs_approval");
     }
 

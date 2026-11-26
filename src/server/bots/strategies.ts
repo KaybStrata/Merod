@@ -48,7 +48,7 @@ export const STRATEGIES: StrategyDef[] = [
         if (p.stop_loss_pct && g <= -p.stop_loss_pct) return { decision: { action: "sell", quantity: st.qty, reason: `Stop-loss: ${g.toFixed(2)}% from entry`, tag: `c${st.cycles}:sl` }, state: { ...st, phase: "sell_pending" } };
         return { decision: { action: "none", note: `Holding: ${g >= 0 ? "+" : ""}${g.toFixed(2)}% vs +${p.take_profit_pct}% target` }, state: st };
       }
-      return { decision: { action: "none", note: `Waiting for order (${st.phase})` }, state: st };
+      return { decision: { action: "none", note: st.waitNote ?? (st.phase === "buy_pending" ? "Buy placed: waiting for it to fill before watching for the take-profit" : "Sell placed: waiting for it to fill") }, state: st };
     },
   },
   {

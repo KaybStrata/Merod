@@ -55,3 +55,10 @@ test("'turn off all risk and confidence flagging for all bots' covers risk flags
   assert.ok(ops.includes("settings") && ops.includes("bots_allow_risky") && ops.includes("auto"), JSON.stringify(ops));
   assert.equal(a.steps.find((s: any) => s.op === "auto").body.forceTrading, true);
 });
+
+test("'stop asking me to approve trades' switches to automatic and turns off per-trade approval on every bot", () => {
+  const a = parseAppAction("stop asking me to approve trades") as any;
+  assert.deepEqual(a.steps.map((s: any) => s.op), ["settings", "bots_approval"]);
+  assert.equal(a.steps[0].values.mode, "auto_within_limits");
+  assert.equal(a.steps[1].value, false);
+});

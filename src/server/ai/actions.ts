@@ -6,7 +6,8 @@
 export type ActionStep =
   | { op: "settings"; section: "risk" | "automation" | "theme"; values: Record<string, unknown>; label: string }
   | { op: "auto"; body: Record<string, unknown>; label: string }
-  | { op: "bots_allow_risky"; value: boolean; label: string };
+  | { op: "bots_allow_risky"; value: boolean; label: string }
+  | { op: "bots_approval"; value: boolean; label: string };
 export type AppAction = { title: string; steps: ActionStep[]; link?: { href: string; label: string } } | { title: string; steps: []; link: { href: string; label: string }; navigateOnly: true };
 
 const num = (s: string) => Number(s.replace(/[,$\s]/g, ""));
@@ -59,7 +60,15 @@ export function parseAppAction(raw: string): AppAction | null {
   const dSpend = money(t, /daily (?:spend|spending|buy)(?: limit)?(?: to| of| at)?\s*\$?\s*([\d,.]+)/); if (dSpend != null) steps.push({ op: "settings", section: "risk", values: { max_daily_spend_usd: dSpend }, label: dSpend ? `Daily spend $${dSpend}` : "No daily spend limit" });
   const dLoss = money(t, /daily loss(?: limit| stop)?(?: to| of| at)?\s*\$?\s*([\d,.]+)/); if (dLoss != null) steps.push({ op: "settings", section: "risk", values: { max_daily_loss_usd: dLoss }, label: dLoss ? `Daily loss stop $${dLoss}` : "No daily loss stop" });
   // Automation mode.
-  if (/\b(manual|ask me|approve every|approval for every)\b/.test(t) && /\b(mode|trades?|orders?|approv)/.test(t)) steps.push({ op: "settings", section: "automation", values: { mode: "manual" }, label: "Every trade needs your approval" });
+  // "Stop asking me to approve trades" → automatic within limits + no per-trade approval on every bot.
+  const noAsk = /\b(stop|don.?t|do not|no( more)?|never|without|skip|turn off)\b[^.]{0,30}\b(ask(ing)?|approv(e|al|ing|als)|confirm(ing|ation)?)\b/.test(t) && !/\b(always ask|ask me first)\b/.test(t);
+  if (noAsk) {
+    steps.push({ op: "settings", section: "automation", values: { mode: "auto_within_limits" }, label: "Execute automatically within your limits (no approval per trade)" });
+    steps.push({ op: "bots_approval", value: false, label: "Every bot trades without asking you first" });
+  } else if (/\b(manual|ask me|approve every|approval for every)\b/.test(t) && /\b(mode|trades?|orders?|approv)/.test(t)) {
+    steps.push({ op: "settings", section: "automation", values: { mode: "manual" }, label: "Every trade needs your approval" });
+    steps.push({ op: "bots_approval", value: true, label: "Every bot asks you before each trade" });
+  }
   else if (/\b(auto(matically)?|without asking|no approval|don.t ask)\b/.test(t) && /\b(approv|execute|place|mode)\b/.test(t)) steps.push({ op: "settings", section: "automation", values: { mode: "auto_within_limits" }, label: "Execute automatically within your limits" });
   // Auto trading / Modo Autopilot / force trading on-off.
   const onOff = (re: RegExp) => (re.test(t) ? (/\b(off|stop|disable|pause|turn (it )?off)\b/.test(t) ? false : /\b(on|start|enable|turn (it )?on|resume)\b/.test(t) ? true : null) : null);

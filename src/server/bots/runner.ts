@@ -152,7 +152,7 @@ async function reconcileSwing(b: any, state: any, multi: boolean) {
   if (o.status === "filled") {
     if (o.side === "buy") {
       await log(b.id, "result", `Entry filled: ${o.filled_quantity} @ ${Number(o.avg_fill_price).toPrecision(6)}`);
-      return { ...state, phase: "holding", entry: Number(o.avg_fill_price), qty: Number(o.filled_quantity), pendingOrderId: null };
+      return { ...state, phase: "holding", entry: Number(o.avg_fill_price), qty: Number(o.filled_quantity), pendingOrderId: null, waitNote: undefined };
     }
     const cycles = (state.cycles ?? 0) + 1;
     const p = b.params;
@@ -166,9 +166,14 @@ async function reconcileSwing(b: any, state: any, multi: boolean) {
   }
   if (["rejected", "failed", "cancelled", "expired"].includes(o.status)) {
     await log(b.id, "warning", `Order ${o.status}; returning to previous phase`);
-    return { ...state, phase: state.phase === "buy_pending" ? "waiting_dip" : "holding", pendingOrderId: null };
+    return { ...state, phase: state.phase === "buy_pending" ? "waiting_dip" : "holding", pendingOrderId: null, waitNote: undefined };
   }
-  return state; // pending approval / submitted: wait
+  // Still open: say exactly why (needs your approval, or waiting at the broker/exchange) so the log isn't a bare "pending".
+  const side = state.phase === "buy_pending" ? "Buy" : "Sell";
+  const waitNote = o.status === "pending_approval" ? `${side} is waiting for YOUR approval (Portfolio → Orders, or turn off "Ask me before each trade" on this bot)`
+    : `${side} sent, waiting for it to fill (${String(o.status).replace(/_/g, " ")})`;
+  if (o.status === "pending_approval" && state.approvalNoted !== id) await log(b.id, "warning", waitNote);
+  return { ...state, waitNote, approvalNoted: o.status === "pending_approval" ? id : state.approvalNoted };
 }
 
 async function monitorWatchlist(b: any) {

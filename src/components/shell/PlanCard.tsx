@@ -345,6 +345,16 @@ async function applyActions(steps: any[]) {
       if (s.section === "theme") { document.documentElement.dataset.theme = values.theme; try { localStorage.setItem("merod-theme", values.theme); } catch { /* ignore */ } }
     } else if (s.op === "auto") {
       await api("/api/auto", { method: "PATCH", json: s.body });
+    } else if (s.op === "bots_approval") {
+      // Approval is a config field, so a running bot is paused for a moment, updated and resumed.
+      const r: any = await api("/api/bots");
+      for (const b of r.bots ?? []) {
+        if (!!b.approval_required === s.value) continue;
+        const running = b.status === "running";
+        if (running) await api(`/api/bots/${b.id}`, { method: "POST", json: { action: "pause" } });
+        await api(`/api/bots/${b.id}`, { method: "PATCH", json: { approvalRequired: s.value } });
+        if (running) await api(`/api/bots/${b.id}`, { method: "POST", json: { action: "resume" } });
+      }
     } else if (s.op === "bots_allow_risky") {
       const r: any = await api("/api/bots");
       for (const b of r.bots ?? []) if (!!b.allow_risky !== s.value) await api(`/api/bots/${b.id}`, { method: "PATCH", json: { allowRisky: s.value } });
