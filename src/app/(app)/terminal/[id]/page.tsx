@@ -33,6 +33,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
   const port = useApi<any>("/api/portfolio", { refreshMs: 30_000 });
   // Ghost trading layers on the chart
   const [layers, setLayers] = useState({ mine: true, bot: true, others: true, thinking: true, ghost: false });
+  const [thinkOpen, setThinkOpen] = useState(false);
   const thoughts = useApi<any>(`/api/assets/${id}/thoughts?hours=${Math.max(1, Math.ceil(rng.seconds / 3600))}`, { refreshMs: 20_000 });
   const [liveThoughts, setLiveThoughts] = useState<{ time: number; who: string; text: string; level: string }[]>([]);
   const [ghostCfg, setGhostCfg] = useState<{ strategy: string; dip: string; tp: string }>({ strategy: "dip_rebound_loop", dip: "", tp: "" });
@@ -53,7 +54,9 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
     if (e.type === "fill" || e.type === "order") { detail.refresh(); ghosts.refresh(); }
     // Your own fills on this asset appear instantly.
     if (e.type === "fill" && a && e.payload?.symbol === a.symbol)
-      setLiveMarks((m) => [...m.slice(-100), { time: Math.floor(Date.now() / 1000), side: e.payload.side, kind: ["bot", "auto", "copy"].includes(e.payload.source) ? "bot" : "mine", label: ["bot", "auto", "copy"].includes(e.payload.source) ? (e.payload.source === "copy" ? "Copy" : e.payload.source === "auto" ? "Auto" : "Bot") : "You" }]);
+      setLiveMarks((m) => [...m.slice(-100), { time: Math.floor(Date.now() / 1000), side: e.payload.side, kind: ["bot", "auto", "copy"].includes(e.payload.source) ? "bot" : "mine", label: ["bot", "auto", "copy"].includes(e.payload.source) ? (e.payload.source === "copy" ? "Copy" : e.payload.source === "auto" ? "Auto" : "Bot") : "You",
+        info: Number(e.payload.price) > 0 ? { who: ({ bot: "Your bot", agent: "Your agent", auto: "Auto trading", copy: "Mimic", manual: "You (manual)", prompt: "You (prompt)" } as Record<string, string>)[e.payload.source] ?? "You",
+          side: e.payload.side, qty: Number(e.payload.quantity), price: Number(e.payload.price), usd: Number(e.payload.quantity) * Number(e.payload.price), paper: !!e.payload.paper, note: "Just filled" } : undefined }]);
     // Bot / auto-trading / Modo thinking about this asset, live.
     if (e.type === "bot_log" && (thoughts.data?.botIds ?? []).includes(e.payload?.botId))
       setLiveThoughts((t) => (t.at(-1)?.text === e.payload.message ? t : [...t.slice(-40), { time: Math.floor((e.payload.ts ?? Date.now()) / 1000), who: e.payload.botName, text: e.payload.message, level: e.payload.level }]));
@@ -74,7 +77,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
       ...liveMarks.filter((m) => (m.kind === "bot" ? layers.bot : m.kind === "mine" ? layers.mine : layers.others)),
       // Thinking markers: only meaningful steps (not every repeated "waiting…" observation).
       ...(layers.thinking ? allThoughts.filter((t) => t.level !== "observation").slice(-40)
-        .map((t) => ({ time: t.time, side: "think" as const, kind: "thought" as const, label: "💭" })) : []),
+        .map((t) => ({ time: t.time, side: "think" as const, kind: "thought" as const, label: "💭", text: `${t.who}: ${t.text}` })) : []),
     ];
   }, [ghosts.data, layers, liveMarks, allThoughts]);
 
@@ -143,18 +146,25 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
               </div>
             </div>
             <div className="relative px-1 pb-1 pt-1">
-              {layers.thinking && allThoughts.length > 0 && (
-                <div className="pointer-events-auto absolute left-3 top-3 z-10 max-w-[min(420px,70%)] rounded-xl border border-[#f5b84a]/30 bg-bg/85 p-2 backdrop-blur">
-                  <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#f5b84a]"><span className="size-1.5 rounded-full bg-[#f5b84a] pulse-dot" /> Bot thinking · live</div>
-                  <ul className="max-h-28 space-y-0.5 overflow-y-auto">
-                    {allThoughts.slice(-5).reverse().map((t: any, i: number) => (
+              {bars.data && chartBars.length > 1 ? <CandleChart bars={chartBars} indicators={indicators} live={live} markers={markers} /> : bars.data ? <div className="p-4"><Empty title="No chart history">No bars are available for this timeframe yet.</Empty></div> : <Skeleton className="mx-3 h-[420px]" />}
+            </div>
+            {/* Bot thinking lives under the chart (it used to cover the candles); collapse it to a single line. */}
+            {layers.thinking && allThoughts.length > 0 && (
+              <div className="border-t border-line px-3 py-2">
+                <button onClick={() => setThinkOpen((o) => !o)} className="flex w-full items-center gap-1.5 text-left text-[10px] font-semibold uppercase tracking-wide text-[#f5b84a]">
+                  <span className="size-1.5 rounded-full bg-[#f5b84a] pulse-dot" /> Bot thinking · live
+                  {!thinkOpen && <span className="ml-1 min-w-0 flex-1 truncate font-normal normal-case tracking-normal text-muted"><b className="text-text">{allThoughts.at(-1)?.who}</b> {allThoughts.at(-1)?.text}</span>}
+                  <span className="ml-auto text-faint">{thinkOpen ? "▾ hide" : "▸ show"}</span>
+                </button>
+                {thinkOpen && (
+                  <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto">
+                    {allThoughts.slice(-8).reverse().map((t: any, i: number) => (
                       <li key={i} className="text-[11px] leading-snug"><b className="text-text">{t.who}</b> <span className="text-muted">{t.text}</span> <span className="text-faint">{ago(t.time * 1000)}</span></li>
                     ))}
                   </ul>
-                </div>
-              )}
-              {bars.data && chartBars.length > 1 ? <CandleChart bars={chartBars} indicators={indicators} live={live} markers={markers} /> : bars.data ? <div className="p-4"><Empty title="No chart history">No bars are available for this timeframe yet.</Empty></div> : <Skeleton className="mx-3 h-[420px]" />}
-            </div>
+                )}
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-line px-3 py-2 text-[11.5px]">
               <span className="text-faint">On chart:</span>
               {([["mine", "You", "bg-up"], ["bot", "Your bots & auto", "bg-[#4aa8ff]"], ["others", "Other users", "bg-[#a78bfa]"], ["thinking", "Bot thinking", "bg-[#f5b84a]"], ["ghost", "Ghost strategy", "bg-up/50"]] as const).map(([k, l, dot]) => (

@@ -24,16 +24,30 @@ export const GET = route<Ctx>(async (req, { params }) => {
     .reverse().map((b) => ({ t: Number(b.t), c: Number(b.close) }));
   const since = bars.length ? new Date(bars[0].t * 1000) : new Date(Date.now() - 86400e3);
 
+  const AUTO = new Set(["bot", "auto", "copy", "agent"]);
   const fills = await q<any>(
-    `SELECT extract(epoch from e.executed_at)::bigint AS t, o.side, e.price, e.quantity, o.source, o.source_ref, o.user_id = $2 AS mine, o.is_paper,
-            (SELECT name FROM trading_bots b WHERE o.source='bot' AND b.id::text=o.source_ref) AS bot_name
+    `SELECT extract(epoch from e.executed_at)::bigint AS t, o.side, e.price, e.quantity, e.fee_usd, o.source, o.source_ref, o.user_id = $2 AS mine, o.is_paper,
+            o.realized_pnl, o.filled_quantity, o.status_reason,
+            (SELECT name FROM trading_bots b WHERE o.source='bot' AND b.id::text=o.source_ref) AS bot_name,
+            (SELECT name FROM agents g WHERE o.source='agent' AND g.id::text=o.source_ref) AS agent_name
        FROM executions e JOIN orders o ON o.id=e.order_id WHERE o.asset_id=$1 AND e.executed_at >= $3 ORDER BY e.executed_at DESC LIMIT 400`, [id, u.id, since]);
+  // A summary for every trade marker (shown when you hover its candle). Other users stay anonymous.
+  const SRC: Record<string, string> = { manual: "You (manual)", prompt: "You (prompt)", shortcut: "You (shortcut)", conditional: "Your conditional order", system: "Merod", auto: "Auto trading", copy: "Mimic" };
+  const info = (f: any) => {
+    const qty = Number(f.quantity), price = Number(f.price), share = Number(f.filled_quantity) > 0 ? qty / Number(f.filled_quantity) : 1;
+    const pnl = f.mine && f.side === "sell" && Number(f.realized_pnl) ? Number(f.realized_pnl) * share : null;
+    const who = !f.mine ? (AUTO.has(f.source) ? "Another user's bot" : "Another user")
+      : f.source === "bot" ? `Bot · ${f.bot_name ?? "bot"}` : f.source === "agent" ? `Agent · ${f.agent_name ?? "agent"}` : SRC[f.source] ?? f.source;
+    return { who, side: f.side, qty, price, usd: qty * price, fee: f.mine ? Number(f.fee_usd ?? 0) : null, paper: f.is_paper, pnl,
+      pnlPct: pnl != null && qty * price - pnl > 0 ? (pnl / (qty * price - pnl)) * 100 : null, note: f.mine && f.status_reason ? String(f.status_reason).slice(0, 160) : null };
+  };
   // Your manual/prompt/shortcut trades; your automated trades (bots, auto trading, Modo, copy/mimic); other users (anonymous).
-  const AUTO = new Set(["bot", "auto", "copy"]);
-  const autoLabel = (f: any) => f.source === "bot" ? (f.bot_name ? f.bot_name.slice(0, 14) : "Bot") : f.source === "copy" ? "Copy" : "Auto";
-  const mine = fills.filter((f) => f.mine && !AUTO.has(f.source)).map((f) => ({ time: Number(f.t), side: f.side, kind: "mine", label: `You ${f.side === "buy" ? "B" : "S"}${f.is_paper ? " (paper)" : ""}` }));
-  const bots = fills.filter((f) => f.mine && AUTO.has(f.source)).map((f) => ({ time: Number(f.t), side: f.side, kind: "bot", label: autoLabel(f) }));
-  const others = fills.filter((f) => !f.mine).slice(0, 150).map((f) => ({ time: Number(f.t), side: f.side, kind: "others", label: AUTO.has(f.source) ? "User bot" : "User" }));
+  // Short labels so markers don't cover the candles: B/S plus who (full details are in the hover summary).
+  const short = (s: string) => (s.length > 9 ? `${s.slice(0, 8)}…` : s);
+  const autoLabel = (f: any) => `${f.side === "buy" ? "B" : "S"} ${f.source === "bot" ? short(f.bot_name ?? "Bot") : f.source === "agent" ? short(f.agent_name ?? "Agent") : f.source === "copy" ? "Mimic" : "Auto"}`;
+  const mine = fills.filter((f) => f.mine && !AUTO.has(f.source)).map((f) => ({ time: Number(f.t), side: f.side, kind: "mine", label: `You ${f.side === "buy" ? "B" : "S"}`, info: info(f) }));
+  const bots = fills.filter((f) => f.mine && AUTO.has(f.source)).map((f) => ({ time: Number(f.t), side: f.side, kind: "bot", label: autoLabel(f), info: info(f) }));
+  const others = fills.filter((f) => !f.mine).slice(0, 150).map((f) => ({ time: Number(f.t), side: f.side, kind: "others", label: undefined, info: info(f) }));
 
   // Ghost replay. Defaults are tuned to this asset's own volatility; callers can override.
   const rets = bars.slice(1).map((b, i) => Math.abs((b.c - bars[i].c) / bars[i].c) * 100);
@@ -51,13 +65,13 @@ export const GET = route<Ctx>(async (req, { params }) => {
     st = state;
     if (decision.action === "buy" && !qty) {
       qty = cash / b.c; entry = b.c; cash = 0;
-      ghost.push({ time: b.t, side: "buy", kind: "ghost", label: "Ghost buy" });
+      ghost.push({ time: b.t, side: "buy", kind: "ghost", label: "Ghost buy", info: { who: "Ghost strategy (hypothetical)", side: "buy", qty, price: b.c, usd: qty * b.c, paper: true, pnl: null, pnlPct: null, note: "Not a real order: what the strategy would have done on this candle." } });
       if (strategy === "dip_rebound_loop") st = { ...st, phase: "holding", entry: b.c, qty };
     } else if (decision.action === "sell" && qty) {
       const pnl = (b.c - entry) / entry * 100;
       pnl >= 0 ? wins++ : losses++;
       cash = qty * b.c; qty = 0;
-      ghost.push({ time: b.t, side: "sell", kind: "ghost", label: `Ghost ${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}%` });
+      ghost.push({ time: b.t, side: "sell", kind: "ghost", label: `Ghost ${pnl >= 0 ? "+" : ""}${pnl.toFixed(1)}%`, info: { who: "Ghost strategy (hypothetical)", side: "sell", qty: cash / b.c, price: b.c, usd: cash, paper: true, pnl: cash - (cash / b.c) * entry, pnlPct: pnl, note: "Not a real order: no fees or slippage." } });
       if (strategy === "dip_rebound_loop") st = { phase: "waiting_dip", ref: b.c, cycles: (st.cycles ?? 0) + 1 };
     }
   }

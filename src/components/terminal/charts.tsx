@@ -1,9 +1,14 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createChart, createSeriesMarkers, CandlestickSeries, HistogramSeries, LineSeries, AreaSeries, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type Time, type UTCTimestamp } from "lightweight-charts";
 
 /** A trade drawn on the chart: your fills, your bots, hypothetical "ghost" strategy trades, or others' (anonymized). */
-export interface ChartMarker { time: number; side: "buy" | "sell" | "think"; kind: "mine" | "bot" | "ghost" | "others" | "thought"; label?: string }
+export interface ChartMarker { time: number; side: "buy" | "sell" | "think"; kind: "mine" | "bot" | "ghost" | "others" | "thought"; label?: string; info?: TradeInfo; text?: string }
+/** Summary shown when you hover a candle with trades: who traded, side, size, price, total, P&L and a note. */
+export interface TradeInfo { who: string; side: "buy" | "sell"; qty: number; price: number; usd: number; fee?: number | null; paper?: boolean; pnl?: number | null; pnlPct?: number | null; note?: string | null }
+const tPx = (n: number) => !Number.isFinite(n) ? "?" : n >= 100 ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}` : n >= 1 ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 4, minimumFractionDigits: 2 })}` : `$${n.toPrecision(4).replace(/0+$/, "").replace(/\.$/, "")}`;
+const tQty = (n: number) => n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n >= 1 ? String(+n.toFixed(4)) : n.toPrecision(4);
+const tUsd = (n: number) => `$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
 
 function cssVar(name: string, fallback: string) {
   if (typeof window === "undefined") return fallback;
@@ -71,6 +76,9 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
   const markerApi = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const lastBar = useRef<Bar | null>(null);
   const tfSec = useRef(3600);
+  // Hover summary: the trades (and bot thoughts) on the candle under the cursor.
+  const markersRef = useRef<ChartMarker[]>(markers); markersRef.current = markers;
+  const [tip, setTip] = useState<{ x: number; y: number; time: number; items: ChartMarker[] } | null>(null);
 
   useEffect(() => {
     if (!el.current) return;
@@ -107,6 +115,12 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
     if (bars.length > 60) c.timeScale().fitContent(); else c.timeScale().scrollToRealTime();
     lastBar.current = bars.length ? { ...bars[bars.length - 1] } : null;
     tfSec.current = bars.length > 1 ? bars[bars.length - 1].time - bars[bars.length - 2].time : 3600;
+    c.subscribeCrosshairMove((param) => {
+      if (!param.point || param.time === undefined) { setTip(null); return; }
+      const step = tfSec.current, t = Number(param.time);
+      const items = markersRef.current.filter((m) => Math.floor(m.time / step) * step === t && (m.info || m.text));
+      setTip(items.length ? { x: param.point.x, y: param.point.y, time: t, items } : null);
+    });
     const ro = new ResizeObserver(() => el.current && c.applyOptions({ width: el.current.clientWidth }));
     ro.observe(el.current);
     return () => { ro.disconnect(); c.remove(); chart.current = null; candles.current = null; markerApi.current = null; };
@@ -150,7 +164,44 @@ export function CandleChart({ bars, indicators, live, height = 420, markers = []
     candles.current.update({ time: b.time as UTCTimestamp, open: +b.open, high: +b.high, low: +b.low, close: +b.close });
   }, [live]);
 
-  return <div ref={el} className="w-full" style={{ height }} />;
+  const w = el.current?.clientWidth ?? 800;
+  const trades = tip?.items.filter((m) => m.info) ?? [];
+  const thoughts = tip?.items.filter((m) => !m.info && m.text) ?? [];
+  const buys = trades.filter((m) => m.info!.side === "buy"), sells = trades.filter((m) => m.info!.side === "sell");
+  const net = sells.reduce((s, m) => s + (m.info!.pnl ?? 0), 0);
+  return (
+    <div className="relative w-full" style={{ height }}>
+      <div ref={el} className="w-full" style={{ height }} />
+      {tip && (
+        <div className="pointer-events-none absolute z-20 w-[280px] rounded-xl border border-line bg-bg-2/95 p-2.5 text-[11px] shadow-2xl backdrop-blur"
+          style={{ left: tip.x > w - 300 ? Math.max(4, tip.x - 292) : tip.x + 14, top: Math.max(4, Math.min(height - 40, tip.y - 20)) }}>
+          <div className="mb-1 flex items-center justify-between text-[10px] text-faint">
+            <span>{new Date(tip.time * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+            {trades.length > 0 && <span>{buys.length} buy{buys.length === 1 ? "" : "s"} · {sells.length} sell{sells.length === 1 ? "" : "s"}{sells.some((m) => m.info!.pnl != null) ? ` · P&L ${net >= 0 ? "+" : "−"}${tUsd(net)}` : ""}</span>}
+          </div>
+          <div className="max-h-[260px] space-y-1.5 overflow-hidden">
+            {trades.slice(0, 6).map((m, i) => {
+              const f = m.info!;
+              return (
+                <div key={i} className="border-t border-line/60 pt-1.5 first:border-0 first:pt-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className={f.side === "buy" ? "rounded bg-up/15 px-1 text-[9.5px] font-bold uppercase text-up" : "rounded bg-down/15 px-1 text-[9.5px] font-bold uppercase text-down"}>{f.side === "buy" ? "Bought" : "Sold"}</span>
+                    <span className="truncate font-semibold text-text">{f.who}</span>
+                    {f.paper !== undefined && <span className="ml-auto shrink-0 text-[9.5px] text-faint">{f.paper ? "paper" : "real"}</span>}
+                  </div>
+                  <div className="num text-muted">{tQty(f.qty)} @ {tPx(f.price)} = {tUsd(f.usd)}{f.fee ? ` · fee ${tUsd(f.fee)}` : ""}</div>
+                  {f.pnl != null && <div className={f.pnl >= 0 ? "num text-up" : "num text-down"}>P&L {f.pnl >= 0 ? "+" : "−"}{tUsd(f.pnl)}{f.pnlPct != null ? ` (${f.pnlPct >= 0 ? "+" : ""}${f.pnlPct.toFixed(2)}%)` : ""}</div>}
+                  {f.note && <div className="line-clamp-2 text-faint">{f.note}</div>}
+                </div>
+              );
+            })}
+            {trades.length > 6 && <div className="text-faint">…and {trades.length - 6} more trades on this candle</div>}
+            {thoughts.slice(-3).map((m, i) => <div key={`t${i}`} className="border-t border-line/60 pt-1.5 text-[#f5b84a]">💭 <span className="text-muted">{m.text}</span></div>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Simple area chart for portfolio value. */
