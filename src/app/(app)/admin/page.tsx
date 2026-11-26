@@ -17,7 +17,7 @@ export default function AdminPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><Shield className="size-6 text-accent-2" /> Administration</h1>
+          <h1 className="page-title"><Shield className="size-6 text-accent-2" /> Administration</h1>
           <p className="mt-1 text-sm text-muted">System health, users, trading activity, compliance controls and audit trail.</p>
         </div>
         <Link href="/admin/integrations"><Button variant="outline"><Plug className="size-4" /> API Integration Center <ArrowRight className="size-4" /></Button></Link>

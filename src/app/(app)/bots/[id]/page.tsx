@@ -51,7 +51,7 @@ export default function BotDetail({ params }: { params: Promise<{ id: string }> 
       <Link href="/bots" className="inline-flex items-center gap-1 text-sm text-muted hover:text-text"><ArrowLeft className="size-4" /> Agents & Bots</Link>
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-line bg-panel/80 p-5">
         <div>
-          <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold">{bot.name}</h1><StatusPill status={bot.status} /><PaperBadge paper={bot.is_paper} /></div>
+          <div className="flex flex-wrap items-center gap-2"><h1 className="page-title">{bot.name}</h1><StatusPill status={bot.status} /><PaperBadge paper={bot.is_paper} /></div>
           <p className="mt-1 text-sm text-muted">{bot.strategy_name} · {bot.account_label} · checks every {bot.schedule.replace("every_", "")}{bot.last_tick_at ? ` · last check ${ago(bot.last_tick_at)}` : ""}</p>
           {bot.description && <p className="mt-1 text-sm">{bot.description}</p>}
           {bot.created_from_prompt && <p className="mt-1 text-xs text-faint">Created from prompt: “{bot.created_from_prompt}”</p>}

@@ -42,7 +42,7 @@ export default function BotsPage() {
       <SectionTabs tabs={[{ href: "/bots", label: "Bots", icon: Bot }, { href: "/shortcuts", label: "Shortcut buttons", icon: Zap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Bots</h1>
+          <h1 className="page-title">Bots</h1>
           <p className="text-sm text-muted">Automated strategies running on Merod's servers — they keep working when your browser is closed. Profit is never guaranteed.</p>
         </div>
         <div className="flex flex-wrap gap-2">

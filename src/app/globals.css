@@ -92,6 +92,17 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 /* Italic serif accent word in headings ("What do you want to create?") */
 .serif-accent { font-family: var(--font-serif); font-style: italic; font-weight: 500; letter-spacing: -0.01em; }
 .eyebrow { font-size: 0.78rem; letter-spacing: 0.32em; text-transform: uppercase; color: var(--muted); }
+/* Consistent page header on every screen */
+.page-title { display: flex; align-items: center; gap: 0.6rem; font-size: 1.95rem; line-height: 1.15; font-weight: 600; letter-spacing: -0.02em; color: var(--text); }
+.page-title svg { width: 1.5rem; height: 1.5rem; }
+.page-title + p { margin-top: 0.4rem; font-size: 1rem; line-height: 1.5; color: var(--muted); max-width: 52rem; }
+/* Native dropdowns follow the dark theme (no light-blue OS menus) */
+select { color-scheme: dark; }
+[data-theme="light"] select { color-scheme: light; }
+select option, select optgroup { background-color: var(--panel); color: var(--text); }
+select option:checked { background-color: var(--panel-2); color: var(--accent-2); }
+/* Inputs: one focus style everywhere */
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; border-color: rgba(214, 179, 122, 0.6); }
 /* Brand gradient (champagne) for primary actions and highlights: always dark text on gold */
 .bg-grad, .bg-accent { color: var(--on-accent); }
 .bg-grad.text-white, .bg-accent.text-white, .bg-grad .text-white, .bg-accent .text-white { color: var(--on-accent) !important; }

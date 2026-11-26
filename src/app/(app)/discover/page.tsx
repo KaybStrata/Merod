@@ -60,7 +60,7 @@ function DiscoverInner() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="text-xl font-semibold tracking-tight">Discover</h1><p className="text-sm text-muted">Search every stock and token Merod knows about — by ticker, name or contract address.</p></div>
+        <div><h1 className="page-title">Discover</h1><p className="text-sm text-muted">Search every stock and token Merod knows about — by ticker, name or contract address.</p></div>
         <Button variant="secondary" onClick={() => setListModal(true)}><ListPlus className="size-4" /> Watchlists</Button>
       </div>
 

@@ -107,7 +107,7 @@ export default function WorldTradesPage() {
       <SectionTabs tabs={[{ href: "/activity", label: "My live activity", icon: Radio }, { href: "/world", label: "World trades", icon: Globe2 }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><Globe2 className="size-6 text-accent-2" /> World Trades</h1>
+          <h1 className="page-title"><Globe2 className="size-6 text-accent-2" /> World Trades</h1>
           <p className="mt-1 text-sm text-muted">Real buys and sells happening right now across global crypto exchanges and US stock markets.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

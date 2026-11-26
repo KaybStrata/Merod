@@ -68,7 +68,7 @@ export default function IntegrationsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-xs text-muted"><Link href="/admin" className="hover:text-text">Admin</Link><ChevronRight className="size-3" />Integrations</div>
-          <h1 className="mt-1 flex items-center gap-2 text-xl font-semibold"><Plug className="size-6 text-accent-2" /> API Integration Center</h1>
+          <h1 className="page-title mt-1"><Plug className="size-6 text-accent-2" /> API Integration Center</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">Paste and manage credentials for every provider. Keys are encrypted server-side (AES-256-GCM) and never sent back to the browser.</p>
         </div>
         <Button variant="primary" onClick={() => setAddOpen(true)}><Plus className="size-4" /> Add custom API</Button>

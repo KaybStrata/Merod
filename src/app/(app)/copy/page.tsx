@@ -13,7 +13,7 @@ export default function CopyTradingPage() {
     <div className="space-y-4">
       <MimicTabs />
       <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold"><Copy className="size-6 text-accent-2" /> Copy Trading</h1>
+        <h1 className="page-title"><Copy className="size-6 text-accent-2" /> Copy Trading</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">Copy bots follow a trader or public wallet with a fixed dollar amount you choose: every time they buy, the same coin or stock is bought for you for that amount, whatever size they traded, and their sells are mirrored. Use Mimic trading instead to match their trade sizes.</p>
       </div>
       <CopyBotsPanel variant="copy" />

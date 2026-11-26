@@ -4,6 +4,7 @@ import { Copy, ExternalLink, Wallet, PenLine, ShieldCheck, Send, Plus, RefreshCw
 import { api, useApi } from "@/lib/api";
 import { useShell } from "@/components/shell/context";
 import { Modal, cx, useToast } from "@/components/ui";
+import { AccountPicker, type TradeMode } from "./AccountPicker";
 
 /* ───────────── Browser wallets (Phantom / Solflare) ───────────── */
 type WalletId = "phantom" | "solflare";
@@ -182,18 +183,14 @@ function WalletPanel({ w: data, onChange: refresh }: { w: any; onChange: () => v
 }
 
 /* ───────────── Buy anything from Merod ───────────── */
-export function BuyFromMerod() {
+export function BuyFromMerod({ id = "buy" }: { id?: string }) {
   const toast = useToast();
-  const accts = useApi<any>("/api/wallet/accounts");
   const [q, setQ] = useState(""); const [results, setResults] = useState<any[]>([]); const [asset, setAsset] = useState<any>(null);
-  const [side, setSide] = useState<"buy" | "sell">("buy"); const [usd, setUsd] = useState("25"); const [acct, setAcct] = useState(""); const [busy, setBusy] = useState(false);
+  const [side, setSide] = useState<"buy" | "sell">("buy"); const [usd, setUsd] = useState("25"); const [acct, setAcct] = useState(""); const [mode, setMode] = useState<TradeMode>("paper"); const [busy, setBusy] = useState(false);
   useEffect(() => { if (q.trim().length < 1) { setResults([]); return; } const t = setTimeout(() => api(`/api/assets?q=${encodeURIComponent(q)}&limit=8`).then((r: any) => setResults(r.assets)).catch(() => {}), 150); return () => clearTimeout(t); }, [q]);
-  const all: any[] = (accts.data?.accounts ?? []).filter((a: any) => a.status === "active" && !a.watch_only || a.provider_id === "external");
-  const isStock = asset && ["stock", "etf"].includes(asset.asset_class);
-  const eligible = all.filter((a: any) => !asset ? true : isStock ? a.kind === "brokerage" || a.kind === "paper" : a.kind === "paper" || (a.kind === "wallet" && a.network === asset.venue) || (a.kind === "brokerage" && a.provider_id !== "alpaca_trading"));
-  useEffect(() => { if (asset && !eligible.some((a) => a.id === acct)) setAcct(eligible.find((a) => a.provider_id === "merod_wallet")?.id ?? eligible.find((a) => a.kind !== "paper")?.id ?? eligible[0]?.id ?? ""); }, [asset?.id, accts.data]); // eslint-disable-line react-hooks/exhaustive-deps
   async function go() {
     if (!asset || !acct) return;
+    if (mode === "live" && !confirm(`${side === "buy" ? `Buy $${usd} of` : "Sell all of"} ${asset.symbol} with REAL money?`)) return;
     setBusy(true);
     try {
       const r: any = await api("/api/orders", { method: "POST", json: { mode: "place", intent: { asset: { assetId: asset.id }, side, orderType: "market", timeInForce: asset.asset_class === "crypto" ? "gtc" : "day", accountId: acct, ...(side === "buy" ? { notionalUsd: Number(usd) } : { percentOfPosition: 100 }) } } });
@@ -202,23 +199,35 @@ export function BuyFromMerod() {
       else toast(o.status === "rejected" || o.status === "failed" ? `${o.status}: ${o.status_reason}` : `${side === "buy" ? "Bought" : "Sold"} ${asset.symbol}: ${o.status.replace("_", " ")}`, o.status === "rejected" || o.status === "failed" ? "down" : "up");
     } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
   }
-  const label = (a: any) => a.kind === "paper" ? "Paper account (virtual)" : `${a.label}${a.environment === "sandbox" ? " (sandbox)" : ""}`;
   return (
-    <section className="surface rounded-2xl p-5">
-      <h3 className="flex items-center gap-2 text-[1.05rem] font-semibold"><Search className="size-5 text-accent-2" /> Buy from Merod</h3>
-      <p className="mt-1 text-[12.5px] text-muted">Any coin or stock. Solana tokens go through Jupiter (Merod Wallet signs automatically, Phantom/Solflare ask you). Other coins go through your connected exchange, and stocks through Alpaca.</p>
-      <div className="mt-3 grid gap-2 md:grid-cols-[1.4fr_0.6fr_0.8fr_1.2fr_auto]">
-        <div className="relative">
-          <input value={asset ? `${asset.symbol} · ${asset.name}` : q} onChange={(e) => { setAsset(null); setQ(e.target.value); }} placeholder="Search SOL, BONK, BTC, NVDA, AAPL…" className="h-10 w-full rounded-xl border border-line bg-panel-2/70 px-3 text-sm outline-none focus:border-accent/60" />
-          {!asset && results.length > 0 && <div className="absolute left-0 right-0 top-11 z-20 overflow-hidden rounded-xl border border-line bg-panel shadow-2xl">{results.map((a) => <button key={a.id} onClick={() => { setAsset(a); setResults([]); }} className="flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-panel-2"><span><b>{a.symbol}</b> <span className="text-muted">{a.name}</span></span><span className="text-xs text-faint">{a.venue}</span></button>)}</div>}
+    <section id={id} className={cx("surface rounded-2xl p-5", mode === "live" && "ring-1 ring-down/30")}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="flex items-center gap-2 text-[1.05rem] font-semibold"><Search className="size-5 text-accent-2" /> Buy & sell</h3>
+          <p className="mt-0.5 text-[12.5px] text-muted">Any coin or stock, in paper or with real money. Solana tokens swap through Jupiter, other coins go to your exchange, stocks to your broker.</p>
         </div>
-        <div className="flex rounded-xl border border-line p-0.5">{(["buy", "sell"] as const).map((s) => <button key={s} onClick={() => setSide(s)} className={cx("flex-1 rounded-lg text-sm capitalize", side === s ? (s === "buy" ? "bg-up text-[#04130d]" : "bg-down text-white") : "text-muted")}>{s}</button>)}</div>
-        {side === "buy" ? <label className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">$</span><input type="number" min={1} value={usd} onChange={(e) => setUsd(e.target.value)} className="h-10 w-full rounded-xl border border-line bg-panel-2/70 pl-6 pr-2 text-sm" /></label> : <div className="flex h-10 items-center justify-center rounded-xl border border-line text-[12px] text-muted">Sell all</div>}
-        <select value={acct} onChange={(e) => setAcct(e.target.value)} className="h-10 rounded-xl border border-line bg-panel-2/70 px-2 text-sm">{!eligible.length && <option value="">No account for this asset</option>}{eligible.map((a) => <option key={a.id} value={a.id}>{label(a)}</option>)}</select>
-        <button onClick={go} disabled={busy || !asset || !acct} className="h-10 rounded-xl bg-grad px-5 text-sm font-semibold disabled:opacity-50">{busy ? "…" : side === "buy" ? "Buy" : "Sell"}</button>
       </div>
-      {asset && isStock && !eligible.some((a) => a.kind === "brokerage") && <p className="mt-2 text-[11.5px] text-warn">Connect your Alpaca live account (Broker & AI Keys, then Connect my broker) to buy real stocks.</p>}
-      {asset && !isStock && asset.venue !== "solana" && !eligible.some((a) => a.kind === "brokerage") && <p className="mt-2 text-[11.5px] text-warn">{asset.symbol} isn&apos;t a Solana token: connect an exchange (Coinbase, Kraken, Binance.US, Gemini) to buy it for real, or buy its Solana version.</p>}
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1.3fr_1fr]">
+        <div className="space-y-2.5">
+          <label className="block text-[11px] font-medium uppercase tracking-wide text-faint">1 · Asset</label>
+          <div className="relative">
+            <input value={asset ? `${asset.symbol} · ${asset.name}` : q} onChange={(e) => { setAsset(null); setQ(e.target.value); }} placeholder="Search SOL, BONK, BTC, NVDA, AAPL…" className="h-10 w-full rounded-xl border border-line bg-panel-2/70 px-3 text-sm outline-none focus:border-accent/60" />
+            {!asset && results.length > 0 && <div className="absolute left-0 right-0 top-11 z-30 overflow-hidden rounded-xl border border-line bg-panel shadow-2xl">{results.map((a) => <button key={a.id} onClick={() => { setAsset(a); setResults([]); }} className="flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-panel-2"><span><b>{a.symbol}</b> <span className="text-muted">{a.name}</span></span><span className="text-xs text-faint">{a.asset_class === "crypto" ? a.venue : "Stock"}</span></button>)}</div>}
+          </div>
+          <label className="block pt-1 text-[11px] font-medium uppercase tracking-wide text-faint">2 · Order</label>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-bg-2/60 p-1">{(["buy", "sell"] as const).map((s) => <button key={s} onClick={() => setSide(s)} className={cx("rounded-lg py-1.5 text-sm font-semibold capitalize", side === s ? (s === "buy" ? "bg-up text-[#04130d]" : "bg-down text-white") : "text-muted")}>{s}</button>)}</div>
+            {side === "buy" ? <label className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">$</span><input type="number" min={1} value={usd} onChange={(e) => setUsd(e.target.value)} className="h-10 w-full rounded-xl border border-line bg-panel-2/70 pl-6 pr-2 text-sm" aria-label="Amount in dollars" /></label> : <div className="flex h-10 items-center justify-center rounded-xl border border-line text-[12px] text-muted">Sell whole position</div>}
+          </div>
+        </div>
+        <div className="space-y-2.5">
+          <label className="block text-[11px] font-medium uppercase tracking-wide text-faint">3 · Account</label>
+          <AccountPicker asset={asset} value={acct} onChange={(i, m) => { setAcct(i); setMode(m); }} />
+          <button onClick={go} disabled={busy || !asset || !acct} className={cx("h-11 w-full rounded-xl text-sm font-semibold disabled:opacity-50", mode === "live" ? "bg-down text-white" : "bg-grad")}>
+            {busy ? "Working…" : `${side === "buy" ? "Buy" : "Sell"}${asset ? ` ${asset.symbol}` : ""}${mode === "live" ? " · real money" : " · paper"}`}
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

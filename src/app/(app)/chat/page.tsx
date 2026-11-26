@@ -115,7 +115,7 @@ export default function CommunityChatPage() {
       <SectionTabs tabs={[{ href: "/social", label: "Social", icon: Users }, { href: "/chat", label: "Community chat", icon: MessagesSquare }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><MessagesSquare className="size-6 text-accent-2" /> Community Chat</h1>
+          <h1 className="page-title"><MessagesSquare className="size-6 text-accent-2" /> Community Chat</h1>
           <p className="mt-1 text-sm text-muted">One room for everyone on Merod. Share ideas, ask questions, talk markets.</p>
         </div>
         <div className="flex items-center gap-2 text-xs">

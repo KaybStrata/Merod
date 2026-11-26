@@ -118,7 +118,7 @@ function PortfolioInner() {
       <SectionTabs tabs={[{ href: "/portfolio", label: "Portfolio", icon: PieChart }, { href: "/wallet", label: "Wallet & funding", icon: Wallet }]} />
       <PendingSignatures />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><h1 className="text-xl font-semibold">Portfolio</h1><PaperBadge paper={book === "paper"} /></div>
+        <div className="flex items-center gap-3"><h1 className="page-title">Portfolio</h1><PaperBadge paper={book === "paper"} /></div>
         <div className="flex flex-wrap gap-2">
           <Pills size="sm" value={book} onChange={setBook} options={[{ value: "paper", label: "Paper (simulated)" }, { value: "live", label: "Live accounts" }]} />
           {book === "paper" && <Button size="sm" variant="ghost" onClick={() => setResetOpen(true)}><RotateCcw className="size-4" /> Reset paper</Button>}

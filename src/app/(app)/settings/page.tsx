@@ -25,7 +25,7 @@ function SettingsInner() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Settings</h1>
+      <h1 className="page-title">Settings</h1>
       <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)]">
         <nav className="flex gap-1 overflow-x-auto lg:flex-col">
           {TABS.map((t) => (

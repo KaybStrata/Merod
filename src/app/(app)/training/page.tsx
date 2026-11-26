@@ -33,7 +33,7 @@ export default function TrainingPage() {
       <SectionTabs tabs={[{ href: "/learning", label: "AI Learning", icon: Brain }, { href: "/training", label: "Auto-Training", icon: GraduationCap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><GraduationCap className="size-6 text-accent-2" /> Auto-Training</h1>
+          <h1 className="page-title"><GraduationCap className="size-6 text-accent-2" /> Auto-Training</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">
             Automatically corrects your bots, shortcuts and prompt-trade defaults after mistakes, wrong trades or losses — and only ever in the
             direction of <b className="text-text">less risk</b>. Every change is logged and can be reverted.

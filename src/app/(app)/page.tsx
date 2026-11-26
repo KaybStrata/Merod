@@ -7,6 +7,7 @@ import { cx } from "@/components/ui";
 import { GoldWaves } from "@/components/ui/GoldWaves";
 import { AreaChart, fmtPct, fmtSigned, toneOf } from "@/components/agents/common";
 import HomeDashboard from "@/components/HomeDashboard";
+import { WalletFundsPanel } from "@/components/wallet/WalletFundsPanel";
 
 const ACTIONS = [
   { href: "/trade", icon: BarChart3, title: "Trade", text: "Execute trades, set orders, and manage positions" },
@@ -81,6 +82,8 @@ export default function Home() {
             </Link>
           ))}
         </div>
+
+        <div className="mt-4 max-w-[1000px]"><WalletFundsPanel /></div>
 
         <div className="mt-8 flex max-w-[1000px] flex-wrap items-center gap-3">
           <h2 className="flex items-center gap-2 text-[1.3rem] font-semibold"><Clock className="size-5" /> Recent Workspaces</h2>

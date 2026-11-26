@@ -9,6 +9,7 @@ import { useRealtime, useScreenAssetSetter, useShell } from "@/components/shell/
 import { Card, Badge, Pills, Skeleton, Empty, ChangeText, AssetIcon, SourceBadge, StatusPill, Button, cx, useToast } from "@/components/ui";
 import { price, usd, qty, compact, ago, tone } from "@/lib/format";
 import { OrderTicket } from "@/components/terminal/OrderTicket";
+import { WalletFundsPanel } from "@/components/wallet/WalletFundsPanel";
 import { TradabilityBadge } from "@/components/terminal/TradabilityBadge";
 import { ShortcutBar } from "@/components/ShortcutBar";
 import { LiveSuggestions } from "@/components/LiveSuggestions";
@@ -99,7 +100,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
           <div className="flex items-center gap-3">
             <AssetIcon symbol={a.symbol} logo={a.logo_url} size={40} />
             <div>
-              <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-semibold">{a.symbol}</h1><span className="text-sm text-muted">{a.name}</span>
+              <div className="flex flex-wrap items-center gap-2"><h1 className="page-title">{a.symbol}</h1><span className="text-sm text-muted">{a.name}</span>
                 <Badge>{a.venue}</Badge><TradabilityBadge a={a} /><SourceBadge source={a.price_source} /></div>
               <div className="flex items-baseline gap-3">
                 <span className="num text-2xl font-semibold tracking-tight">{price(px)}</span>
@@ -256,6 +257,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
             <Card title="Trade" icon={<ListOrdered className="size-4 text-accent-2" />}>
               {a ? <OrderTicket asset={a} position={position} onPlaced={() => detail.refresh()} /> : <Skeleton className="h-96" />}
             </Card>
+            <WalletFundsPanel compact />
             {detail.data?.tradability && (
               <Card>
                 <div className="text-xs text-muted">Execution status</div>

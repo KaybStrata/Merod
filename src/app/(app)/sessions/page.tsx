@@ -28,7 +28,7 @@ export default function SessionsPage() {
       <MimicTabs />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><Layers className="size-6 text-accent-2" /> Sessions</h1>
+          <h1 className="page-title"><Layers className="size-6 text-accent-2" /> Sessions</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">Run several strategies at once, each with its own budget. Sessions keep running on Merod&apos;s servers when you close the browser. Every order goes through the risk checks, and cash is reserved per order so two sessions can never spend the same money.</p>
         </div>
         <div className="flex gap-2">

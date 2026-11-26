@@ -15,7 +15,7 @@ export default function MimicTradingPage() {
     <div className="space-y-4">
       <MimicTabs />
       <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold"><Repeat className="size-6 text-accent-2" /> Mimic Trading</h1>
+        <h1 className="page-title"><Repeat className="size-6 text-accent-2" /> Mimic Trading</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">Mimic bots repeat every trade a trader or public wallet makes, at the same dollar size (capped by your daily limit), and sell when they sell. You can also start one from the prompt box, e.g. “mimic trade the top ROI earner for Solana meme coins this week”.</p>
       </div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">

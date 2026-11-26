@@ -12,7 +12,7 @@ export default function LearningPage() {
       <SectionTabs tabs={[{ href: "/learning", label: "AI Learning", icon: Brain }, { href: "/training", label: "Auto-Training", icon: GraduationCap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><Brain className="size-6 text-accent-2" /> AI Learning</h1>
+          <h1 className="page-title"><Brain className="size-6 text-accent-2" /> AI Learning</h1>
           <p className="mt-1 max-w-3xl text-sm text-muted">What Merod has learned from your trades, bots, shortcuts and the material you teach it — updated live. Press <b className="text-text">Update</b> to apply a learning to your account.</p>
         </div>
         <div className="flex gap-2 text-sm">

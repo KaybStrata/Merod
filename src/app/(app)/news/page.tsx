@@ -11,7 +11,7 @@ export default function NewsPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold"><Newspaper className="size-6 text-accent-2" /> Articles &amp; News</h1>
+          <h1 className="page-title"><Newspaper className="size-6 text-accent-2" /> Articles &amp; News</h1>
           <p className="mt-1 text-sm text-muted">The latest stock and crypto headlines. Tap one to read it, or press Teach Merod to have the AI learn from it.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

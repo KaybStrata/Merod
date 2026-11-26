@@ -4,6 +4,8 @@ import { CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button, Input, Select, Pills, PaperBadge, SourceBadge, cx, useToast } from "@/components/ui";
 import { price, usd, qty } from "@/lib/format";
+import { AccountPicker, type TradeMode } from "@/components/wallet/AccountPicker";
+import { signOrderWithWallet } from "@/components/wallet/SolanaWallets";
 
 type OType = "market" | "limit" | "stop" | "stop_limit" | "trailing_stop";
 
@@ -25,10 +27,12 @@ export function OrderTicket({ asset, position, onPlaced }: { asset: any; positio
   const [key, setKey] = useState<string | null>(null);
   const [busy, setBusy] = useState<"preview" | "place" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [acct, setAcct] = useState("");
+  const [mode, setMode] = useState<TradeMode>("paper");
 
   function intent() {
     const n = Number(amount);
-    const i: any = { asset: { assetId: asset.id }, side, orderType: type, timeInForce: tif, maxSlippageBps: Number(slip) || undefined };
+    const i: any = { asset: { assetId: asset.id }, side, orderType: type, timeInForce: tif, maxSlippageBps: Number(slip) || undefined, ...(acct ? { accountId: acct } : {}) };
     if (sizeMode === "usd") i.notionalUsd = n; else if (sizeMode === "qty") i.quantity = n; else i.percentOfPosition = n;
     if (type === "limit" || type === "stop_limit") i.limitPrice = Number(limit);
     if (type === "stop" || type === "stop_limit") i.stopPrice = Number(stop);
@@ -45,8 +49,10 @@ export function OrderTicket({ asset, position, onPlaced }: { asset: any; positio
   async function place() {
     setBusy("place"); setError(null);
     try {
+      if (mode === "live" && !confirm(`Place this ${side} order for ${asset.symbol} with REAL money?`)) { setBusy(null); return; }
       const r = await api("/api/orders", { method: "POST", json: { intent: intent(), mode: "place", idempotencyKey: key } });
-      const o = r.order;
+      let o = r.order;
+      if (o.status === "pending_approval" && o.unsigned_tx?.tx) { toast("Approve the swap in your wallet…", "neutral"); o = (await signOrderWithWallet(o) as any).order ?? o; }
       toast(`${o.status === "filled" ? "Filled" : o.status === "submitted" ? "Order working" : `Order ${o.status}`}${o.status_reason ? ` — ${o.status_reason}` : ""}`, ["filled", "submitted"].includes(o.status) ? "up" : "down");
       setPlan(null); onPlaced();
     } catch (e: any) { setError(e.message); } finally { setBusy(null); }
@@ -56,6 +62,7 @@ export function OrderTicket({ asset, position, onPlaced }: { asset: any; positio
 
   return (
     <div className="space-y-3">
+      <AccountPicker asset={asset} value={acct} onChange={(i, m) => { setAcct(i); setMode(m); reset(); }} compact />
       <div className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-bg-2/60 p-1">
         {(["buy", "sell"] as const).map((s) => (
           <button key={s} onClick={() => { setSide(s); reset(); if (s === "sell" && sizeMode === "usd" && position?.quantity) setSizeMode("pct"); }}

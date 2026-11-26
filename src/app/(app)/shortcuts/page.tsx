@@ -100,7 +100,7 @@ export default function ShortcutsPage() {
       <SectionTabs tabs={[{ href: "/bots", label: "Bots", icon: Bot }, { href: "/shortcuts", label: "Shortcut buttons", icon: Zap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Shortcut buttons</h1>
+          <h1 className="page-title">Shortcut buttons</h1>
           <p className="text-sm text-muted">One-click trading buttons. Every click is previewed and validated by the trading engine before anything executes.</p>
         </div>
         <Button variant="primary" onClick={() => setDraft(blank())}><Plus className="size-4" /> New shortcut</Button>
