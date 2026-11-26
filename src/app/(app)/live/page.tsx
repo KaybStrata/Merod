@@ -5,10 +5,11 @@ import { Activity, Brain, Target, CheckCircle2, AlertTriangle, Gauge, Bot, Spark
 import { TradeHistory } from "@/components/activity/TradeHistory";
 import { api } from "@/lib/api";
 import { capFeed } from "@/lib/feed";
+import { ItemHeader, type FeedCoin } from "@/components/activity/ItemHeader";
 import { usePageTitle, useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 
-type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string };
+type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: string; pnl?: number; coin?: FeedCoin };
 const SOURCES: [string, string, any][] = [["all", "Everything", Activity], ["agent", "Agents", Sparkles], ["bot", "Bots", Bot], ["auto", "Auto trading", Cpu], ["modo", "Modo", Brain], ["order", "Orders", ArrowLeftRight], ["copy", "Mimic & copy", Repeat], ["merod", "Merod", Landmark]];
 const KINDS: [string, string, any, string][] = [
   ["thought", "Thoughts", Brain, "text-[#c9b6ff] bg-[rgba(185,163,240,.14)]"],
@@ -68,7 +69,7 @@ export default function LiveActivity() {
     return () => { live = false; clearInterval(t); };
   }, [src]);
   const base = src === "all" ? items : bySrc?.key === src ? bySrc.items : [];
-  const shown = useMemo(() => base.filter((i) => kinds.has(i.kind) && (!q || `${i.actor} ${i.title} ${i.body ?? ""}`.toLowerCase().includes(q.toLowerCase()))), [base, kinds, q]);
+  const shown = useMemo(() => base.filter((i) => kinds.has(i.kind) && (!q || `${i.coin?.symbol ?? ""} ${i.actor} ${i.title} ${i.body ?? ""}`.toLowerCase().includes(q.toLowerCase()))), [base, kinds, q]);
   const minute = items.filter((i) => Date.now() - new Date(i.at).getTime() < 60_000).length;
   const counts = (k: string) => items.filter((i) => i.source === k).length;
   // Events per minute over the last 30 minutes (histogram) and the mix of kinds in the last hour.
@@ -129,7 +130,7 @@ export default function LiveActivity() {
                   <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-line-2 bg-panel-2 text-accent-2"><SI className="size-3.5" /></span>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[12.5px] font-semibold">{i.actor}</span>
+                      <ItemHeader actor={i.actor} coin={i.coin} className="text-[12.5px]" />
                       <span className={cx("flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", k[3])}><KI className="size-3" />{SINGULAR[i.kind] ?? k[1]}</span>
                     </div>
                     <div className="mt-0.5 text-[13px] leading-snug">{i.title}</div>

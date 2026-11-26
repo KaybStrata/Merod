@@ -9,7 +9,9 @@ import { getSettings } from "@/server/auto/engine";
  * your orders and fills, copy/mimic trades, and Merod itself (platform trades, worker/system events for admins).
  * Newest first; `since` (ms) returns only newer items for live polling.
  */
-type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number };
+type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: Coin };
+/** The coin a bot line is about, with its live price and move (since the bot bought it, or 24h). */
+type Coin = { symbol: string; price?: number; move?: number | null; basis?: string };
 const BOT_KIND: Record<string, Item["kind"]> = { observation: "analysis", trigger: "decision", instruction: "decision", order: "execution", result: "execution", warning: "warning", error: "warning", control: "state" };
 const AGENT_KIND: Record<string, Item["kind"]> = { thought: "thought", analysis: "analysis", decision: "decision", execution: "execution", warning: "warning", approval: "decision", training: "analysis", state: "state", message: "analysis", system: "state" };
 
@@ -44,7 +46,7 @@ export const GET = route(async (req) => {
   const pnlOnly = filter === "profit" || filter === "loss";
   const [agents, bots, orders, copies, platform, system] = await Promise.all([
     want("agent") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT e.id, e.created_at, e.kind, e.title, e.body, e.agent_id, a.name FROM agent_events e LEFT JOIN agents a ON a.id=e.agent_id WHERE e.user_id=$1 AND e.created_at > $2 ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]) : none,
-    want("bot") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT l.id, l.created_at, l.level, l.message, b.id AS bot_id, b.name FROM bot_activity_logs l JOIN trading_bots b ON b.id=l.bot_id WHERE b.user_id=$1 AND l.created_at > $2 ORDER BY l.id DESC LIMIT $3`, [u.id, since, lim]) : none,
+    want("bot") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT l.id, l.created_at, l.level, l.message, l.data, b.id AS bot_id, b.name FROM bot_activity_logs l JOIN trading_bots b ON b.id=l.bot_id WHERE b.user_id=$1 AND l.created_at > $2 ORDER BY l.id DESC LIMIT $3`, [u.id, since, lim]) : none,
     want("order") ? q<any>(`SELECT o.id, o.updated_at, o.side, o.status, o.source, o.is_paper, o.filled_quantity, o.avg_fill_price, o.notional_usd, o.status_reason, o.realized_pnl, a.symbol, a.id AS asset_id
               FROM orders o JOIN assets a ON a.id=o.asset_id WHERE o.user_id=$1 AND o.updated_at > $2${orderCond} ORDER BY o.updated_at DESC LIMIT $3`, [u.id, since, lim]) : none,
     want("copy") && !pnlOnly ? q<any>(`SELECT e.id, e.created_at, e.side, e.symbol, e.status, e.reason, e.venue, f.label FROM copy_trade_events e JOIN copy_follows f ON f.id=e.follow_id WHERE f.follower_id=$1 AND e.created_at > $2${filter === "buy" || filter === "sell" ? ` AND e.side='${filter}'` : ""} ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]) : none,
@@ -54,7 +56,18 @@ export const GET = route(async (req) => {
   ]);
   const items: Item[] = [];
   for (const e of agents) items.push({ id: `ag${e.id}`, at: e.created_at, source: "agent", kind: AGENT_KIND[e.kind] ?? "state", actor: e.name ?? "Agent", title: e.title, body: e.body || undefined, link: e.agent_id ? `/agents/${e.agent_id}` : "/agents" });
-  for (const l of bots) items.push({ id: `bt${l.id}`, at: l.created_at, source: "bot", kind: BOT_KIND[l.level] ?? "state", actor: l.name, title: l.message, link: `/bots/${l.bot_id}` });
+  for (const l of bots) {
+    // Older lines carried the coin in the text ("ZERO @ 0.000270100 (dexscreener) — …"): lift it into the header too.
+    let coin: Coin | undefined = l.data?.coin ?? undefined, title = l.message as string;
+    const old = !coin && /^([A-Za-z0-9$._-]{1,20}) @ ([\d.e+-]+) \(([^)]+)\)(?: — (.*))?$/s.exec(title);
+    if (old) {
+      title = old[4] ?? `${old[1]} @ $${old[2]}`;
+      const mv = /bought at [^,]+, now [^(]+\((up|down) ([\d.]+)%\)/.exec(title) ?? /Holding: ([+-]?)([\d.]+)%/.exec(title);
+      const move = mv ? (mv[1] === "down" || mv[1] === "-" ? -1 : 1) * Number(mv[2]) : null;
+      coin = { symbol: old[1], price: Number(old[2]), move, basis: mv ? "since buy" : undefined };
+    }
+    items.push({ id: `bt${l.id}`, at: l.created_at, source: "bot", kind: BOT_KIND[l.level] ?? "state", actor: l.name, title, coin, link: `/bots/${l.bot_id}` });
+  }
   for (const o of orders) {
     const filled = Number(o.filled_quantity) > 0;
     const what = filled ? `${o.side === "buy" ? "Bought" : "Sold"} ${Number(o.filled_quantity).toPrecision(5)} ${o.symbol} @ $${Number(o.avg_fill_price).toPrecision(6)}` : `${o.side === "buy" ? "Buy" : "Sell"} ${o.symbol}${o.notional_usd ? ` $${Number(o.notional_usd).toFixed(2)}` : ""}: ${String(o.status).replace("_", " ")}`;

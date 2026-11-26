@@ -4,11 +4,12 @@ import Link from "next/link";
 import { Activity, X, Brain, Target, CheckCircle2, AlertTriangle, BarChart3, Gauge } from "lucide-react";
 import { api } from "@/lib/api";
 import { capFeed } from "@/lib/feed";
+import { ItemHeader, type FeedCoin } from "@/components/activity/ItemHeader";
 import { useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 import { PortfolioSpark } from "./PortfolioSpark";
 
-type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number };
+type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: FeedCoin };
 const KIND: Record<string, [any, string]> = {
   thought: [Brain, "text-[#c9b6ff]"], analysis: [BarChart3, "text-up"], decision: [Target, "text-[#8fbcff]"],
   execution: [CheckCircle2, "text-up"], warning: [AlertTriangle, "text-warn"], state: [Gauge, "text-muted"],
@@ -100,7 +101,7 @@ export function TalkActivity() {
                   <div className="flex gap-2.5 border-b border-line/50 px-4 py-2.5 hover:bg-panel-2/50">
                     <I className={cx("mt-0.5 size-4 shrink-0", cls)} />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2 text-[11px]"><span className="truncate font-semibold text-text">{i.actor}</span><span className="num shrink-0 text-faint">{hms(i.at)}</span></div>
+                      <div className="flex items-center justify-between gap-2 text-[11px]"><ItemHeader actor={i.actor} coin={i.coin} /><span className="num shrink-0 text-faint">{hms(i.at)}</span></div>
                       <div className="text-[12.5px] leading-snug">{i.title}
                         {pnlOf(i) !== undefined && (
                           <span className={cx("num ml-1.5 whitespace-nowrap rounded px-1 text-[10.5px] font-semibold", pnlOf(i)! >= 0 ? "bg-up/15 text-up" : "bg-down/15 text-down")}>

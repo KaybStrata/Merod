@@ -4,7 +4,7 @@ import { audit } from "../audit";
 import { publish } from "../realtime";
 import { getFlags } from "../flags";
 import { place, notify } from "../engine/engine";
-import { getStrategy, type Decision, type Observation } from "./strategies";
+import { usdPx, getStrategy, type Decision, type Observation } from "./strategies";
 
 /**
  * Persistent bot runner (runs in the Railway worker, never in the browser).
@@ -94,7 +94,12 @@ async function tickBot(b: any) {
     const { decision, state: next } = strat.decide(obs, assetState, b.params);
     const put = (s: any) => { state = multi ? { ...state, [assetId]: s } : s; };
     put(next);
-    await log(b.id, "observation", `${a.symbol} @ ${obs.price.toPrecision(6)} (${a.price_source})${decision.action === "none" && decision.note ? ` — ${decision.note}` : ""}`);
+    // Each line is about one coin: its symbol, live price and move (since the bot bought it, else over 24h) travel as data,
+    // so the Activity feed can headline the coin instead of repeating the bot's name.
+    const held = obs.positionQty > 0 && obs.avgCost ? obs.avgCost : null;
+    const coin = { symbol: a.symbol, assetId, price: obs.price, source: a.price_source,
+      move: held ? ((obs.price - held) / held) * 100 : a.change_24h != null ? Number(a.change_24h) : null, basis: held ? "since buy" : "24h" };
+    await log(b.id, "observation", decision.action === "none" && decision.note ? decision.note : `${a.symbol} @ ${usdPx(obs.price)}`, { coin });
     if (decision.action === "none") continue;
     if (decision.action === "complete") { await q("UPDATE trading_bots SET status='stopped' WHERE id=$1", [b.id]); await log(b.id, "control", `Completed: ${decision.reason}`); break; }
     if (decision.action === "alert") { await notify(b.user_id, "bot", `${b.name}: ${a.symbol}`, decision.message, `/bots/${b.id}`); continue; }
@@ -110,7 +115,7 @@ async function tickBot(b: any) {
 }
 
 async function executeDecision(b: any, a: any, d: Exclude<Decision, { action: "none" | "complete" | "alert" }>) {
-  await log(b.id, "trigger", `${d.action.toUpperCase()} ${a.symbol}: ${d.reason}`);
+  await log(b.id, "trigger", `${d.action.toUpperCase()} ${a.symbol}: ${d.reason}`, { coin: { symbol: a.symbol, assetId: a.id, price: Number(a.last_price), source: a.price_source, move: a.change_24h != null ? Number(a.change_24h) : null, basis: "24h" } });
   // Bot-level limits (account-level limits are enforced again by the engine).
   if (b.max_trades_per_day != null && b.trades_today >= b.max_trades_per_day) { await log(b.id, "warning", `Max trades per day (${b.max_trades_per_day}) reached`); return { ok: false }; }
   // Every cap below: 0 = no limit (the engine still checks real buying power).

@@ -19,7 +19,7 @@ export interface StrategyDef {
 
 const pct = (a: number, b: number) => ((a - b) / b) * 100;
 /** Price in plain dollars, with enough digits for micro-priced meme coins ($0.00000459). */
-export const usdPx = (n: number) => !Number.isFinite(n) ? "?" : n >= 1 ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}` : `$${n.toPrecision(3).replace(/0+$/, "").replace(/\.$/, "")}`;
+export const usdPx = (n: number) => !Number.isFinite(n) ? "?" : n >= 1 ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}` : `$${n.toPrecision(4).replace(/0+$/, "").replace(/\.$/, "")}`;
 /** "up 1.20%" / "down 1.72%" — words, so a minus sign can't be misread as a sell trigger. */
 export const moveTxt = (g: number) => Math.abs(g) < 0.005 ? "flat (0.00%)" : `${g > 0 ? "up" : "down"} ${Math.abs(g).toFixed(2)}%`;
 
