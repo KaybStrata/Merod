@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useEffect, useRef, useState } from "react";
 import {
-  Home, Wallet, BarChart3, ArrowLeftRight, Zap, Layers, Search, Bot, Sparkles, Library, LineChart, Settings, Shield, Bell, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
+  Home, Wallet, Activity, BarChart3, ArrowLeftRight, Zap, Layers, Search, Bot, Sparkles, Library, LineChart, Settings, Shield, Bell, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
   Radio, Percent, KeyRound, PieChart, Users, Brain, Copy, Repeat, Cpu, Bitcoin, Newspaper, Crown, ChevronDown, ArrowUpRight, Compass, GitBranch, MessagesSquare, Swords, TrendingUp, Radar,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
@@ -27,12 +27,13 @@ const NAV: NavItem[] = [
   { href: "/research", label: "Research", icon: Search, also: ["/news"] },
   { href: "/bots", label: "Bots", icon: Bot, also: ["/shortcuts"] },
   { href: "/agents", label: "Agents", icon: Sparkles },
+  { href: "/live", label: "Activity", icon: Activity },
   { href: "/library", label: "Library", icon: Library },
   { href: "/analytics", label: "Analytics", icon: LineChart },
 ];
 /** Secondary destinations, kept reachable in a compact group. */
 const MORE: NavItem[] = [
-  { href: "/activity", label: "Live & World Activity", icon: Radio, also: ["/world"] },
+  { href: "/activity", label: "World Activity", icon: Radio, also: ["/world"] },
   { href: "/learning", label: "AI Learning", icon: Brain, also: ["/training"] },
   { href: "/social", label: "Social", icon: Users, also: ["/chat"] },
   { href: "/broker-keys", label: "Broker & AI Keys", icon: KeyRound, also: ["/ai-keys"] },

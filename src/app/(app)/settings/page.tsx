@@ -116,9 +116,9 @@ function RiskTab({ data, refresh }: any) {
       </Card>
       <Card title="Risk limits (apply to every manual, prompt, shortcut and bot order)">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input label="Max order size (USD)" type="number" value={v.max_order_usd} onChange={num("max_order_usd")} />
-          <Input label="Max daily spend (USD)" type="number" value={v.max_daily_spend_usd} onChange={num("max_daily_spend_usd")} />
-          <Input label="Max daily realized loss (USD)" type="number" value={v.max_daily_loss_usd} onChange={num("max_daily_loss_usd")} />
+          <Input label="Max order size (USD)" type="number" value={v.max_order_usd} onChange={num("max_order_usd")} hint="0 = no limit" />
+          <Input label="Max daily spend (USD)" type="number" value={v.max_daily_spend_usd} onChange={num("max_daily_spend_usd")} hint="0 = no limit" />
+          <Input label="Max daily realized loss (USD)" type="number" value={v.max_daily_loss_usd} onChange={num("max_daily_loss_usd")} hint="0 = no limit" />
           <Input label="Max slippage (basis points)" type="number" value={v.max_slippage_bps} onChange={num("max_slippage_bps")} hint="100 bps = 1%" />
           <Input label="Min token liquidity (USD)" type="number" value={v.min_liquidity_usd} onChange={num("min_liquidity_usd")} />
           <Input label="Reject prices older than (seconds)" type="number" value={v.max_price_age_sec} onChange={num("max_price_age_sec")} />
@@ -152,8 +152,8 @@ function AutomationTab({ data, refresh }: any) {
         ))}
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <Input label="Automatic: max per order (USD)" type="number" value={v.auto_max_order_usd} onChange={(e) => setV({ ...v, auto_max_order_usd: Number(e.target.value) })} />
-        <Input label="Automatic: max per day (USD)" type="number" value={v.auto_daily_cap_usd} onChange={(e) => setV({ ...v, auto_daily_cap_usd: Number(e.target.value) })} />
+        <Input label="Automatic: max per order (USD)" type="number" value={v.auto_max_order_usd} onChange={(e) => setV({ ...v, auto_max_order_usd: Number(e.target.value) })} hint="0 = no limit" />
+        <Input label="Automatic: max per day (USD)" type="number" value={v.auto_daily_cap_usd} onChange={(e) => setV({ ...v, auto_daily_cap_usd: Number(e.target.value) })} hint="0 = no limit" />
       </div>
       <div className="mt-4 flex flex-wrap gap-5">
         <Toggle checked={v.allow_ai_prompts} onChange={(b) => setV({ ...v, allow_ai_prompts: b })} label="AI prompt trading" />

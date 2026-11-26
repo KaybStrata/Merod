@@ -243,12 +243,15 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
             COALESCE(-SUM(LEAST(realized_pnl,0)),0) AS loss,
             COALESCE(SUM(CASE WHEN side='buy' AND auth_info->>'mode' LIKE 'auto%' AND status IN ('filled','partially_filled','submitted') THEN notional_usd END),0) AS auto
        FROM orders WHERE user_id=$1 AND is_paper=$2 AND created_at >= date_trunc('day', now())`, [ctx.userId, isPaper]);
-  const maxOrder = Math.min(risk.max_order_usd, intent.spendingLimitUsd ?? Infinity, ctx.botLimits?.maxPositionUsd ?? Infinity);
+  // A limit of 0 (or empty) means "no limit". Buying power is still always checked (you can't spend money you don't have).
+  const lim = (x: unknown) => (Number(x) > 0 ? Number(x) : Infinity);
+  const show = (x: number) => (Number.isFinite(x) ? `$${fmtUsd(x)}` : "no limit");
+  const maxOrder = Math.min(lim(risk.max_order_usd), lim(intent.spendingLimitUsd), lim(ctx.botLimits?.maxPositionUsd));
   if (intent.side === "buy") {
-    add("max_order", notional <= maxOrder + 1e-9, `Order $${notional.toFixed(2)} vs limit $${fmtUsd(maxOrder)}`);
-    add("daily_spend", (today?.spend ?? 0) + notional <= risk.max_daily_spend_usd, `Today $${fmtUsd(today?.spend ?? 0)} + $${notional.toFixed(2)} vs daily limit $${fmtUsd(risk.max_daily_spend_usd)}`);
+    add("max_order", notional <= maxOrder + 1e-9, `Order $${notional.toFixed(2)} vs limit ${show(maxOrder)}`);
+    add("daily_spend", (today?.spend ?? 0) + notional <= lim(risk.max_daily_spend_usd), `Today $${fmtUsd(today?.spend ?? 0)} + $${notional.toFixed(2)} vs daily limit ${show(lim(risk.max_daily_spend_usd))}`);
   }
-  add("daily_loss", (today?.loss ?? 0) < risk.max_daily_loss_usd, `Realized loss today $${fmtUsd(today?.loss ?? 0)} vs limit $${fmtUsd(risk.max_daily_loss_usd)}`);
+  add("daily_loss", (today?.loss ?? 0) < lim(risk.max_daily_loss_usd), `Realized loss today $${fmtUsd(today?.loss ?? 0)} vs limit ${show(lim(risk.max_daily_loss_usd))}`);
   if (quote) add("slippage", quote.slippageBps <= slippageBps, `Est. slippage ${quote.slippageBps} bps vs max ${slippageBps} bps`);
   const minLiq = Math.max(risk.min_liquidity_usd, ctx.botLimits?.minLiquidityUsd ?? 0);
   if (asset.asset_class === "crypto" && asset.liquidity_usd != null && intent.side === "buy")
@@ -272,7 +275,7 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
   else if (needsApproval.length) { decision = "pending_approval"; reason = needsApproval.map((c) => c.message).join("; "); }
   else if (ctx.botLimits?.approvalRequired) { decision = "pending_approval"; reason = "Bot is configured to require approval"; }
   else {
-    const within = notional <= perms.auto_max_order_usd && (today?.auto ?? 0) + notional <= perms.auto_daily_cap_usd;
+    const within = notional <= lim(perms.auto_max_order_usd) && (today?.auto ?? 0) + notional <= lim(perms.auto_daily_cap_usd);
     if (perms.mode === "manual") { decision = "pending_approval"; reason = "Manual Approval mode: every transaction needs your confirmation"; }
     else if (!within && perms.mode === "auto_within_limits") { decision = "rejected"; reason = `Exceeds automation permissions ($${fmtUsd(perms.auto_max_order_usd)}/order, $${fmtUsd(perms.auto_daily_cap_usd)}/day)`; }
     else if (!within) { decision = "pending_approval"; reason = "Exceeds automation limits — approval required"; }

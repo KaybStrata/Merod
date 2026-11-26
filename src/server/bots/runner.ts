@@ -73,7 +73,7 @@ async function tickBot(b: any) {
   let state = b.state ?? {};
   if (b.strategy_id === "dip_rebound_loop" && (state.phase === "buy_pending" || state.phase === "sell_pending")) state = await reconcileSwing(b, state);
 
-  for (const assetId of (b.asset_ids as string[]).slice(0, 20)) {
+  for (const assetId of (b.asset_ids as string[]).slice(0, 1000)) {
     const a = await one<any>("SELECT * FROM assets WHERE id=$1", [assetId]);
     if (!a?.last_price) { await log(b.id, "warning", `No price for asset ${assetId}`); continue; }
     const age = (Date.now() - new Date(a.price_updated_at).getTime()) / 1000;
@@ -101,17 +101,21 @@ async function executeDecision(b: any, a: any, d: Exclude<Decision, { action: "n
   await log(b.id, "trigger", `${d.action.toUpperCase()} ${a.symbol}: ${d.reason}`);
   // Bot-level limits (account-level limits are enforced again by the engine).
   if (b.max_trades_per_day != null && b.trades_today >= b.max_trades_per_day) { await log(b.id, "warning", `Max trades per day (${b.max_trades_per_day}) reached`); return { ok: false }; }
-  if (b.pnl_usd <= -Math.abs(b.max_daily_loss_usd)) { await q("UPDATE trading_bots SET status='halted' WHERE id=$1", [b.id]); await log(b.id, "control", "Halted: max loss reached"); return { ok: false }; }
+  // Every cap below: 0 = no limit (the engine still checks real buying power).
+  const cap = (x: unknown) => (Number(x) > 0 ? Number(x) : Infinity);
+  if (Number(b.pnl_usd) <= -cap(b.max_daily_loss_usd)) { await q("UPDATE trading_bots SET status='halted' WHERE id=$1", [b.id]); await log(b.id, "control", "Halted: max loss reached"); return { ok: false }; }
   const notional = d.action === "buy" ? (d.notionalUsd ?? (d.quantity ?? 0) * a.last_price) : 0;
   if (d.action === "buy") {
     if (notional <= 0) { await log(b.id, "warning", "No amount configured"); return { ok: false }; }
-    if (Number(b.spent_today_usd) + notional > Number(b.max_daily_spend_usd)) { await log(b.id, "warning", `Daily spend cap $${b.max_daily_spend_usd} would be exceeded`); return { ok: false }; }
-    const spentTotal = await one<any>("SELECT COALESCE(SUM(notional_usd),0) AS s FROM orders WHERE source='bot' AND source_ref=$1 AND side='buy' AND status='filled'", [String(b.id)]);
-    const soldTotal = await one<any>("SELECT COALESCE(SUM(filled_quantity*avg_fill_price),0) AS s FROM orders WHERE source='bot' AND source_ref=$1 AND side='sell' AND status='filled'", [String(b.id)]);
-    if (Number(spentTotal.s) - Number(soldTotal.s) + notional > Number(b.budget_usd)) { await log(b.id, "warning", `Budget $${b.budget_usd} would be exceeded`); return { ok: false }; }
+    if (Number(b.spent_today_usd) + notional > cap(b.max_daily_spend_usd)) { await log(b.id, "warning", `Daily spend cap $${b.max_daily_spend_usd} would be exceeded`); return { ok: false }; }
+    if (Number.isFinite(cap(b.budget_usd))) {
+      const spentTotal = await one<any>("SELECT COALESCE(SUM(notional_usd),0) AS s FROM orders WHERE source='bot' AND source_ref=$1 AND side='buy' AND status='filled'", [String(b.id)]);
+      const soldTotal = await one<any>("SELECT COALESCE(SUM(filled_quantity*avg_fill_price),0) AS s FROM orders WHERE source='bot' AND source_ref=$1 AND side='sell' AND status='filled'", [String(b.id)]);
+      if (Number(spentTotal.s) - Number(soldTotal.s) + notional > cap(b.budget_usd)) { await log(b.id, "warning", `Budget $${b.budget_usd} would be exceeded`); return { ok: false }; }
+    }
   }
   const intent: any = d.action === "buy"
-    ? { asset: { assetId: a.id }, side: "buy", orderType: "market", notionalUsd: Math.min(notional, Number(b.max_position_usd)), accountId: b.account_id, maxSlippageBps: b.max_slippage_bps, timeInForce: "gtc" }
+    ? { asset: { assetId: a.id }, side: "buy", orderType: "market", notionalUsd: Math.min(notional, cap(b.max_position_usd)), accountId: b.account_id, maxSlippageBps: b.max_slippage_bps, timeInForce: "gtc" }
     : { asset: { assetId: a.id }, side: "sell", orderType: "market", ...(d.quantity ? { quantity: d.quantity } : { percentOfPosition: d.percent ?? 100 }), accountId: b.account_id, maxSlippageBps: b.max_slippage_bps, timeInForce: "gtc" };
   await log(b.id, "instruction", "Validated instruction sent to Universal Trading Engine", intent);
   try {

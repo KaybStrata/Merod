@@ -28,13 +28,14 @@ const Sections = z.discriminatedUnion("section", [
   }) }),
   z.object({ section: z.literal("trading"), values: z.object({ trading_mode: z.enum(["paper", "live"]) }) }),
   z.object({ section: z.literal("risk"), values: z.object({
-    max_order_usd: z.number().positive().max(10_000_000), max_daily_spend_usd: z.number().positive().max(100_000_000),
-    max_daily_loss_usd: z.number().positive().max(100_000_000), max_slippage_bps: z.number().int().min(1).max(5000),
+    // 0 = no limit
+    max_order_usd: z.number().min(0).max(1e12), max_daily_spend_usd: z.number().min(0).max(1e12),
+    max_daily_loss_usd: z.number().min(0).max(1e12), max_slippage_bps: z.number().int().min(1).max(5000),
     min_liquidity_usd: z.number().min(0), max_price_age_sec: z.number().int().min(5).max(3600), block_risky_tokens: z.boolean(), trading_halted: z.boolean(),
   }) }),
   z.object({ section: z.literal("automation"), values: z.object({
-    mode: z.enum(["manual", "auto_within_limits", "auto_until_approval"]), auto_max_order_usd: z.number().min(0).max(1_000_000),
-    auto_daily_cap_usd: z.number().min(0).max(10_000_000), allow_ai_prompts: z.boolean(), allow_bots: z.boolean(), allow_shortcuts: z.boolean(),
+    mode: z.enum(["manual", "auto_within_limits", "auto_until_approval"]), auto_max_order_usd: z.number().min(0).max(1e12),
+    auto_daily_cap_usd: z.number().min(0).max(1e12), allow_ai_prompts: z.boolean(), allow_bots: z.boolean(), allow_shortcuts: z.boolean(),
     allowed_asset_classes: z.array(z.enum(["stock", "etf", "crypto", "option"])).max(4),
   }) }),
   z.object({ section: z.literal("notifications"), values: z.object({ fills: z.boolean(), bots: z.boolean(), alerts: z.boolean(), social: z.boolean(), email: z.boolean() }) }),
