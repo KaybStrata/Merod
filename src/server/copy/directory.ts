@@ -48,6 +48,43 @@ async function birdeyeWallets(userId: string) {
   return { connected: true, rows };
 }
 
+let gainerCache: { at: number; key: string; rows: any[] } | null = null;
+/** Most profitable public Solana wallets (Birdeye trader gainers, realised + unrealised PnL over 1 week / 1 day). */
+async function birdeyeGainers(userId: string) {
+  const own = await one("SELECT 1 FROM user_provider_secrets WHERE user_id=$1 AND provider_id='birdeye' AND environment='production' AND status='connected'", [userId]);
+  if (!own && !(await providerUsable("birdeye", "production"))) return [];
+  const ck = own ? userId : "platform";
+  if (gainerCache && gainerCache.key === ck && Date.now() - gainerCache.at < 300_000) return gainerCache.rows;
+  const key = await getCredential("birdeye", "production", "BIRDEYE_API_KEY", own ? userId : undefined);
+  const ctx = contextFor("birdeye", "production", own ? { userId, userOnly: true } : {});
+  const out: any[] = [];
+  for (const type of ["1W", "today"]) {
+    try {
+      const j = await readJson(await ctx.fetch(`https://public-api.birdeye.so/trader/gainers-losers?type=${type}&sort_by=PnL&sort_type=desc&offset=0&limit=10`,
+        { headers: { "X-API-KEY": key!, "x-chain": "solana", accept: "application/json" } }), "birdeye");
+      for (const it of j?.data?.items ?? []) {
+        if (!it.address) continue;
+        const cur = out.find((x) => x.address === it.address);
+        if (cur) { if (type === "today") cur.pnlToday = Number(it.pnl ?? 0); continue; }
+        out.push({ address: it.address, pnl: type === "1W" ? Number(it.pnl ?? 0) : null, pnlToday: type === "today" ? Number(it.pnl ?? 0) : null, trades: Number(it.trade_count ?? 0), volume: Number(it.volume ?? 0), period: type === "1W" ? "7d" : "today", source: "Birdeye gainers" });
+      }
+    } catch { /* endpoint/quota unavailable */ }
+  }
+  gainerCache = { at: Date.now(), key: ck, rows: out };
+  return out;
+}
+
+/** Recent fills on Merod by traders with public profiles (crypto or stocks). Amounts only, never account details. */
+async function recentTrades(userId: string, stock: boolean) {
+  return q<any>(
+    `SELECT o.id, o.side, o.filled_quantity AS qty, o.avg_fill_price AS price, o.filled_quantity*o.avg_fill_price AS usd, o.is_paper, o.updated_at AS at, o.realized_pnl,
+            a.symbol, a.id AS asset_id, p.handle, p.display_name, p.allow_copy_trading
+       FROM orders o JOIN assets a ON a.id=o.asset_id JOIN user_profiles p ON p.user_id=o.user_id
+      WHERE o.status='filled' AND o.user_id <> $1 AND p.is_public AND o.updated_at > now() - interval '7 days' AND o.source <> 'copy'
+        AND ${stock ? "a.asset_class IN ('stock','etf')" : "a.asset_class='crypto'"}
+      ORDER BY o.updated_at DESC LIMIT 60`, [userId]);
+}
+
 export async function directory(userId: string) {
   const [bird, follows] = await Promise.all([
     birdeyeWallets(userId),
@@ -87,8 +124,16 @@ export async function directory(userId: string) {
     cryptoPnl: Number(t.crypto_pnl), stockPnl: Number(t.stock_pnl), cryptoTrades: t.crypto_trades, stockTrades: t.stock_trades, volume: Number(t.volume), live: !!t.has_live,
     outsideBroker: !!t.outside_broker && !!t.allow_copy_trading, lastAt: t.last_at, follow: userFollow.get(t.user_id) ?? null, mimic: mimicking(userFollow.get(t.user_id)),
   }));
+  const [gainersRaw, cryptoTrades, stockTrades] = await Promise.all([birdeyeGainers(userId), recentTrades(userId, false), recentTrades(userId, true)]);
+  // Fallback when the gainers endpoint isn't available: rank the top wallets by 24h net flow (sold − bought), labelled as such.
+  const gainers = gainersRaw.length ? gainersRaw
+    : bird.rows.filter((w) => w.sellUsd != null).map((w) => ({ address: w.address, pnl: null, netFlow: w.sellUsd - w.buyUsd, trades: w.trades, volume: w.volume, period: "24h", source: "Net flow (not PnL)" }))
+      .filter((w) => w.netFlow > 0).sort((a, b) => b.netFlow - a.netFlow).slice(0, 15);
+  const shape = (t: any) => ({ ...t, qty: Number(t.qty), price: Number(t.price), usd: Number(t.usd), realized_pnl: Number(t.realized_pnl), mimic: mimicking([...userFollow.entries()].find(([, f]) => f.label === `@${t.handle}`)?.[1]) });
   return {
     wallets: wallets.map((w) => ({ ...w, follow: walletFollow.get(w.address) ?? null, mimic: mimicking(walletFollow.get(w.address)) })),
+    gainers: gainers.map((w) => ({ ...w, mimic: mimicking(walletFollow.get(w.address)) })),
+    cryptoTrades: cryptoTrades.map(shape), stockTrades: stockTrades.map(shape),
     birdeye: bird.connected,
     merod: merod.filter((m) => m.cryptoTrades > 0 || m.stockTrades === 0),
     stocks: merod.filter((m) => m.stockTrades > 0 || m.outsideBroker),
