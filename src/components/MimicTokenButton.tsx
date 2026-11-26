@@ -27,6 +27,21 @@ export function MimicSizing({ live, setLive, perTrade, setPerTrade }: { live: bo
  * "Mimic top gainers" bar (Markets → Top gainers): copy the top wallets of the N biggest Solana gainers at once,
  * paper or real money, same size or a custom $ per trade.
  */
+const STABLES = new Set(["USDC", "USDT", "PYUSD", "USDS", "DAI", "USDE"]);
+const isGainer = (a: any) => a.venue === "solana" && Number(a.change_24h) > 0 && !STABLES.has(String(a.symbol).toUpperCase());
+
+/** Pick any whole number: quick presets plus a box to type your own (clamped to 1…max). */
+export function NumberPick({ label, value, onChange, presets, max }: { label: string; value: number; onChange: (n: number) => void; presets: number[]; max: number }) {
+  return (
+    <div className="flex items-center gap-1 text-[12px]">
+      <span className="mr-1 text-muted">{label}</span>
+      {presets.map((n) => <button key={n} onClick={() => onChange(n)} className={cx("rounded-md px-2 py-0.5", value === n ? "nav-active" : "text-muted hover:text-text")}>{n}</button>)}
+      <input type="number" min={1} max={max} value={value} onChange={(e) => onChange(Math.max(1, Math.min(max, Math.floor(Number(e.target.value) || 1))))}
+        className="num ml-1 h-7 w-16 rounded-md border border-line bg-panel-2 px-1.5 text-right text-[12px] text-text" aria-label={`${label} (any number up to ${max})`} title={`Any number from 1 to ${max}`} />
+    </div>
+  );
+}
+
 export function MimicTopGainers({ assets }: { assets: any[] }) {
   const { user } = useShell();
   const toast = useToast();
@@ -35,20 +50,25 @@ export function MimicTopGainers({ assets }: { assets: any[] }) {
   const [live, setLive] = useState(false);
   const [perTrade, setPerTrade] = useState("");
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
   if (user.role !== "super_admin") return null;
-  const STABLE = new Set(["USDC", "USDT", "PYUSD", "USDS", "DAI", "USDE"]);
-  const sol = assets.filter((a) => a.venue === "solana" && Number(a.change_24h) > 0 && !STABLE.has(String(a.symbol).toUpperCase()));
+  const sol = assets.filter(isGainer);
   async function go() {
-    const pick = sol.slice(0, tokens);
-    if (!pick.length) { toast("No Solana gainers in this list to mimic", "down"); return; }
-    if (live && !confirm(`Mimic the top wallets of ${pick.length} gainers with REAL money?`)) return;
-    setBusy(true);
+    setBusy(true); setProgress("Finding gainers…");
+    // Pull a longer gainers list when you ask for more than this page shows.
+    let pool = sol;
+    if (tokens > sol.length) { try { const r: any = await api("/api/assets?sort=gainers&class=crypto&venue=solana&limit=200"); pool = (r.assets ?? []).filter(isGainer); } catch { /* keep the page list */ } }
+    const pick = pool.slice(0, tokens);
+    if (!pick.length) { setBusy(false); setProgress(""); toast("No Solana gainers to mimic right now", "down"); return; }
+    if (live && !confirm(`Mimic up to ${perToken} wallets on each of ${pick.length} gainers (up to ${pick.length * perToken} wallets) with REAL money?`)) { setBusy(false); setProgress(""); return; }
     let done = 0; const errs: string[] = [];
-    for (const a of pick) {
+    for (const [i, a] of pick.entries()) {
+      setProgress(`${a.symbol} (${i + 1}/${pick.length})…`);
       try { const r: any = await api("/api/traders", { method: "POST", json: { token: a.id, count: perToken, onlyThisToken: true, live, perTradeUsd: perTrade ? Number(perTrade) : null } }); done += r.done; }
       catch (e: any) { errs.push(`${a.symbol}: ${e.message}`); }
     }
-    setBusy(false);
+    setBusy(false); setProgress("");
+    if (pick.length < tokens) toast(`Only ${pick.length} Solana gainers are available right now (you asked for ${tokens})`, "neutral");
     toast(done ? `Mimicking ${done} wallets across ${pick.length - errs.length} top gainers (${live ? "real money" : "paper"}, ${perTrade ? `$${perTrade}/trade` : "same size"})` : `Nothing started. ${errs[0] ?? ""}`, done ? "up" : "down");
     if (done && errs.length) toast(`Skipped ${errs.length}: ${errs[0]}`, "down");
   }
@@ -59,10 +79,13 @@ export function MimicTopGainers({ assets }: { assets: any[] }) {
           <div className="flex items-center gap-2 text-[15px] font-semibold"><Repeat className="size-4 text-accent-2" /> Mimic top gainers</div>
           <p className="text-[11.5px] text-muted">Copy the biggest public wallets of today&apos;s top Solana gainers ({sol.length} in this list).</p>
         </div>
-        <div className="flex items-center gap-1 text-[12px]"><span className="mr-1 text-muted">Gainers</span>{[1, 3, 5, 10].map((n) => <button key={n} onClick={() => setTokens(n)} className={cx("rounded-md px-2 py-0.5", tokens === n ? "nav-active" : "text-muted hover:text-text")}>{n}</button>)}</div>
-        <div className="flex items-center gap-1 text-[12px]"><span className="mr-1 text-muted">Wallets each</span>{[1, 3, 5].map((n) => <button key={n} onClick={() => setPerToken(n)} className={cx("rounded-md px-2 py-0.5", perToken === n ? "nav-active" : "text-muted hover:text-text")}>{n}</button>)}</div>
+        <NumberPick label="Gainers" value={tokens} onChange={setTokens} presets={[1, 5, 10, 25]} max={200} />
+        <NumberPick label="Wallets each" value={perToken} onChange={setPerToken} presets={[1, 3, 10]} max={100} />
         <div className="min-w-[260px] flex-1"><MimicSizing live={live} setLive={setLive} perTrade={perTrade} setPerTrade={setPerTrade} /></div>
-        <button onClick={go} disabled={busy || !sol.length} className={cx("h-10 rounded-xl px-5 text-sm font-semibold disabled:opacity-50", live ? "bg-down text-white" : "bg-grad")}>{busy ? "Starting…" : `Mimic top ${Math.min(tokens, sol.length)}${live ? " · real money" : " · paper"}`}</button>
+        <div className="flex flex-col items-end gap-1">
+          <button onClick={go} disabled={busy} className={cx("h-10 rounded-xl px-5 text-sm font-semibold disabled:opacity-50", live ? "bg-down text-white" : "bg-grad")}>{busy ? "Starting…" : `Mimic ${tokens} × ${perToken}${live ? " · real money" : " · paper"}`}</button>
+          <span className="text-[10.5px] text-faint">{busy ? progress : `up to ${tokens * perToken} wallets`}</span>
+        </div>
       </div>
     </section>
   );
@@ -107,7 +130,7 @@ export function MimicTokenButton({ asset, align = "right" }: { asset: any; align
         <div className="fixed z-50 w-72 rounded-xl border border-line bg-panel p-3 text-left shadow-2xl" style={{ top: pos.top, left: pos.left }}>
           <div className="text-[13px] font-semibold">Mimic {asset.symbol}&apos;s top traders</div>
           <p className="mt-0.5 text-[11px] text-muted">Copies the biggest public wallets trading {asset.symbol} in the last 24h, ranked by cash taken out (sold − bought).</p>
-          <div className="mt-2 flex items-center gap-1 text-[12px]"><span className="mr-1 text-muted">Wallets</span>{[1, 3, 5, 10].map((n) => <button key={n} onClick={() => setCount(n)} className={cx("rounded-md px-2 py-0.5", count === n ? "nav-active" : "text-muted hover:text-text")}>{n}</button>)}</div>
+          <div className="mt-2"><NumberPick label="Wallets" value={count} onChange={setCount} presets={[1, 3, 10]} max={100} /></div>
           <label className="mt-2 flex items-center gap-2 text-[12px] text-muted"><input type="checkbox" checked={only} onChange={(e) => setOnly(e.target.checked)} className="accent-[#d6b37a]" /> Only copy their {asset.symbol} trades</label>
           <div className="mt-2"><MimicSizing live={live} setLive={setLive} perTrade={perTrade} setPerTrade={setPerTrade} /></div>
           <button onClick={go} disabled={busy} className={cx("mt-3 h-9 w-full rounded-lg text-[12.5px] font-semibold disabled:opacity-50", live ? "bg-down text-white" : "bg-grad")}>{busy ? "Finding wallets…" : `Mimic top ${count}${live ? " · real money" : " · paper"}`}</button>

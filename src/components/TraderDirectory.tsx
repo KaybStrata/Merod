@@ -38,6 +38,7 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
   const [qs, setQs] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [live, setLive] = useState(false);
+  const [topN, setTopN] = useState(0);
   const [perTrade, setPerTrade] = useState("");
   const toast = useToast();
   const can = !!data?.canMimic;
@@ -50,7 +51,9 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
   const gainersTotal = tab === "gainers" ? rows.length : 0;
   if (tab === "gainers" && minPnl > 0) rows = rows.filter((r: any) => (r.value ?? 0) >= minPnl);
   const targetOf = (r: any) => (isWallet ? r.address : r.onchain ? r.wallet : r.handle);
-  const eligible = isFeed ? [] : rows.filter((r) => isWallet || r.copyable);
+  // "Mimic top N": any number from the top of the (filtered) list; blank/0 = the whole list.
+  const allEligible = isFeed ? [] : rows.filter((r) => isWallet || r.copyable);
+  const eligible = topN > 0 ? allEligible.slice(0, topN) : allEligible;
   const allOn = eligible.length > 0 && eligible.every((r) => r.mimic);
   async function flip(g: "wallets" | "merod" | "stocks", targets: string[], on: boolean, key: string) {
     setBusy(key);
@@ -75,7 +78,15 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
           {TABS.map(([k, l, I, n]) => <button key={k} onClick={() => setTab(k)} className={cx("flex items-center gap-1.5 rounded-lg px-2.5 py-1", tab === k ? "nav-active" : "text-muted hover:text-text")}><I className="size-3.5" />{l}{n != null && <span className="text-faint">{n}</span>}</button>)}
         </div>
         <div className="relative ml-auto"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" /><input value={qs} onChange={(e) => setQs(e.target.value)} placeholder="Filter…" className="h-8 w-40 rounded-lg border border-line bg-panel-2/60 pl-8 pr-2 text-xs outline-none" /></div>
-        {can && !isFeed && <Switch on={allOn} disabled={!eligible.length || busy === "all"} onClick={() => flip(group(tab), eligible.map(targetOf), !allOn, "all")} label={`Mimic all (${eligible.length})`} title="Turn mimic on or off for every eligible trader in this list" />}
+        {can && !isFeed && (
+          <span className="flex items-center gap-2">
+            <label className="flex items-center gap-1 text-[11.5px] text-muted">Top
+              <input type="number" min={0} max={500} value={topN || ""} placeholder="all" onChange={(e) => setTopN(Math.max(0, Math.min(500, Math.floor(Number(e.target.value) || 0))))}
+                className="num h-7 w-16 rounded-md border border-line bg-panel-2 px-1.5 text-right text-[12px] text-text" aria-label="How many from the top of the list (blank = all)" />
+            </label>
+            <Switch on={allOn} disabled={!eligible.length || busy === "all"} onClick={() => flip(group(tab), eligible.map(targetOf), !allOn, "all")} label={topN > 0 ? `Mimic top ${eligible.length}` : `Mimic all (${eligible.length})`} title="Turn mimic on or off for the top N traders in this list (blank = every eligible trader)" />
+          </span>
+        )}
       </header>
       {can && !isFeed && (
         <div className="mt-3 rounded-xl border border-line bg-bg-2/50 p-3 sm:flex sm:items-center sm:gap-4">

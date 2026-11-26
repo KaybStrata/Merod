@@ -134,7 +134,7 @@ export async function gainersForPeriod(userId: string, period: GainerPeriod) {
   const rows = await netFlowWallets(userId, tf);
   const label = period === "today" ? `Today (since 00:00 UTC, ${tf} window)` : period === "7d" ? "Last 24h (7-day flow not available)" : `Last ${hrs}h`;
   return rows.map((w) => ({ address: w.address, value: w.sellUsd - w.buyUsd, kind: "net_flow", window: label, trades: w.trades, volume: w.volume, tokens: w.tokens, source: "Net flow (not PnL)" }))
-    .filter((w) => w.value > 0).sort((a, b) => b.value - a.value).slice(0, 40);
+    .filter((w) => w.value > 0).sort((a, b) => b.value - a.value).slice(0, 200);
 }
 
 export async function directory(userId: string, period: GainerPeriod = "today") {
@@ -195,7 +195,10 @@ export async function directory(userId: string, period: GainerPeriod = "today") 
  * Mimic the top traders of ONE token (Markets → Top gainers): its biggest public wallets in the last 24h, ranked by
  * net flow (sold − bought, i.e. cash taken out) or volume. Optionally copy only their trades in that token.
  */
-export type MimicOpts = { live?: boolean; perTradeUsd?: number | null; maxDailyUsd?: number | null };
+/** Safety ceilings (each mimic is still capped by its own daily $ limit). */
+export const MAX_WALLETS_PER_TOKEN = 100;
+export const MAX_TARGETS = 500;
+export type MimicOpts ={ live?: boolean; perTradeUsd?: number | null; maxDailyUsd?: number | null };
 /**
  * Follow settings for a mimic: paper or real money (crypto → your Merod Wallet, stocks → your live broker),
  * same size as the trader (default) or a fixed $ per trade.
@@ -227,11 +230,19 @@ export async function mimicTokenTraders(userId: string, assetId: string, count: 
   const key = await getCredential("birdeye", "production", "BIRDEYE_API_KEY", own ? userId : undefined);
   const ctx = contextFor("birdeye", "production", own ? { userId, userOnly: true } : {});
   const mint = a.identifier === "native" ? SOL_MINT : a.identifier;
-  const j = await readJson(await ctx.fetch(`https://public-api.birdeye.so/defi/v2/tokens/top_traders?address=${mint}&time_frame=24h&sort_type=desc&sort_by=volume&offset=0&limit=10`,
-    { headers: { "X-API-KEY": key!, "x-chain": "solana", accept: "application/json" } }), "birdeye");
-  const traders = (j?.data?.items ?? []).filter((it: any) => it.owner).map((it: any) => ({ address: it.owner as string, net: Number(it.volumeSell ?? 0) - Number(it.volumeBuy ?? 0), volume: Number(it.volume ?? 0) }));
+  // Birdeye returns 10 traders per page: page through until we have as many wallets as asked (up to 100).
+  const want = Math.max(1, Math.min(MAX_WALLETS_PER_TOKEN, Math.floor(count)));
+  const traders: { address: string; net: number; volume: number }[] = [];
+  for (let offset = 0; traders.length < want && offset < MAX_WALLETS_PER_TOKEN; offset += 10) {
+    const j = await readJson(await ctx.fetch(`https://public-api.birdeye.so/defi/v2/tokens/top_traders?address=${mint}&time_frame=24h&sort_type=desc&sort_by=volume&offset=${offset}&limit=10`,
+      { headers: { "X-API-KEY": key!, "x-chain": "solana", accept: "application/json" } }), "birdeye");
+    const page = (j?.data?.items ?? []).filter((it: any) => it.owner && !traders.some((t) => t.address === it.owner))
+      .map((it: any) => ({ address: it.owner as string, net: Number(it.volumeSell ?? 0) - Number(it.volumeBuy ?? 0), volume: Number(it.volume ?? 0) }));
+    traders.push(...page);
+    if (page.length < 10) break; // no more pages
+  }
   if (!traders.length) throw new HttpError(404, `No public top traders found for ${a.symbol} in the last 24h`);
-  const ranked = [...traders].sort((x, y) => y.net - x.net || y.volume - x.volume).slice(0, Math.max(1, Math.min(10, count)));
+  const ranked = [...traders].sort((x, y) => y.net - x.net || y.volume - x.volume).slice(0, want);
   const scope = onlyThisToken ? { label: `${a.symbol} only`, symbol: a.symbol } : null;
   const { settings, note } = await mimicSettings(userId, "crypto", opts);
   const r = await mimicMany(userId, "wallets", true, ranked.map((t) => t.address), scope, settings);
@@ -243,7 +254,7 @@ export async function mimicTokenTraders(userId: string, assetId: string, count: 
  * stocks = Merod traders (and their consenting outside brokers) ranked by stock P&L. Runs immediately (owner only).
  */
 export async function mimicTop(userId: string, o: { count: number; crypto: boolean; stocks: boolean; period: GainerPeriod } & MimicOpts) {
-  const n = Math.max(1, Math.min(50, o.count));
+  const n = Math.max(1, Math.min(MAX_TARGETS, o.count));
   const out: { crypto?: any; stocks?: any; merodCrypto?: any } = {};
   // Each market runs on its own: a missing wallet/broker for one never cancels the other.
   const dir = await directory(userId, o.period).catch(() => null);
@@ -269,7 +280,7 @@ export async function mimicTop(userId: string, o: { count: number; crypto: boole
 }
 
 export async function mimicMany(userId: string, group: "wallets" | "merod" | "stocks", on: boolean, targets: string[], scope: { label: string; symbol?: string; assetClasses?: string[] } | null = null, settings: any = MIMIC) {
-  const list = [...new Set(targets)].slice(0, 60);
+  const list = [...new Set(targets)].slice(0, MAX_TARGETS);
   if (!list.length) throw new HttpError(400, "Nothing to mimic in this list");
   let done = 0; const skipped: string[] = [];
   for (const t of list) {

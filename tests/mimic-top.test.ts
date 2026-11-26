@@ -26,7 +26,7 @@ test("prompt parser: counts, markets, window, real money and $ per trade", () =>
   assert.equal(r.count, 10); assert.equal(r.live, true); assert.equal(r.perTradeUsd, 20); assert.equal(r.period, "today"); assert.equal(r.stocks, false);
   assert.equal(parseMimicTop("mimic the top ROI earner for Solana meme coins this week"), null, "single-trader requests keep the existing flow");
   assert.equal(parseMimicTop("buy 50 SOL"), null);
-  assert.equal(parseMimicTop("mimic the top 500 traders")!.count, 50, "capped at 50");
+  assert.equal(parseMimicTop("mimic the top 500 traders")!.count, 500, "any amount up to the 500 safety ceiling");
 });
 
 test("mimicTop: paper stock mimics are created with a stocks-only scope; real money without a broker fails softly", async () => {

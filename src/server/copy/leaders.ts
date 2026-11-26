@@ -79,7 +79,7 @@ export function parseMimicTop(raw: string): { count: number; crypto: boolean; st
   const plural = /\btop\s+(?:\w+\s+){0,3}(traders|wallets|earners|gainers)\b|\b(traders|wallets)\b/.test(t);
   if (!num && !plural) return null;
   if (!num && /\btop (roi )?(earner|trader|wallet)\b/.test(t) && !/\b(traders|wallets|earners)\b/.test(t)) return null;
-  const count = Math.max(1, Math.min(50, num ? Number(num[1]) : 10));
+  const count = Math.max(1, Math.min(500, num ? Number(num[1]) : 10));
   const stocks = /\bstocks?\b|\bequit/.test(t), crypto = /\bcrypto|coins?\b|meme|solana|\bsol\b|wallets?\b|tokens?\b/.test(t);
   const period = /\btoday\b|\b24 ?h|\bday\b/.test(t) ? (/\btoday\b/.test(t) ? "today" : "24h") : "7d";
   const each = t.match(/\$\s?(\d+(?:\.\d+)?)\s*(?:each|per trade|a trade|per buy)/);
