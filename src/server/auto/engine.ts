@@ -38,11 +38,11 @@ export async function getSettings(userId: string) {
   return (await one<any>("SELECT * FROM auto_trading WHERE user_id=$1", [userId]))
     ?? { user_id: userId, enabled: false, account_id: null, markets: "both", trade_usd: 100, max_daily_usd: 500, max_open: 5, min_confidence: 0.6,
          min_theory_trades: 5, min_theory_win_rate: 0.55, take_profit_pct: 4, stop_loss_pct: 2, weights: DEFAULT_WEIGHTS, last_run_at: null,
-         asset_ids: [], modo_autopilot: false, modo_min_confidence: 0.5, modo_last_run_at: null, modo_thoughts: [] };
+         asset_ids: [], modo_autopilot: false, modo_min_confidence: 0.5, modo_last_run_at: null, modo_thoughts: [], force_trading: false };
 }
 
 export async function saveSettings(userId: string, patch: Partial<{ enabled: boolean; accountId: string | null; markets: string; tradeUsd: number; maxDailyUsd: number; maxOpen: number;
-  minConfidence: number; minTheoryTrades: number; minTheoryWinRate: number; takeProfitPct: number; stopLossPct: number }>) {
+  minConfidence: number; minTheoryTrades: number; minTheoryWinRate: number; takeProfitPct: number; stopLossPct: number; forceTrading: boolean }>) {
   if (patch.accountId) {
     const a = await one("SELECT 1 FROM trading_accounts WHERE id=$1 AND user_id=$2 AND status='active'", [patch.accountId, userId]);
     if (!a) throw new HttpError(400, "That trading account isn't yours or isn't active");
@@ -61,6 +61,10 @@ export async function saveSettings(userId: string, patch: Partial<{ enabled: boo
     [userId, n.enabled, n.account_id, n.markets, n.trade_usd, n.max_daily_usd, n.max_open, n.min_confidence, n.min_theory_trades, n.min_theory_win_rate, n.take_profit_pct, n.stop_loss_pct]);
   if (patch.enabled !== undefined && patch.enabled !== cur.enabled)
     await audit({ actorType: "user", actorId: userId, userId, action: patch.enabled ? "auto.enabled" : "auto.disabled", data: {} });
+  if (patch.forceTrading !== undefined && patch.forceTrading !== !!cur.force_trading) {
+    await q("UPDATE auto_trading SET force_trading=$2 WHERE user_id=$1", [userId, patch.forceTrading]);
+    await audit({ actorType: "user", actorId: userId, userId, action: patch.forceTrading ? "auto.force_on" : "auto.force_off", data: {} });
+  }
   return getSettings(userId);
 }
 
@@ -257,7 +261,9 @@ export async function runFor(userId: string) {
   await manageOpen(userId, cfg);
   const w: Weights = { ...DEFAULT_WEIGHTS, ...(cfg.weights ?? {}) };
   const record = await theoryRecord(userId);
-  const proven = record.trades >= Number(cfg.min_theory_trades) && record.winRate >= Number(cfg.min_theory_win_rate);
+  // Force trading: skip the theoretical-record gate and the confidence bar (still only positive-score buys, still within limits).
+  const force = !!cfg.force_trading;
+  const proven = force || (record.trades >= Number(cfg.min_theory_trades) && record.winRate >= Number(cfg.min_theory_win_rate));
   const openRows = await q<any>("SELECT asset_id, mode FROM auto_trades WHERE user_id=$1 AND status='open'", [userId]);
   const openAssets = new Set(openRows.map((r) => r.asset_id));
   const realOpen = openRows.filter((r) => r.mode === "real").length;
@@ -277,11 +283,13 @@ export async function runFor(userId: string) {
     const lean = STRATEGY_KINDS[a.strategy_kind ?? "multi_asset"]?.lean ?? {};
     const wl = Object.fromEntries((Object.keys(w) as (keyof Weights)[]).map((k) => [k, w[k] * (lean[k] ?? 1)])) as Weights;
     const sc = scoreSignals(s, wl);
-    if (sc.score <= 0 || sc.confidence < Number(cfg.min_confidence)) continue; // opens are buys only; no shorting
+    if (sc.score <= 0 || (!force && sc.confidence < Number(cfg.min_confidence))) continue; // opens are buys only; no shorting
     const px = await livePrice(a.id);
     if (!px) continue;
     const canReal = proven && realOpen + made < Number(cfg.max_open) && spent + Number(cfg.trade_usd) * (made + 1) <= Number(cfg.max_daily_usd);
-    const why = canReal
+    const why = canReal && force
+      ? `force trading is on, so placing a ${money(Number(cfg.trade_usd))} order now (no theoretical record or confidence bar required).`
+      : canReal
       ? `theoretical record ${record.wins}/${record.trades} wins (${Math.round(record.winRate * 100)}%) clears the bar, so placing a ${money(Number(cfg.trade_usd))} order.`
       : !proven
         ? `building the theoretical record first (${record.wins}/${record.trades} wins; needs ${cfg.min_theory_trades}+ trades at ${Math.round(Number(cfg.min_theory_win_rate) * 100)}%+ before real orders).`

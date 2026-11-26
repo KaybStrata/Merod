@@ -69,3 +69,26 @@ test("auto trading tests theoretically first, learns, then trades for real, and 
     await q("UPDATE assets SET price_source=$2, change_24h=$3, last_price=$4 WHERE id=$1", [eth.id, eth.price_source, eth.change_24h, eth.last_price]);
   }
 });
+
+test("force trading places a real order on the first decision (no theoretical record, no confidence bar)", async () => {
+  const me = await newUser(), other = await newUser();
+  await freshPrices();
+  await q("UPDATE users SET role='super_admin' WHERE id=$1", [me]);
+  const eth = (await one<any>("SELECT id, last_price, price_source, change_24h FROM assets WHERE symbol='ETH' ORDER BY market_cap DESC NULLS LAST LIMIT 1"))!;
+  await q("UPDATE assets SET price_source='coingecko', change_24h=3, price_updated_at=now() WHERE id=$1", [eth.id]);
+  try {
+    await place({ asset: { assetId: eth.id }, side: "buy", orderType: "market", notionalUsd: 100, timeInForce: "gtc" }, ctx(other));
+    await saveSettings(me, { enabled: true, minConfidence: 0.99, tradeUsd: 25 });
+    await runFor(me);
+    assert.equal(await one("SELECT 1 FROM auto_trades WHERE user_id=$1", [me]), null, "99% bar blocks it without force");
+    await saveSettings(me, { forceTrading: true });
+    await q("UPDATE auto_trading SET last_run_at=NULL WHERE user_id=$1", [me]);
+    await runFor(me);
+    const t = await one<any>("SELECT * FROM auto_trades WHERE user_id=$1 AND asset_id=$2", [me, eth.id]);
+    assert.equal(t.mode, "real");
+    assert.match(t.explain_before, /force trading is on/);
+    assert.equal((await one<any>("SELECT status FROM orders WHERE id=$1", [t.order_id])).status, "filled");
+  } finally {
+    await q("UPDATE assets SET price_source=$2, change_24h=$3 WHERE id=$1", [eth.id, eth.price_source, eth.change_24h]);
+  }
+});

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Cpu, Power, Brain, Layers, Plus, Briefcase, ListOrdered, Star, CalendarClock, Bot, ShieldCheck, BarChart3, Settings2, Loader2, CheckCircle2, Clock,
@@ -77,6 +77,8 @@ export default function AutoTradingWorkspace() {
           <span className={cx("relative ml-2 h-6 w-11 rounded-full transition-colors", on ? "bg-up" : "bg-panel-2")}><span className={cx("absolute top-0.5 size-5 rounded-full bg-white transition-all", on ? "left-[22px]" : "left-0.5")} /></span>
         </button>
       </div>
+
+      <TradingControls s={s} onChange={refresh} />
 
       <ModoAutopilot data={data} onChange={refresh} />
 
@@ -556,6 +558,91 @@ function ConfidencePicker({ value, onChange, disabled }: { value: number; onChan
         </form>
       )}
       {custom && valid && n > 85 && <span className="basis-full text-[10px] text-warn">Modo&apos;s ideas currently max out at 85% confidence, so above 85% it won&apos;t trade.</span>}
+    </div>
+  );
+}
+
+/** Force trading toggle + a custom dial for the minimum confidence auto trading needs before it trades. */
+function TradingControls({ s, onChange }: { s: any; onChange: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const force = !!s?.force_trading;
+  const saved = Math.round(Number(s?.min_confidence ?? 0.6) * 100);
+  const [conf, setConf] = useState(saved);
+  useEffect(() => setConf(saved), [saved]);
+  async function patch(body: any, msg: string) {
+    setBusy(true);
+    try { await api("/api/auto", { method: "PATCH", json: body }); onChange(); toast(msg, "up"); }
+    catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
+  }
+  return (
+    <section className="grid grid-cols-1 gap-3 rounded-2xl border border-line bg-panel/80 p-3 md:grid-cols-2">
+      <div className={cx("flex flex-col justify-between gap-2 rounded-xl border p-3", force ? "border-warn/60 bg-warn-soft/40" : "border-line bg-bg/40")}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h3 className="flex items-center gap-2 text-sm font-semibold">Force trading {force && <Badge tone="warn">ON</Badge>}</h3>
+            <p className="mt-0.5 text-xs text-muted">Trade for real right away: no waiting for the theoretical win record and no confidence bar. Auto trading still only buys when the overall signal is positive, and still keeps to your $ per trade, daily limit, max open trades and the risk checks.</p>
+          </div>
+          <button onClick={() => patch({ forceTrading: !force }, force ? "Force trading is OFF" : "Force trading is ON")} disabled={!s || busy} aria-label="Force trading switch"
+            className={cx("relative h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-50", force ? "bg-warn" : "bg-panel-2")}>
+            <span className={cx("absolute top-1 size-5 rounded-full bg-white transition-all", force ? "left-[26px]" : "left-1")} />
+          </button>
+        </div>
+        {force && !s?.enabled && <p className="text-[11px] text-warn">Auto trading itself is off. Switch it on above for force trading to place orders.</p>}
+      </div>
+      <div className={cx("flex items-center gap-4 rounded-xl border border-line bg-bg/40 p-3", force && "opacity-60")}>
+        <Dial value={conf} min={1} max={99} disabled={!s || busy} onChange={setConf} onCommit={(v) => v !== saved && patch({ minConfidence: v / 100 }, `Auto trading now needs ${v}%+ confidence`)} />
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold">Confidence dial</h3>
+          <p className="mt-0.5 text-xs text-muted">How sure the data points must be before auto trading takes a trade. Turn it down to trade more, up to trade only the strongest setups. Drag the dial, use the arrow keys, or tap −/+.</p>
+          {force && <p className="mt-1 text-[11px] text-warn">Force trading ignores this dial while it&apos;s on.</p>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** A round knob (270° sweep). Drag, scroll, arrow keys or −/+ change it; the value is saved when you let go. */
+function Dial({ value, min, max, onChange, onCommit, disabled, size = 120 }: { value: number; min: number; max: number; onChange: (v: number) => void; onCommit: (v: number) => void; disabled?: boolean; size?: number }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const dragging = useRef(false);
+  const latest = useRef(value);
+  latest.current = value;
+  const START = 135, SWEEP = 270;
+  const frac = (value - min) / (max - min);
+  const r = size / 2 - 10, c = size / 2;
+  const pt = (deg: number) => [c + r * Math.cos((deg * Math.PI) / 180), c + r * Math.sin((deg * Math.PI) / 180)];
+  const arc = (from: number, to: number) => { const [x1, y1] = pt(from), [x2, y2] = pt(to); return `M ${x1} ${y1} A ${r} ${r} 0 ${to - from > 180 ? 1 : 0} 1 ${x2} ${y2}`; };
+  const clamp = (v: number) => Math.max(min, Math.min(max, Math.round(v)));
+  function fromPointer(e: { clientX: number; clientY: number }) {
+    const box = ref.current!.getBoundingClientRect();
+    let deg = (Math.atan2(e.clientY - (box.top + box.height / 2), e.clientX - (box.left + box.width / 2)) * 180) / Math.PI;
+    deg = (deg - START + 360) % 360;
+    if (deg > SWEEP) deg = deg > SWEEP + (360 - SWEEP) / 2 ? 0 : SWEEP;
+    onChange(clamp(min + (deg / SWEEP) * (max - min)));
+  }
+  const tone = value < 40 ? "#22c55e" : value < 70 ? "#38bdf8" : "#f5b84a";
+  const knob = pt(START + frac * SWEEP);
+  return (
+    <div className="flex shrink-0 flex-col items-center gap-1">
+      <svg ref={ref} width={size} height={size} role="slider" aria-label="Minimum confidence" aria-valuemin={min} aria-valuemax={max} aria-valuenow={value} tabIndex={disabled ? -1 : 0}
+        className={cx("touch-none select-none outline-none focus-visible:drop-shadow-[0_0_8px_rgba(56,189,248,.7)]", disabled ? "opacity-50" : "cursor-pointer")}
+        onPointerDown={(e) => { if (disabled) return; dragging.current = true; (e.target as Element).setPointerCapture?.(e.pointerId); fromPointer(e); }}
+        onPointerMove={(e) => { if (dragging.current) fromPointer(e); }}
+        onPointerUp={() => { if (dragging.current) { dragging.current = false; onCommit(latest.current); } }}
+        onKeyDown={(e) => { if (disabled) return; const d = e.key === "ArrowUp" || e.key === "ArrowRight" ? 1 : e.key === "ArrowDown" || e.key === "ArrowLeft" ? -1 : 0; if (d) { e.preventDefault(); const v = clamp(value + d); onChange(v); onCommit(v); } }}
+        onWheel={(e) => { if (disabled) return; const v = clamp(value + (e.deltaY < 0 ? 1 : -1)); onChange(v); }}
+        onBlur={() => onCommit(latest.current)}>
+        <path d={arc(START, START + SWEEP)} stroke="var(--panel-2)" strokeWidth={10} fill="none" strokeLinecap="round" />
+        {frac > 0.001 && <path d={arc(START, START + frac * SWEEP)} stroke={tone} strokeWidth={10} fill="none" strokeLinecap="round" style={{ filter: `drop-shadow(0 0 6px ${tone})` }} />}
+        <circle cx={knob[0]} cy={knob[1]} r={8} fill="#fff" stroke={tone} strokeWidth={3} />
+        <text x={c} y={c - 2} textAnchor="middle" className="fill-[var(--text)] font-semibold" fontSize={size / 5}>{value}%</text>
+        <text x={c} y={c + size / 7} textAnchor="middle" className="fill-[var(--faint)]" fontSize={10}>min confidence</text>
+      </svg>
+      <div className="flex items-center gap-1">
+        <button disabled={disabled || value <= min} onClick={() => { const v = clamp(value - 1); onChange(v); onCommit(v); }} className="h-6 w-7 rounded-md border border-line text-sm text-muted hover:text-text disabled:opacity-40" aria-label="Lower">−</button>
+        <button disabled={disabled || value >= max} onClick={() => { const v = clamp(value + 1); onChange(v); onCommit(v); }} className="h-6 w-7 rounded-md border border-line text-sm text-muted hover:text-text disabled:opacity-40" aria-label="Raise">+</button>
+      </div>
     </div>
   );
 }
