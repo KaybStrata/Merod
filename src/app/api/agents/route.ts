@@ -23,8 +23,7 @@ export const POST = route(async (req) => {
   const isOwner = u.role === "super_admin";
   if (b.action === "merge") return ok({ agent: await mergeAgents(u.id, b.ids, b.name, { isOwner }) });
   if (b.action === "handoff") return ok(await handoff(u.id, b.from, b.to, b.assetId, b.note));
-  const count = await (await import("@/server/db")).one<any>("SELECT count(*)::int AS n FROM agents WHERE user_id=$1 AND status <> 'archived'", [u.id]);
-  if ((count?.n ?? 0) >= 50) return ok({ error: "Agent quota reached (50 active). Archive some agents first." }, { status: 429 });
+  // No cap on how many agents you can run.
   const { fleetId, ...input } = b;
   return ok({ agent: await createAgent(u.id, input, { fleetId, isOwner }) });
 });

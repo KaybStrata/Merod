@@ -196,8 +196,8 @@ export async function directory(userId: string, period: GainerPeriod = "today") 
  * net flow (sold − bought, i.e. cash taken out) or volume. Optionally copy only their trades in that token.
  */
 /** Safety ceilings (each mimic is still capped by its own daily $ limit). */
-export const MAX_WALLETS_PER_TOKEN = 100;
-export const MAX_TARGETS = 500;
+export const MAX_WALLETS_PER_TOKEN = 1000;
+export const MAX_TARGETS = 100_000;
 export type MimicOpts ={ live?: boolean; perTradeUsd?: number | null; maxDailyUsd?: number | null };
 /**
  * Follow settings for a mimic: paper or real money (crypto → your Merod Wallet, stocks → your live broker),
@@ -230,7 +230,7 @@ export async function mimicTokenTraders(userId: string, assetId: string, count: 
   const key = await getCredential("birdeye", "production", "BIRDEYE_API_KEY", own ? userId : undefined);
   const ctx = contextFor("birdeye", "production", own ? { userId, userOnly: true } : {});
   const mint = a.identifier === "native" ? SOL_MINT : a.identifier;
-  // Birdeye returns 10 traders per page: page through until we have as many wallets as asked (up to 100).
+  // Birdeye returns 10 traders per page: page through until we have as many wallets as asked.
   const want = Math.max(1, Math.min(MAX_WALLETS_PER_TOKEN, Math.floor(count)));
   const traders: { address: string; net: number; volume: number }[] = [];
   for (let offset = 0; traders.length < want && offset < MAX_WALLETS_PER_TOKEN; offset += 10) {

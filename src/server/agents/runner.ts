@@ -556,8 +556,6 @@ async function agentBuilderTick(a: any) {
     `SELECT symbol, change_24h, asset_class FROM assets WHERE NOT ('demo_data'=ANY(risk_flags)) AND last_price IS NOT NULL AND price_source <> 'simulated' AND price_updated_at > now() - interval '1 hour'
       AND NOT EXISTS (SELECT 1 FROM agents g WHERE g.user_id=$1 AND g.status <> 'archived' AND assets.id = ANY(g.asset_ids))
       ORDER BY abs(change_24h) DESC NULLS LAST LIMIT 3`, [a.user_id]);
-  const count = Number((await one<any>("SELECT count(*)::int AS n FROM agents WHERE user_id=$1 AND status <> 'archived'", [a.user_id]))?.n ?? 0);
-  if (count >= 25) { await note(a, "ab", "warning", "Agent quota reached", "25 active agents: archive some before new specialists can be proposed."); return; }
   for (const m of movers) await postMessage(a.user_id, { room: room(a), fleetId: a.fleet_id, senderAgentId: a.id, senderLabel: a.name, msgType: "proposal", body: `Proposed specialist: "${m.symbol} ${STRATEGY_LABEL.momentum}" (${m.asset_class === "crypto" ? "Crypto" : "Stock"} Trading, paper, observe first). ${m.symbol} moved ${Number(m.change_24h).toFixed(1)}% in 24h. Create it from Agents → New agent if you approve.` });
   await note(a, "ab", "decision", `Proposed ${movers.length} specialist agent${movers.length === 1 ? "" : "s"}`, `${movers.map((m) => m.symbol).join(", ") || "No uncovered movers"}. Proposals only: agents are never created without your approval.`);
 }

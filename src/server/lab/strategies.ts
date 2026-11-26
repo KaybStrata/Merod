@@ -18,7 +18,7 @@ export const SCHEMA_VERSION = 1;
 
 const Universe = z.object({
   assetIds: z.array(z.string().uuid()).max(50).default([]),
-  scanner: z.object({ assetClass: z.enum(["crypto", "stock", "etf"]).nullable().default(null), venue: z.string().max(20).nullable().default(null), meme: z.boolean().default(false), limit: z.number().int().min(1).max(20).default(20) }).strict().nullable().default(null),
+  scanner: z.object({ assetClass: z.enum(["crypto", "stock", "etf"]).nullable().default(null), venue: z.string().max(20).nullable().default(null), meme: z.boolean().default(false), limit: z.number().int().min(1).max(1000).default(20) }).strict().nullable().default(null),
 }).strict();
 
 const Entry = z.discriminatedUnion("type", [
@@ -94,7 +94,7 @@ export async function compile(input: { text?: string; rules?: unknown }): Promis
   const scope = ins.swing?.scope ?? null;
   const base = {
     schemaVersion: SCHEMA_VERSION as 1, name: ins.summary.slice(0, 80) || "New strategy",
-    universe: { assetIds, scanner: scope ? { assetClass: "crypto" as const, venue: scope.venue, meme: scope.meme, limit: 20 } : null },
+    universe: { assetIds, scanner: scope ? { assetClass: "crypto" as const, venue: scope.venue, meme: scope.meme, limit: Math.min(1000, scope.top ?? 20) } : null },
     environment: "paper" as const, cadence: "1m" as const, timezone: "UTC",
     exitRules: { takeProfitPct: null, stopLossPct: null, trailingPct: null, maxHoldHours: null },
     sizingRules: { usdPerTrade: usd, maxPositionUsd: usd },

@@ -52,14 +52,14 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
       const r = await api("/api/ai/prompt", { method: "POST", json: { text: value, conversationId, screenAssetId: screenAsset?.id ?? null } });
       setConversationId(r.conversationId);
       setNote(r.fallbackReason);
-      setMessages((m) => [...m, r.message]);
+      setMessages((m) => [...m, ...(Array.isArray(r.messages) && r.messages.length ? r.messages : [r.message])]);
     } catch (e: any) {
       setMessages((m) => [...m, { id: `e${Date.now()}`, role: "assistant", content: e.message, status: "error" }]);
     } finally { setBusy(false); }
   }
 
   return (
-    <div className={cx("pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-3", leftCollapsed ? "lg:pl-3" : "lg:pl-[268px]", railOpen ? "xl:pr-[332px]" : "xl:pr-3")}>
+    <div className={cx("pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-3", leftCollapsed ? "lg:pl-3" : "lg:pl-[236px]", railOpen ? "xl:pr-[332px]" : "xl:pr-3")}>
       <div className="pointer-events-auto w-full max-w-[640px]">
         {hasChat && view === "min" && (
           <button onClick={() => setView("open")} className="fade-up mb-1.5 flex w-full items-center justify-between rounded-xl border border-line bg-panel/95 px-3 py-1.5 text-xs text-muted shadow-lg backdrop-blur hover:text-text">

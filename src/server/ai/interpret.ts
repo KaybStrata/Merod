@@ -14,6 +14,7 @@ import { promptDefaults } from "../training/trainer";
 import { parseMimicRequest, parseMimicTop, topRoiLeaders } from "../copy/leaders";
 import { gatherFacts, factsPacket, factsAnswer, isMarketQuestion, sourcesLine } from "./market-answers";
 import { createFollow, type MimicScope } from "../copy/service";
+import { splitInstructions, isAgentRequest, isStrategyRequest } from "./multi";
 
 /**
  * Prompt-to-trade orchestrator:
@@ -21,7 +22,7 @@ import { createFollow, type MimicScope } from "../copy/service";
  *  → 5 engine validation → 6 show price/fees/risks → 7 approval when required → 8 route → 9 confirm → 10 portfolio.
  * The AI never calls the engine directly; this module turns a validated instruction into engine intents.
  */
-export interface PromptInput { text: string; conversationId?: string; screenAssetId?: string | null; provider?: AIProvider; model?: string }
+export interface PromptInput { text: string; conversationId?: string; screenAssetId?: string | null; provider?: AIProvider; model?: string; /** "2/5" when this is one instruction of a multi-instruction prompt (server-internal) */ part?: string }
 export type PlanCard =
   | { type: "order"; intent: OrderIntent; plan: any }
   | { type: "bot"; config: BotConfig; strategyName: string; assetLabel: string }
@@ -122,6 +123,25 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   if (convId) { if (!(await one("SELECT 1 FROM ai_conversations WHERE id=$1 AND user_id=$2", [convId, userId]))) convId = undefined; }
   if (!convId) convId = (await one<{ id: string }>("INSERT INTO ai_conversations (user_id, title) VALUES ($1,$2) RETURNING id", [userId, text.slice(0, 60)]))!.id;
 
+  // Several instructions in one prompt → each runs on its own, in order, in this conversation (one reply per instruction).
+  if (!input.part) {
+    const parts = splitInstructions(text);
+    if (parts.length > 1) {
+      const results: any[] = [];
+      for (const [i, p] of parts.entries()) {
+        const part = `${i + 1}/${parts.length}`;
+        try { results.push(await handlePrompt(userId, { ...input, text: p, conversationId: convId, part })); }
+        catch (e: any) {
+          const row = await one<any>(`INSERT INTO trading_prompts (user_id, conversation_id, role, content, status) VALUES ($1,$2,'assistant',$3,'rejected') RETURNING *`,
+            [userId, convId, `${part} · ${p}\nCouldn't do this one: ${e.message}`]);
+          results.push({ conversationId: convId, message: row, userMessageId: null, fallbackReason: null, provider: "merod", model: "deterministic" });
+        }
+      }
+      const last = results[results.length - 1];
+      return { ...last, messages: results.map((r) => r.message), fallbackReason: results.find((r) => r.fallbackReason)?.fallbackReason ?? null };
+    }
+  }
+
   const screen = input.screenAssetId ? await one<any>("SELECT id, symbol FROM assets WHERE id=$1", [input.screenAssetId]) : null;
   const userMsg = await one<{ id: string }>("INSERT INTO trading_prompts (user_id, conversation_id, role, content) VALUES ($1,$2,'user',$3) RETURNING id", [userId, convId, text]);
 
@@ -143,6 +163,28 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const orig = await one<{ content: string }>("SELECT content FROM trading_prompts WHERE conversation_id=$1 AND role='user' AND created_at < $2 ORDER BY created_at DESC LIMIT 1", [convId, last.created_at]);
       if (orig) originText = `${orig.content} → ${text}`;
     }
+  }
+  // "Create 5 agents that trade Solana meme coins" → a fleet of paper agents, waiting for your approval in Agents.
+  if (!instruction && isAgentRequest(text)) {
+    try {
+      const { planFleet, createFleet } = await import("../agents/fleets");
+      const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role;
+      const draft = await planFleet(text);
+      const fleet: any = await createFleet(userId, draft as any, { isOwner: role === "super_admin" });
+      const id = fleet?.fleet?.id ?? fleet?.id;
+      return reply(`Created fleet "${draft.name}" with ${draft.agents.length} agent${draft.agents.length === 1 ? "" : "s"} (${draft.agents.slice(0, 6).map((a) => a.name).join(", ")}${draft.agents.length > 6 ? ", …" : ""}). Agents trade on paper. Approve the fleet in Agents${id ? ` → /agents/fleets/${id}` : ""} to start it.`, null, "executed", null);
+    } catch (e: any) { return reply(`Couldn't create those agents: ${e.message}`, null, "rejected", null); }
+  }
+  // "Create a strategy that buys SOL on a 4% dip and takes 6% profit" → a saved, versioned strategy (never an order).
+  if (!instruction && isStrategyRequest(text)) {
+    try {
+      const { compile, createStrategy } = await import("../lab/strategies");
+      const c = await compile({ text });
+      if (!c.ok || !c.draft) return reply(`I need a bit more to build that strategy: ${[...c.missing, ...c.errors].join("; ") || "add an entry rule and a size"}.`,
+        { type: "clarify", question: "What should the strategy do?", suggestions: ["Create a strategy that buys SOL on a 4% dip, takes 6% profit, $50 per trade"] }, "clarify", null);
+      const s = await createStrategy(userId, c.draft, text);
+      return reply(`Saved strategy "${c.draft.name}" (v${s.version?.version ?? 1}): ${c.summary} Open Strategies to backtest or deploy it.${c.warnings.length ? `\nNote: ${c.warnings.join("; ")}` : ""}`, null, "executed", null);
+    } catch (e: any) { return reply(`Couldn't create that strategy: ${e.message}`, null, "rejected", null); }
   }
   // "Mimic the top 50 stock and crypto traders this week" → mimic many traders at once, immediately (owner only).
   const bulk = !instruction ? parseMimicTop(text) : null;
@@ -190,7 +232,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   async function reply(message: string, card: PlanCard | null, status: string, interp: Instruction | null = instruction) {
     const row = await one<any>(
       `INSERT INTO trading_prompts (user_id, conversation_id, role, content, ai_provider, ai_model, interpretation, plan, status) VALUES ($1,$2,'assistant',$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [userId, convId, message, usedProvider, usedModel, interp ? JSON.stringify(interp) : null, card ? JSON.stringify(card) : null, status]);
+      [userId, convId, input.part ? `${input.part} · ${text}\n${message}` : message, usedProvider, usedModel, interp ? JSON.stringify(interp) : null, card ? JSON.stringify(card) : null, status]);
     await audit({ actorType: "ai", actorId: usedProvider, userId, action: "ai.prompt", target: row.id, data: { kind: interp?.kind, status, fallback: !!fallbackReason } });
     return { conversationId: convId!, message: row, userMessageId: userMsg!.id, fallbackReason, provider: usedProvider, model: usedModel };
   }

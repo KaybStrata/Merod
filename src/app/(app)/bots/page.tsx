@@ -121,7 +121,7 @@ function PromptCreate({ onDone }: { onDone: () => void }) {
     setMsgs((m) => [...m, { id: `u${Date.now()}`, role: "user", content: t }]);
     try {
       const r = await api("/api/ai/prompt", { method: "POST", json: { text: t, conversationId: cid } });
-      setCid(r.conversationId); setMsgs((m) => [...m, r.message]); setText("");
+      setCid(r.conversationId); setMsgs((m) => [...m, ...(Array.isArray(r.messages) && r.messages.length ? r.messages : [r.message])]); setText("");
     } catch (e: any) { setMsgs((m) => [...m, { id: `e${Date.now()}`, role: "assistant", content: e.message }]); } finally { setBusy(false); }
   }
   return (

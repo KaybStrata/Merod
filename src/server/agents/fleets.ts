@@ -4,7 +4,7 @@ import { one, q } from "../db";
 import { audit } from "../audit";
 import { HttpError } from "../errors";
 import { roleById, ROLE_IDS, STRATEGY_LABEL, type StrategyKind } from "./catalog";
-import { agentAction, cancelAgentOrders, closeAgentPositions, createAgent, emit, metricsFor, postMessage, resolveAssetRefs } from "./service";
+import { agentAction, cancelAgentOrders, closeAgentPositions, createAgent, emit, metricsFor, postMessage, resolveAssetRefs, snapshotsFor } from "./service";
 
 /**
  * MEROD FLEET — one master prompt → a reviewed fleet of specialist agents (spec §04).
@@ -213,7 +213,7 @@ export const FleetDraftSchema = z.object({
     key: z.string().max(20), name: z.string().min(1).max(60), role: z.enum(ROLE_IDS), assets: z.array(z.string().max(120)).max(1000).default([]), wallets: z.array(z.string()).max(1000).optional(),
     strategy: z.record(z.string(), z.any()).optional(), autonomy: z.number().int().min(1).max(6), capitalUsd: z.number().min(0).max(100_000_000).default(0),
     instructions: z.string().max(4000).default(""), dependsOn: z.array(z.string().max(20)).default([]), scan: z.any().optional(),
-  })).min(1).max(25),
+  })).min(1).max(1000),
   competition: z.object({ days: z.number().int().min(1).max(365), capitalEach: z.number().positive() }).optional(),
 });
 
@@ -314,7 +314,7 @@ export async function fleetDetail(userId: string, id: string) {
   const f = await one<any>("SELECT * FROM agent_fleets WHERE id=$1 AND user_id=$2", [id, userId]);
   if (!f) throw new HttpError(404, "Fleet not found");
   const members = await q<any>("SELECT a.*, (SELECT array_agg(symbol) FROM assets WHERE id = ANY(a.asset_ids)) AS symbols FROM agents a WHERE a.fleet_id=$1 ORDER BY a.created_at", [id]);
-  const agents = await Promise.all(members.map(async (m) => ({ ...m, roleName: roleById(m.role)?.name, metrics: await metricsFor(m) })));
+  const agents = await Promise.all(members.map(async (m) => ({ ...m, roleName: roleById(m.role)?.name, metrics: await metricsFor(m), spark: await snapshotsFor(m.id, 48) })));
   const competition = await one<any>("SELECT * FROM agent_competitions WHERE user_id=$1 AND rules->>'fleetId'=$2", [userId, id]);
   return { fleet: f, agents, competition };
 }
