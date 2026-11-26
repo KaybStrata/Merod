@@ -10,14 +10,14 @@ import { CodeInput } from "@/components/settings/AccountSecurity";
  * ON turns on real-money crypto + stock trading (needs the server unlock and a 2FA code).
  * OFF is instant. Automated real-money trades stay a separate switch in Admin.
  */
-export function RealMoneySwitch({ owner }: { owner: boolean }) {
+export function RealMoneySwitch({ owner, bare = false }: { owner: boolean; bare?: boolean }) {
   const toast = useToast();
   const { data, refresh } = useApi<any>(owner ? "/api/admin/real-money" : null, { refreshMs: 60_000 });
   const [open, setOpen] = useState(false);
   const [ref, setRef] = useState(""); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false);
   const flags: any[] = data?.flags ?? [];
   const live = flags.some((f) => (f.key === "live_crypto_trading" || f.key === "live_brokerage_trading") && f.enabled);
-  if (!owner) return <Badge tone="warn">PAPER</Badge>;
+  if (!owner) return bare ? <span className="text-[11px] text-faint">Paper only</span> : <Badge tone="warn">PAPER</Badge>;
 
   async function setAll(enabled: boolean) {
     setBusy(true);
@@ -31,11 +31,11 @@ export function RealMoneySwitch({ owner }: { owner: boolean }) {
 
   return (
     <>
-      <Badge tone={live ? "down" : "warn"}>{live ? "LIVE" : "PAPER"}</Badge>
+      {!bare && <Badge tone={live ? "down" : "warn"}>{live ? "LIVE" : "PAPER"}</Badge>}
       <button onClick={() => (live ? setAll(false) : setOpen(true))} disabled={!data || busy} title={live ? "Real-money trading is ON. Tap to turn it off" : "Turn on real-money trading"}
-        aria-label="Real-money trading switch" className="flex shrink-0 items-center gap-1.5 rounded-full border border-line px-2 py-1 text-[11px] text-muted hover:text-text disabled:opacity-50">
+        aria-label="Real-money trading switch" className={cx("flex shrink-0 items-center gap-1.5 text-[11px] text-muted hover:text-text disabled:opacity-50", !bare && "rounded-full border border-line px-2 py-1")}>
         <span className={cx("relative h-4 w-7 rounded-full transition-colors", live ? "bg-down" : "bg-panel-2")}><span className={cx("absolute top-0.5 size-3 rounded-full bg-white transition-all", live ? "left-[14px]" : "left-0.5")} /></span>
-        Real money
+        {!bare && "Real money"}
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title="Turn on real-money trading">
         {!data?.envUnlocked ? (

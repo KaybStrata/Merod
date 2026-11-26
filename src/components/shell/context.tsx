@@ -4,6 +4,8 @@ import { api } from "@/lib/api";
 
 export interface ShellUser { id: string; handle: string; displayName: string; role: string; tradingMode: "paper" | "live"; totpEnabled: boolean }
 export interface ScreenAsset { id: string; symbol: string; name?: string }
+/** Top-bar title: small section crumb, title, and the word drawn in gold serif italic (must appear in the title). */
+export interface PageTitle { section?: string; title: string; accent?: string; extra?: ReactNode }
 
 type Listener = (evt: { channel: string; type: string; payload: any }) => void;
 interface Ctx {
@@ -15,6 +17,8 @@ interface Ctx {
   connected: boolean;
   openPrompt: (text?: string) => void;
   promptRequest: { text: string; n: number } | null;
+  title: PageTitle | null;
+  setTitle: (t: PageTitle | null) => void;
 }
 const ShellCtx = createContext<Ctx | null>(null);
 export const useShell = () => {
@@ -41,6 +45,7 @@ export function ShellProvider({ user, children }: { user: ShellUser; children: R
   const [screenAsset, setScreenAsset] = useState<ScreenAsset | null>(null);
   const [connected, setConnected] = useState(false);
   const [promptRequest, setPromptRequest] = useState<{ text: string; n: number } | null>(null);
+  const [title, setTitle] = useState<PageTitle | null>(null);
   const listeners = useRef(new Set<Listener>());
   const ws = useRef<WebSocket | null>(null);
   const pending = useRef(new Set<string>());
@@ -70,8 +75,14 @@ export function ShellProvider({ user, children }: { user: ShellUser; children: R
   }, []);
 
   return (
-    <ShellCtx.Provider value={{ user, screenAsset, setScreenAsset, subscribe, wsSubscribe, connected, openPrompt, promptRequest }}>
+    <ShellCtx.Provider value={{ user, screenAsset, setScreenAsset, subscribe, wsSubscribe, connected, openPrompt, promptRequest, title, setTitle }}>
       {children}
     </ShellCtx.Provider>
   );
+}
+
+/** Pages call this to set the top-bar title, e.g. usePageTitle({ section: "Automate · Mimic", title: "Copy the best traders", accent: "best" }). */
+export function usePageTitle(t: PageTitle | null, deps: unknown[] = []) {
+  const { setTitle } = useShell();
+  useEffect(() => { setTitle(t); return () => setTitle(null); }, [t?.title, t?.section, t?.accent, ...deps]); // eslint-disable-line
 }

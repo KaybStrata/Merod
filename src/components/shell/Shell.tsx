@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useEffect, useRef, useState } from "react";
 import {
   Home, Wallet, Activity, BarChart3, ArrowLeftRight, Zap, Layers, Search, Bot, Sparkles, Library, LineChart, Settings, Shield, Bell, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
-  Radio, Percent, KeyRound, PieChart, Users, Brain, Copy, Repeat, Cpu, Bitcoin, Newspaper, Crown, ChevronDown, ArrowUpRight, Compass, GitBranch, MessagesSquare, Swords, TrendingUp, Radar,
+  Radio, Percent, KeyRound, Plus, PieChart, Users, Brain, Copy, Repeat, Cpu, Bitcoin, Newspaper, Crown, ChevronDown, ArrowUpRight, Compass, GitBranch, MessagesSquare, Swords, TrendingUp, Radar,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -16,28 +16,36 @@ import { ToastProvider, useToast, cx, Modal, Button } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
 
 type NavItem = { href: string; label: string; icon: any; also?: string[] };
-/** Primary navigation (Merod workspace concept). Each destination appears once. */
-const NAV: NavItem[] = [
-  { href: "/", label: "Home", icon: Home },
-  { href: "/discover", label: "Markets", icon: BarChart3 },
-  { href: "/trade", label: "Trade", icon: ArrowLeftRight, also: ["/terminal"] },
-  { href: "/wallet", label: "Wallet & Funds", icon: Wallet, also: ["/portfolio"] },
-  { href: "/automations", label: "Automations", icon: Zap, also: ["/mimic", "/copy", "/auto", "/sessions"] },
-  { href: "/strategies", label: "Strategies", icon: Layers },
-  { href: "/research", label: "Research", icon: Search, also: ["/news"] },
-  { href: "/bots", label: "Bots", icon: Bot, also: ["/shortcuts"] },
-  { href: "/agents", label: "Agents", icon: Sparkles },
-  { href: "/live", label: "Activity", icon: Activity },
-  { href: "/library", label: "Library", icon: Library },
-  { href: "/analytics", label: "Analytics", icon: LineChart },
-];
-/** Secondary destinations, kept reachable in a compact group. */
-const MORE: NavItem[] = [
-  { href: "/activity", label: "World Activity", icon: Radio, also: ["/world"] },
-  { href: "/learning", label: "AI Learning", icon: Brain, also: ["/training"] },
-  { href: "/social", label: "Social", icon: Users, also: ["/chat"] },
-  { href: "/broker-keys", label: "Broker & AI Keys", icon: KeyRound, also: ["/ai-keys"] },
-  { href: "/alerts", label: "Alerts", icon: Bell },
+/** Navigation, grouped exactly like the Merod design: Trade · Automate · Insight · Account. Each destination appears once. */
+const GROUPS: { label: string | null; items: NavItem[] }[] = [
+  { label: "Trade", items: [
+    { href: "/", label: "Home", icon: Home },
+    { href: "/ai", label: "Ask Merod", icon: MessagesSquare },
+    { href: "/discover", label: "Markets", icon: BarChart3 },
+    { href: "/trade", label: "Trade", icon: ArrowLeftRight, also: ["/terminal"] },
+    { href: "/wallet", label: "Wallet & Funds", icon: Wallet },
+    { href: "/radar", label: "Meme Radar", icon: Radar },
+  ] },
+  { label: "Automate", items: [
+    { href: "/agents", label: "Agents", icon: Sparkles },
+    { href: "/bots", label: "Bots", icon: Bot },
+    { href: "/strategies", label: "Strategies", icon: Layers, also: ["/library"] },
+    { href: "/auto", label: "Auto trading", icon: Cpu, also: ["/automations", "/sessions"] },
+    { href: "/mimic", label: "Mimic", icon: Repeat, also: ["/copy"] },
+    { href: "/shortcuts", label: "Shortcuts", icon: Zap },
+  ] },
+  { label: "Insight", items: [
+    { href: "/live", label: "Activity", icon: Activity, also: ["/activity", "/world"] },
+    { href: "/analytics", label: "Analytics", icon: LineChart, also: ["/portfolio", "/progress"] },
+    { href: "/research", label: "Research", icon: Search, also: ["/news"] },
+    { href: "/learning", label: "AI Learning", icon: Brain, also: ["/training"] },
+    { href: "/social", label: "Social", icon: Users, also: ["/chat"] },
+  ] },
+  { label: "Account", items: [
+    { href: "/alerts", label: "Alerts", icon: Bell },
+    { href: "/broker-keys", label: "Broker & AI keys", icon: KeyRound, also: ["/ai-keys"] },
+    { href: "/settings", label: "Settings", icon: Settings },
+  ] },
 ];
 
 export function Shell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
@@ -59,12 +67,11 @@ function Frame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const toast = useToast();
   const me = useApi<any>("/api/auth/me", { refreshMs: 30000 });
-  const [railOpen, setRailOpen] = useState(true);
-  useEffect(() => { try { setCollapsed(localStorage.getItem("merod-nav") === "1"); setRailOpen(localStorage.getItem("merod-rail") !== "0"); setMoreOpen(localStorage.getItem("merod-more") === "1"); } catch {} }, []);
-  const toggleRail = () => setRailOpen((o) => { try { localStorage.setItem("merod-rail", o ? "0" : "1"); } catch {} return !o; });
+  const [railOpen, setRailOpen] = useState(false);
+  useEffect(() => { try { setCollapsed(localStorage.getItem("merod-nav") === "1"); setRailOpen(localStorage.getItem("merod-rail2") === "1"); } catch {} }, []);
+  const toggleRail = () => setRailOpen((o) => { try { localStorage.setItem("merod-rail2", o ? "0" : "1"); } catch {} return !o; });
   useEffect(() => setMobileOpen(false), [pathname]);
   useRealtime((e) => {
     if (e.type === "fill") toast(`${e.payload.paper ? "[Paper] " : ""}${e.payload.side === "buy" ? "Bought" : "Sold"} ${Number(e.payload.quantity).toPrecision(4)} ${e.payload.symbol}`, e.payload.side === "buy" ? "up" : "neutral");
@@ -84,22 +91,24 @@ function Frame({ children }: { children: React.ReactNode }) {
   }); // eslint-disable-line react-hooks/exhaustive-deps
   const isAdmin = user.role === "admin" || user.role === "super_admin";
   const owner = user.role === "super_admin";
-  const more = [...MORE, ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : [])];
-  const moreActive = more.some((n) => isActive(pathname, n));
-  const [pro, setPro] = useState(false);
+  const groups = isAdmin ? GROUPS.map((g) => g.label === "Account" ? { ...g, items: [...g.items, { href: "/admin", label: "Admin", icon: Shield }] } : g) : GROUPS;
+  const portfolio = useApi<any>("/api/portfolio", { refreshMs: 60_000 });
+  const sum = portfolio.data?.[user.tradingMode === "live" ? "live" : "paper"];
+  const equity = Number(sum?.total ?? sum?.equity ?? sum?.totalValue ?? NaN);
 
   const link = (n: NavItem) => {
     const active = isActive(pathname, n);
     return (
       <Fragment key={n.href}>
-        <Link href={n.href} className={cx("flex shrink-0 items-center gap-3.5 rounded-xl px-3.5 py-2.5 text-[15px] font-medium transition-colors", active ? "nav-active" : "text-muted hover:bg-panel-2 hover:text-text")}>
-          <n.icon className={cx("size-[19px] shrink-0", active ? "text-text" : "")} strokeWidth={1.6} />
+        <Link href={n.href} className={cx("group flex shrink-0 items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition-colors", active ? "nav-active" : "text-muted hover:bg-panel-2 hover:text-text")}>
+          <n.icon className={cx("size-[15px] shrink-0", active ? "text-accent-2" : "text-faint group-hover:text-muted")} strokeWidth={1.7} />
           <span className="leading-tight">{n.label}</span>
+          {active && <span className="ml-auto size-1.5 rounded-full bg-accent-2" />}
         </Link>
         {n.href === "/discover" && pathname.startsWith("/discover") && <Suspense fallback={null}><DiscoverSubLinks /></Suspense>}
-        {n.href === "/automations" && isActive(pathname, n) && <SubLinks pathname={pathname} items={owner
-          ? [{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }, { href: "/auto", label: "Auto trading", icon: Cpu, extra: <AutoTradingSwitch />, below: <AutoActivityFeed /> }, { href: "/sessions", label: "Sessions", icon: Layers }]
-          : [{ href: "/sessions", label: "Sessions", icon: Layers }]} />}
+        {n.href === "/auto" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/auto", label: "Auto trading", icon: Cpu, extra: <AutoTradingSwitch />, below: <AutoActivityFeed /> }, { href: "/sessions", label: "Sessions", icon: Layers }]} />}
+        {n.href === "/mimic" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }]} />}
+        {n.href === "/live" && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/live", label: "Live stream", icon: Activity }, { href: "/activity", label: "World activity", icon: Radio }]} />}
         {n.href === "/agents" && isActive(pathname, n) && <SubLinks pathname={pathname} exact items={[
           { href: "/agents", label: "Command Center", icon: Radar }, { href: "/agents/workspace", label: "Workspace", icon: Compass }, { href: "/agents/fleets", label: "Fleet Builder", icon: GitBranch },
           { href: "/agents/rooms", label: "Rooms", icon: MessagesSquare }, { href: "/agents/arena", label: "Arena", icon: Swords }, { href: "/agents/training", label: "Auto-Training", icon: Brain },
@@ -111,49 +120,41 @@ function Frame({ children }: { children: React.ReactNode }) {
 
   const sidebar = (
     <nav className="relative flex h-full flex-col">
-      <div className="relative z-10 flex shrink-0 items-center justify-between px-5 pb-4 pt-5">
-        <Link href="/" aria-label="Merod home"><Logo /></Link>
+      <div className="relative z-10 flex shrink-0 items-center justify-between px-4 pb-3 pt-4">
+        <Link href="/" aria-label="Merod home" className="flex items-center gap-2"><Logo /><span className="rounded-md border border-warn/40 bg-warn-soft px-1.5 py-0.5 text-[9.5px] font-bold tracking-wider text-warn">{user.tradingMode === "live" ? "LIVE" : "PAPER"}</span></Link>
         <button onClick={toggle} className="hidden rounded-lg p-1.5 text-faint hover:bg-panel-2 hover:text-text lg:block" title="Hide menu  ( [ )" aria-label="Hide menu"><PanelLeftClose className="size-4" /></button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-3">
-        {NAV.map(link)}
-        <button onClick={() => setMoreOpen((o) => { try { localStorage.setItem("merod-more", o ? "0" : "1"); } catch {} return !o; })}
-          className={cx("mt-1 flex items-center justify-between rounded-xl px-3.5 py-2 text-[13px] font-medium", moreActive ? "text-text" : "text-faint hover:text-text")}>
-          <span>More</span><ChevronDown className={cx("size-4 transition-transform", (moreOpen || moreActive) && "rotate-180")} />
-        </button>
-        {(moreOpen || moreActive) && more.map(link)}
-        {link({ href: "/settings", label: "Settings", icon: Settings })}
-        <div className="mt-auto pt-4">
-          <div className="relative overflow-hidden rounded-2xl border border-line bg-panel p-4">
-            <svg aria-hidden viewBox="0 0 200 60" className="pointer-events-none absolute -right-6 -top-2 h-16 w-56 opacity-70" fill="none">
-              {[0, 1, 2, 3, 4, 5].map((i) => <path key={i} d={`M0 ${50 - i * 3} C 60 ${10 + i * 4}, 120 ${60 - i * 2}, 200 ${12 + i * 3}`} stroke="#d6b37a" strokeOpacity={0.18 + i * 0.07} strokeWidth={i === 3 ? 1.2 : 0.6} />)}
-            </svg>
-            <Crown className="relative size-5 text-accent-2" />
-            <div className="relative mt-2 text-[1.2rem] font-semibold">Merod Pro</div>
-            <p className="relative mt-1 text-xs leading-relaxed text-muted">Unlock advanced agents, higher capital limits, and institutional-grade tools.</p>
-            <button onClick={() => setPro(true)} className="relative mt-3 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-grad text-sm font-semibold">Upgrade <ArrowUpRight className="size-4" /></button>
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 pb-3">
+        {groups.map((g) => (
+          <div key={g.label ?? "main"} className="mb-2">
+            {g.label && <div className="px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">{g.label}</div>}
+            <div className="flex flex-col gap-px">{g.items.map(link)}</div>
           </div>
-          <div className="mt-2 rounded-xl border border-warn/20 bg-warn-soft px-3 py-2 text-[11px] text-warn">Paper trading mode · virtual funds</div>
+        ))}
+      </div>
+      <div className="shrink-0 border-t border-line p-2.5">
+        <Link href="/settings" className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-panel-2">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-grad text-[13px] font-semibold text-bg">{user.displayName.slice(0, 1).toUpperCase()}</span>
+          <span className="min-w-0 leading-tight">
+            <span className="block truncate text-[13px] font-semibold">{user.displayName}</span>
+            <span className="block truncate text-[11px] text-muted">{user.tradingMode === "live" ? "Live" : "Paper"}{Number.isFinite(equity) ? ` · $${equity >= 1000 ? `${(equity / 1000).toFixed(equity >= 100_000 ? 0 : 1)}k` : equity.toFixed(0)}` : ""}</span>
+          </span>
+        </Link>
+        <div className="mt-1.5 flex items-center justify-between rounded-lg px-1.5 py-1 text-[12px] text-muted">
+          <span>Real money</span><RealMoneySwitch owner={owner} bare />
         </div>
       </div>
-      <Modal open={pro} onClose={() => setPro(false)} title="Merod Pro">
-        <div className="space-y-3 text-sm">
-          <p className="text-muted">Paid plans aren&apos;t available yet: pricing, parallel-execution tiers, AI credits and premium data are still being finalised and need compliance review before launch.</p>
-          <p className="text-muted">Every agent feature is open to you now in paper mode, within the standard quotas (50 active agents).</p>
-          <div className="flex justify-end"><Button variant="primary" onClick={() => setPro(false)}>Got it</Button></div>
-        </div>
-      </Modal>
     </nav>
   );
 
   return (
     <div className="app-glow min-h-screen">
-      <aside aria-hidden={collapsed} className={cx("fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-line bg-bg-2 transition-transform duration-300 lg:block", collapsed && "-translate-x-full")}>
+      <aside aria-hidden={collapsed} className={cx("fixed inset-y-0 left-0 z-30 hidden w-56 border-r border-line bg-bg-2 transition-transform duration-300 lg:block", collapsed && "-translate-x-full")}>
         {sidebar}
       </aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setMobileOpen(false)}>
-          <aside className="h-full w-72 border-r border-line bg-bg-2" onClick={(e) => e.stopPropagation()}>{sidebar}</aside>
+          <aside className="h-full w-64 border-r border-line bg-bg-2" onClick={(e) => e.stopPropagation()}>{sidebar}</aside>
         </div>
       )}
       {collapsed && (
@@ -163,15 +164,41 @@ function Frame({ children }: { children: React.ReactNode }) {
         </button>
       )}
       <RightRail open={railOpen} onToggle={toggleRail} />
-      <div className={cx("transition-[padding]", collapsed ? "lg:pl-0" : "lg:pl-64", railOpen ? "xl:pr-80" : "xl:pr-0")}>
+      <div className={cx("transition-[padding]", collapsed ? "lg:pl-0" : "lg:pl-56", railOpen ? "xl:pr-80" : "xl:pr-0")}>
         <TopBar onMenu={() => setMobileOpen(true)} unread={me.data?.unread ?? 0} connected={connected} onModo={() => { try { localStorage.setItem("merod-rail-tab", "modo"); } catch {} if (!railOpen) toggleRail(); window.dispatchEvent(new Event("merod-rail-tab")); }} />
-        <main className="mx-auto max-w-[1600px] px-4 pb-32 pt-5 sm:px-7">{children}</main>
+        <main className="mx-auto max-w-[1680px] px-4 pb-28 pt-4 sm:px-6">{children}</main>
       </div>
       <PromptBar leftCollapsed={collapsed} railOpen={railOpen} />
     </div>
   );
 }
 
+/** US equities session status for the top bar (NYSE hours, America/New_York; holidays not modelled). */
+function marketStatus(now = new Date()) {
+  const ny = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const day = ny.getDay(), mins = ny.getHours() * 60 + ny.getMinutes();
+  const open = 9 * 60 + 30, close = 16 * 60;
+  const fmt = (m: number) => `${Math.floor(m / 60)}h ${m % 60}m`;
+  if (day >= 1 && day <= 5 && mins >= open && mins < close) return { open: true, text: `NYSE open · closes in ${fmt(close - mins)}` };
+  if (day >= 1 && day <= 5 && mins < open) return { open: false, text: `NYSE closed · opens in ${fmt(open - mins)}` };
+  return { open: false, text: "NYSE closed · crypto 24/7" };
+}
+
+/** Page title in the top bar: small section crumb + title with one word in gold serif italic. */
+function TitleBlock() {
+  const { title } = useShell();
+  if (!title) return null;
+  const { section, title: t, accent } = title;
+  const i = accent ? t.indexOf(accent) : -1;
+  return (
+    <div className="hidden min-w-0 shrink-0 md:block">
+      {section && <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">{section}</div>}
+      <div className="truncate text-[19px] font-semibold leading-tight tracking-tight">
+        {i >= 0 ? <>{t.slice(0, i)}<span className="serif-accent text-[22px] text-accent-2">{accent}</span>{t.slice(i + accent!.length)}</> : t}
+      </div>
+    </div>
+  );
+}
 function TopBar({ onMenu, unread, connected, onModo }: { onMenu: () => void; unread: number; connected: boolean; onModo: () => void }) {
   const { user } = useShell();
   const router = useRouter();
@@ -202,17 +229,21 @@ function TopBar({ onMenu, unread, connected, onModo }: { onMenu: () => void; unr
     try { localStorage.setItem("merod-theme", t); } catch {}
   };
   const ask = () => { if (!q.trim()) return; window.dispatchEvent(new CustomEvent("merod-prompt", { detail: q })); setQ(""); setOpen(false); };
+  const { title } = useShell();
+  const [mkt, setMkt] = useState(() => marketStatus());
+  useEffect(() => { const t = setInterval(() => setMkt(marketStatus()), 30_000); return () => clearInterval(t); }, []);
   return (
-    <header className="sticky top-0 z-20 flex h-[72px] items-center gap-3 bg-bg/80 px-4 backdrop-blur sm:px-7">
+    <header className="sticky top-0 z-20 flex h-14 items-center gap-4 border-b border-line bg-bg/85 px-4 backdrop-blur sm:px-6">
       <button onClick={onMenu} className="rounded-lg p-2 text-muted hover:text-text lg:hidden" aria-label="Menu"><Menu className="size-5" /></button>
-      <div className="relative w-full max-w-4xl">
-        <Search className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-muted" />
+      <TitleBlock />
+      <div className={cx("relative w-full", title ? "ml-auto max-w-sm" : "max-w-md")}>
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-[15px] -translate-y-1/2 text-faint" />
         <input ref={input} value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
           onKeyDown={(e) => { if (e.key === "Enter" && !results.length && !agentHits.length) ask(); }}
-          placeholder="Search markets, agents, strategies, or ask Merod…" className="h-12 w-full rounded-2xl border border-line-2 bg-panel/70 pl-11 pr-16 text-[14px] outline-none placeholder:text-muted focus:border-accent/60" />
-        <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-line-2 px-1.5 py-0.5 text-[11px] text-muted sm:block">⌘ K</kbd>
+          placeholder="Search tickers, agents, prompts…" className="h-9 w-full rounded-lg border border-line bg-panel/70 pl-9 pr-12 text-[13px] outline-none placeholder:text-faint focus:border-accent/60" />
+        <kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 rounded border border-line-2 px-1 py-px text-[10px] text-faint sm:block">⌘K</kbd>
         {open && (results.length > 0 || agentHits.length > 0 || q.trim()) && (
-          <div className="absolute left-0 right-0 top-14 z-30 overflow-hidden rounded-xl border border-line bg-panel shadow-2xl">
+          <div className="absolute left-0 right-0 top-11 z-30 min-w-[320px] overflow-hidden rounded-xl border border-line bg-panel shadow-2xl">
             {agentHits.map((a) => (
               <button key={a.id} onMouseDown={() => { router.push(`/agents/${a.id}`); setQ(""); }} className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-panel-2">
                 <span className="min-w-0"><Sparkles className="mr-1.5 inline size-3.5 text-accent-2" /><span className="font-semibold">{a.name}</span> <span className="text-sm text-muted">{a.roleName}</span></span>
@@ -229,17 +260,19 @@ function TopBar({ onMenu, unread, connected, onModo }: { onMenu: () => void; unr
           </div>
         )}
       </div>
-      <div className="ml-auto flex shrink-0 items-center gap-1.5">
-        <div className="hidden items-center gap-2 md:flex"><RealMoneySwitch owner={user.role === "super_admin"} /></div>
+      <div className={cx("flex shrink-0 items-center gap-2", !title && "ml-auto")}>
+        <span className="hidden items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11px] text-muted xl:flex"><span className={cx("size-1.5 rounded-full", mkt.open ? "bg-up pulse-dot" : "bg-faint")} />{mkt.text}</span>
+        <span className={cx("hidden rounded-md border px-2 py-1 text-[10px] font-bold tracking-wider sm:block", user.tradingMode === "live" ? "border-down/40 bg-down-soft text-down" : "border-warn/40 bg-warn-soft text-warn")}>{user.tradingMode === "live" ? "LIVE TRADING" : "PAPER TRADING"}</span>
+        <Link href="/wallet" className="hidden h-8 items-center gap-1.5 rounded-lg bg-grad px-3 text-[12.5px] font-semibold text-bg sm:flex"><Plus className="size-3.5" /> Deposit</Link>
         <span title={connected ? "Realtime connected" : "Realtime offline — polling"} className={cx("hidden size-2 rounded-full sm:block", connected ? "bg-up pulse-dot" : "bg-faint")} />
         <Link href="/alerts" className="relative rounded-xl p-2.5 text-muted hover:text-text" aria-label="Notifications">
-          <Bell className="size-5" strokeWidth={1.6} />
+          <Bell className="size-[18px]" strokeWidth={1.6} />
           {unread > 0 && <span className="absolute right-1.5 top-1.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-bold leading-4">{unread > 99 ? "99+" : unread}</span>}
         </Link>
-        <button onClick={onModo} className="rounded-xl p-2.5 text-muted hover:text-text" aria-label="Open Modo" title="Modo"><Sparkles className="size-5" strokeWidth={1.6} /></button>
+        <button onClick={onModo} className="rounded-xl p-2.5 text-muted hover:text-text" aria-label="Open Modo" title="Modo"><Sparkles className="size-[18px]" strokeWidth={1.6} /></button>
         <div className="relative">
           <button onClick={() => setMenu(!menu)} className="flex items-center gap-1.5 rounded-full p-0.5 pr-1 text-muted hover:text-text">
-            <span className="flex size-10 items-center justify-center rounded-full border border-line-2 bg-panel-2 text-[15px] font-semibold text-text">{user.displayName.slice(0, 1).toUpperCase()}</span>
+            <span className="flex size-8 items-center justify-center rounded-full bg-grad text-[13px] font-semibold text-bg">{user.displayName.slice(0, 1).toUpperCase()}</span>
             <ChevronDown className="size-4" />
           </button>
           {menu && (
