@@ -363,7 +363,7 @@ async function technicalTick(a: any) {
 async function newsTick(a: any) {
   const syms: string[] = (await q<any>("SELECT symbol, asset_class FROM assets WHERE id = ANY($1)", [a.asset_ids ?? []])).map((x) => x.symbol);
   const query = a.role === "macro" ? "inflation OR rates OR Fed OR economy" : a.role === "earnings" ? `${syms.join(" OR ") || "earnings"} earnings` : null;
-  const lists = syms.length && a.role !== "macro" ? await Promise.all(syms.slice(0, 4).map((s) => getNews({ symbol: s, limit: 3 }).catch(() => [] as any[]))) : [await getNews({ query, limit: 6 }).catch(() => [] as any[])];
+  const lists = syms.length && a.role !== "macro" ? await Promise.all(syms.slice(0, 4).map((s) => getNews({ symbol: s, limit: 3 }).then((r) => r.items).catch(() => [] as any[]))) : [await getNews({ limit: query ? 60 : 6 }).then((r) => query ? r.items.filter((n) => new RegExp(query.replace(/ OR /g, "|"), "i").test(n.title)) : r.items).catch(() => [] as any[])];
   const items = lists.flat().filter(Boolean) as any[];
   const seen: string[] = a.state.seenNews ?? [];
   const fresh = items.filter((n) => !seen.includes(n.url));

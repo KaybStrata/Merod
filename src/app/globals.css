@@ -1,52 +1,61 @@
 @import "tailwindcss";
 
-/* Merod design tokens — deep navy surfaces, violet accent, restrained green/red for P&L. */
-/* Merod design tokens — pure black surfaces, sky-blue accent (turquoise → sky-blue gradient), green/red for P&L. */
+/* Merod design tokens — matte black / graphite surfaces, restrained champagne-gold accent, warm ivory type,
+   green/red only for P&L. (Agents workspace concept; no planetary imagery.) */
 :root {
-  --bg: #000000;
-  --bg-2: #050505;
-  --panel: #0a0a0b;
-  --panel-2: #121214;
-  --line: #1f1f23;
-  --line-2: #2c2c32;
-  --text: #ececf1;
-  --muted: #8e8e99;
-  --faint: #5c5c66;
-  /* Sky-blue accent; brand gradient turquoise → sky blue */
-  --accent: #38bdf8;
-  --accent-2: #7dd3fc;
-  --accent-soft: rgba(56, 189, 248, 0.14);
-  --accent-orange: #38bdf8; /* legacy name: secondary accent, now sky blue */
-  --grad: linear-gradient(90deg, #14c3bb 0%, #22c1d6 40%, #38bdf8 75%, #7dd3fc 100%);
-  --up: #22c55e;
-  --up-soft: rgba(34, 201, 147, 0.12);
+  --bg: #0a0908;
+  --bg-2: #0e0d0b;
+  --panel: #131210;
+  --panel-2: #1a1815;
+  --line: #262420;
+  --line-2: #35312b;
+  --text: #f3ede3;
+  --muted: #a8a196;
+  --faint: #6f695f;
+  /* Champagne gold accent; brand gradient deep gold → champagne → pale gold */
+  --accent: #d6b37a;
+  --accent-2: #ecd3a4;
+  --accent-soft: rgba(214, 179, 122, 0.13);
+  --accent-orange: #d6b37a; /* legacy name: secondary accent */
+  --grad: linear-gradient(90deg, #b48c56 0%, #d9b77f 40%, #ecd3a4 75%, #f6e7c8 100%);
+  --on-accent: #1a1309;
+  --up: #3ccf7e;
+  --up-soft: rgba(60, 207, 126, 0.12);
   --down: #f0506e;
   --down-soft: rgba(240, 80, 110, 0.12);
-  --warn: #f5b84a;
-  --warn-soft: rgba(245, 184, 74, 0.12);
+  --warn: #f2b84b;
+  --warn-soft: rgba(242, 184, 75, 0.12);
+  /* glow colours (rgb triplets) for the slow blinding pulse */
+  --glow-1: 246, 224, 180;
+  --glow-2: 224, 190, 130;
+  --glow-3: 196, 150, 82;
   color-scheme: dark;
 }
 [data-theme="light"] {
-  --bg: #f5f6fb;
-  --bg-2: #eef0f7;
+  --bg: #f7f4ee;
+  --bg-2: #f1ece3;
   --panel: #ffffff;
-  --panel-2: #f7f8fc;
-  --line: #e3e6f0;
-  --line-2: #d3d8e6;
-  --text: #121628;
-  --muted: #5d6580;
-  --faint: #8a91a8;
-  --accent: #0284c7;
-  --accent-2: #0369a1;
-  --accent-soft: rgba(2, 132, 199, 0.1);
-  --accent-orange: #0284c7;
-  --grad: linear-gradient(90deg, #0e9a93 0%, #0ea5b7 40%, #0284c7 100%);
+  --panel-2: #faf7f1;
+  --line: #e7e0d3;
+  --line-2: #d8cfbf;
+  --text: #1c1813;
+  --muted: #6b6457;
+  --faint: #9a9184;
+  --accent: #a77b3c;
+  --accent-2: #8c6428;
+  --accent-soft: rgba(167, 123, 60, 0.12);
+  --accent-orange: #a77b3c;
+  --grad: linear-gradient(90deg, #a07035 0%, #c39a5c 50%, #dcb983 100%);
+  --on-accent: #1a1309;
   --up: #16a34a;
-  --up-soft: rgba(15, 158, 112, 0.1);
+  --up-soft: rgba(22, 163, 74, 0.1);
   --down: #d93454;
   --down-soft: rgba(217, 52, 84, 0.1);
   --warn: #b7791f;
   --warn-soft: rgba(183, 121, 31, 0.12);
+  --glow-1: 214, 170, 100;
+  --glow-2: 190, 140, 70;
+  --glow-3: 160, 112, 53;
   color-scheme: light;
 }
 
@@ -63,6 +72,7 @@
   --color-accent: var(--accent);
   --color-accent-2: var(--accent-2);
   --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
   --color-up: var(--up);
   --color-up-soft: var(--up-soft);
   --color-down: var(--down);
@@ -70,6 +80,7 @@
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-serif-display), ui-serif, Georgia, serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
@@ -78,48 +89,61 @@ html { font-size: 13px; }
 html, body { background: var(--bg); color: var(--text); }
 body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 .num { font-variant-numeric: tabular-nums; }
-/* Brand gradient (turquoise → sky blue) for primary actions and highlights */
-.bg-grad { background-image: var(--grad); }
-.bg-grad:hover { filter: brightness(1.08); }
+/* Italic serif accent word in headings ("What do you want to create?") */
+.serif-accent { font-family: var(--font-serif); font-style: italic; font-weight: 500; letter-spacing: -0.01em; }
+.eyebrow { font-size: 0.78rem; letter-spacing: 0.32em; text-transform: uppercase; color: var(--muted); }
+/* Brand gradient (champagne) for primary actions and highlights: always dark text on gold */
+.bg-grad, .bg-accent { color: var(--on-accent); }
+.bg-grad.text-white, .bg-accent.text-white, .bg-grad .text-white, .bg-accent .text-white { color: var(--on-accent) !important; }
+.bg-grad:hover { filter: brightness(1.06); }
 .text-grad { background-image: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-::selection { background: var(--accent-soft); }
+::selection { background: rgba(214, 179, 122, 0.3); }
 * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
 .app-glow {
   background:
-    radial-gradient(900px 500px at -10% -10%, rgba(56, 189, 248, 0.07), transparent 60%),
-    radial-gradient(700px 400px at 110% 0%, rgba(20, 195, 187, 0.05), transparent 60%),
+    radial-gradient(900px 520px at 8% -12%, rgba(214, 179, 122, 0.075), transparent 60%),
+    radial-gradient(700px 420px at 105% -5%, rgba(214, 179, 122, 0.05), transparent 60%),
     var(--bg);
 }
 [data-theme="light"] .app-glow { background: var(--bg); }
+/* Matte graphite card surface with a hairline gold-tinted top edge */
+.surface { background: linear-gradient(180deg, rgba(255, 245, 225, 0.025), rgba(255, 245, 225, 0) 40%), var(--panel); border: 1px solid var(--line); }
+.surface-hover:hover { border-color: rgba(214, 179, 122, 0.35); }
+.gold-ring { box-shadow: inset 0 0 0 1px rgba(214, 179, 122, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.2); }
 @keyframes fade-up { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .fade-up { animation: fade-up .25s ease-out both; }
 @keyframes pulse-dot { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
 .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
 
-/* Logo: slow, endless, blinding sky-blue glow pulse (≈3s per breath). The glow layers live inside the SVG. */
-@keyframes logo-bloom { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+/* Logo: slow, endless, blinding champagne glow pulse. The glow layers live inside the SVG. */
+@keyframes logo-bloom { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 @keyframes logo-core { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
-.logo-bloom { animation: logo-bloom 3.6s var(--neon-ease) infinite; mix-blend-mode: screen; will-change: opacity; }
-.logo-core { animation: logo-core 3.6s var(--neon-ease) infinite; will-change: opacity; }
+.logo-bloom { animation: logo-bloom 4.2s var(--neon-ease) infinite; mix-blend-mode: screen; will-change: opacity; }
+.logo-core { animation: logo-core 4.2s var(--neon-ease) infinite; will-change: opacity; }
 @media (prefers-reduced-motion: reduce) { .logo-bloom, .logo-core { animation: none; opacity: 0.85; } }
 
-/* ───────── Neon sky-blue accents ─────────
-   Every sky-blue accent gets a slow left→right neon light sweep plus a slow glow pulse.
-   Smoothness: pulses only animate OPACITY (GPU-composited, no per-frame repaint); glows themselves are static.
-   Only sky-blue accent utilities are targeted (exact class tokens, so hover:/focus: variants are untouched). */
-@keyframes accent-sweep { from { background-position: 100% 0, 0 0; } to { background-position: 0% 0, 0 0; } }
-@keyframes accent-breathe { 0%, 100% { opacity: 0.78; } 50% { opacity: 1; } }
-@keyframes accent-halo { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
-:root { --neon-ease: cubic-bezier(0.45, 0, 0.55, 1); --neon-pulse: 3.6s; --neon-sweep: 5.5s; }
+/* Gold flowing light lines (header decoration) drift slowly */
+@keyframes wave-drift { 0%, 100% { transform: translateX(0) } 50% { transform: translateX(-2.5%) } }
+.gold-waves { animation: wave-drift 18s ease-in-out infinite; }
+@keyframes wave-glow { 0%, 100% { opacity: .55 } 50% { opacity: 1 } }
+.gold-waves .w-bright { animation: wave-glow 4.2s var(--neon-ease) infinite; }
 
-/* Sky-blue text & icons: static neon glow, breathing brightness */
+/* ───────── Pulsing champagne light on every accent ─────────
+   Accent / secondary colours slowly pulse with a blinding glow, plus a slow left→right light sweep.
+   Smoothness: pulses only animate OPACITY (GPU-composited); the glows themselves are static. */
+@keyframes accent-sweep { from { background-position: 100% 0, 0 0; } to { background-position: 0% 0, 0 0; } }
+@keyframes accent-breathe { 0%, 100% { opacity: 0.74; } 50% { opacity: 1; } }
+@keyframes accent-halo { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+:root { --neon-ease: cubic-bezier(0.45, 0, 0.55, 1); --neon-pulse: 4.2s; --neon-sweep: 6.5s; }
+
+/* Gold text & icons: static bright glow, slowly breathing */
 .text-accent, .text-accent-2 {
-  filter: drop-shadow(0 0 2px rgba(125, 211, 252, 0.75)) drop-shadow(0 0 7px rgba(56, 189, 248, 0.45));
+  filter: drop-shadow(0 0 2px rgba(var(--glow-1), 0.85)) drop-shadow(0 0 8px rgba(var(--glow-2), 0.55)) drop-shadow(0 0 18px rgba(var(--glow-3), 0.3));
   animation: accent-breathe var(--neon-pulse) var(--neon-ease) infinite; will-change: opacity;
 }
-/* Plain sky-blue text (no icon inside, no own background): a bright neon band also sweeps across the letters */
+/* Plain gold text (no icon inside, no own background): a bright light band sweeps across the letters */
 .text-accent:not(svg):not(:has(svg)):not([class*="bg-"]), .text-accent-2:not(svg):not(:has(svg)):not([class*="bg-"]) {
-  background-image: linear-gradient(100deg, var(--accent-2) 0%, var(--accent-2) 35%, #f2fbff 50%, var(--accent-2) 65%, var(--accent-2) 100%);
+  background-image: linear-gradient(100deg, var(--accent-2) 0%, var(--accent-2) 35%, #fff8ea 50%, var(--accent-2) 65%, var(--accent-2) 100%);
   background-size: 260% 100%;
   -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: accent-sweep var(--neon-sweep) linear infinite, accent-breathe var(--neon-pulse) var(--neon-ease) infinite;
@@ -131,36 +155,41 @@ body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 [class^="border-accent"]:not(.absolute):not(.fixed):not(.sticky), [class*=" border-accent"]:not(.absolute):not(.fixed):not(.sticky) { position: relative; }
 .bg-grad::after, .bg-accent::after, [class^="border-accent"]::after, [class*=" border-accent"]::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
-  box-shadow: 0 0 10px rgba(125, 211, 252, 0.8), 0 0 24px rgba(56, 189, 248, 0.5), 0 0 42px rgba(11, 184, 255, 0.28);
+  box-shadow: 0 0 10px rgba(var(--glow-1), 0.85), 0 0 26px rgba(var(--glow-2), 0.55), 0 0 48px rgba(var(--glow-3), 0.32);
   animation: accent-halo var(--neon-pulse) var(--neon-ease) infinite; will-change: opacity;
 }
-[class^="border-accent"]::after, [class*=" border-accent"]::after { box-shadow: 0 0 9px rgba(56, 189, 248, 0.55), inset 0 0 6px rgba(56, 189, 248, 0.22); }
+[class^="border-accent"]::after, [class*=" border-accent"]::after { box-shadow: 0 0 10px rgba(var(--glow-2), 0.55), inset 0 0 7px rgba(var(--glow-2), 0.22); }
 
-/* Sky-blue fills (primary buttons, active pills, your chat bubbles): moving sheen */
+/* Gold fills (primary buttons, active pills): moving sheen */
 .bg-grad {
-  background-image: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.5) 50%, transparent 65%), var(--grad);
+  background-image: linear-gradient(100deg, transparent 35%, rgba(255, 252, 240, 0.55) 50%, transparent 65%), var(--grad);
   background-size: 260% 100%, 100% 100%;
   animation: accent-sweep var(--neon-sweep) linear infinite;
 }
 .bg-accent {
-  background-image: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.45) 50%, transparent 65%);
+  background-image: linear-gradient(100deg, transparent 35%, rgba(255, 252, 240, 0.45) 50%, transparent 65%);
   background-size: 260% 100%;
   animation: accent-sweep var(--neon-sweep) linear infinite;
 }
-/* Soft sky tint (active menu item, accent badges): gentle sweep */
+/* Soft gold tint (active menu item, accent badges): gentle sweep + faint pulsing glow */
 .bg-accent-soft {
-  background-image: linear-gradient(100deg, transparent 33%, rgba(125, 211, 252, 0.26) 50%, transparent 67%);
+  background-image: linear-gradient(100deg, transparent 33%, rgba(var(--glow-1), 0.2) 50%, transparent 67%);
   background-size: 260% 100%;
   animation: accent-sweep var(--neon-sweep) linear infinite;
 }
-/* Sky-blue gradient text: sweep through the gradient */
+/* Gold gradient text: sweep through the gradient */
 .text-grad {
-  background-image: linear-gradient(100deg, transparent 38%, rgba(255, 255, 255, 0.9) 50%, transparent 62%), var(--grad);
+  background-image: linear-gradient(100deg, transparent 38%, rgba(255, 252, 240, 0.95) 50%, transparent 62%), var(--grad);
   background-size: 260% 100%, 100% 100%;
   animation: accent-sweep var(--neon-sweep) linear infinite, accent-breathe var(--neon-pulse) var(--neon-ease) infinite;
 }
+/* Active nav item: champagne pill with a slow pulsing edge light */
+.nav-active { background: linear-gradient(180deg, rgba(236, 211, 164, 0.16), rgba(214, 179, 122, 0.08)); color: var(--text); position: relative; isolation: isolate; }
+.nav-active::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1;
+  box-shadow: inset 0 0 0 1px rgba(var(--glow-2), 0.55), 0 0 14px rgba(var(--glow-2), 0.35), 0 0 30px rgba(var(--glow-3), 0.2);
+  animation: accent-halo var(--neon-pulse) var(--neon-ease) infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-  .text-accent, .text-accent-2, .bg-grad, .bg-accent, .bg-accent-soft, .text-grad,
+  .text-accent, .text-accent-2, .bg-grad, .bg-accent, .bg-accent-soft, .text-grad, .gold-waves, .gold-waves .w-bright, .nav-active::after,
   .bg-grad::after, .bg-accent::after, [class^="border-accent"]::after, [class*=" border-accent"]::after { animation: none !important; }
 }

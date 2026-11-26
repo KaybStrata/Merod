@@ -24,12 +24,18 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
   useEffect(() => { listRef.current?.scrollTo({ top: 1e9, behavior: "smooth" }); }, [messages]);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); inputRef.current?.focus(); }
       if (e.key === "Escape") setView((v) => (v === "full" ? "open" : v));
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, []);
+
+  // Other prompt boxes (top search "Ask Merod", Home composer) hand their text to this conversation.
+  useEffect(() => {
+    const h = (e: Event) => { const t = (e as CustomEvent).detail; if (typeof t === "string" && t.trim()) send(t); };
+    window.addEventListener("merod-prompt", h);
+    return () => window.removeEventListener("merod-prompt", h);
+  });
 
   /** X: close the conversation entirely; the next prompt starts a fresh one. */
   const close = () => { setMessages([]); setConversationId(null); setNote(null); setView("open"); };
@@ -53,7 +59,7 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
   }
 
   return (
-    <div className={cx("pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-3", leftCollapsed ? "lg:pl-3" : "lg:pl-[252px]", railOpen ? "xl:pr-[300px]" : "xl:pr-3")}>
+    <div className={cx("pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-3", leftCollapsed ? "lg:pl-3" : "lg:pl-[268px]", railOpen ? "xl:pr-[332px]" : "xl:pr-3")}>
       <div className="pointer-events-auto w-full max-w-[640px]">
         {hasChat && view === "min" && (
           <button onClick={() => setView("open")} className="fade-up mb-1.5 flex w-full items-center justify-between rounded-xl border border-line bg-panel/95 px-3 py-1.5 text-xs text-muted shadow-lg backdrop-blur hover:text-text">

@@ -8,13 +8,17 @@ import { ShortcutBar } from "@/components/ShortcutBar";
 import { PaperBadge, StatusPill, cx, useToast } from "@/components/ui";
 import { ago, price, qty, usd, tone } from "@/lib/format";
 import { useRealtime, useShell } from "./context";
+import { RailActivity } from "@/components/agents/RailActivity";
 
 /** Right-hand control bar: one-click shortcut buttons and the user's bots, on every screen (xl and wider). */
 export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   // Which view the right panel shows (remembered in this browser).
-  const [tab, setTabState] = useState<"controls" | "modo">("controls");
-  useEffect(() => { try { const t = localStorage.getItem("merod-rail-tab"); if (t === "modo" || t === "controls") setTabState(t); } catch { /* ignore */ } }, []);
-  const setTab = (t: "controls" | "modo") => { setTabState(t); try { localStorage.setItem("merod-rail-tab", t); } catch { /* ignore */ } };
+  const [tab, setTabState] = useState<"activity" | "controls" | "modo">("activity");
+  useEffect(() => {
+    const read = () => { try { const t = localStorage.getItem("merod-rail-tab"); if (t === "modo" || t === "controls" || t === "activity") setTabState(t); } catch { /* ignore */ } };
+    read(); window.addEventListener("merod-rail-tab", read); return () => window.removeEventListener("merod-rail-tab", read);
+  }, []);
+  const setTab = (t: "activity" | "controls" | "modo") => { setTabState(t); try { localStorage.setItem("merod-rail-tab", t); } catch { /* ignore */ } };
   const { screenAsset, connected } = useShell();
   const bots = useApi<any>(open ? "/api/bots" : null, { refreshMs: connected ? 30000 : 10000 });
   const rail = useApi<any>(open ? "/api/rail" : null, { refreshMs: 15000 });
@@ -59,11 +63,11 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
         <PanelRightOpen className="size-4" /><Zap className="size-3.5" /><Bot className="size-3.5" />
       </button>
     )}
-    <aside aria-hidden={!open} className={cx("fixed inset-y-0 right-0 z-30 hidden w-72 flex-col border-l border-line bg-bg-2 transition-transform duration-300 xl:flex", !open && "translate-x-full")}>
+    <aside aria-hidden={!open} className={cx("fixed inset-y-0 right-0 z-30 hidden w-80 flex-col border-l border-line bg-bg-2 transition-transform duration-300 xl:flex", !open && "translate-x-full")}>
       <div className="flex h-[52px] shrink-0 items-center justify-between gap-2 border-b border-line px-2">
         <div className="flex flex-1 gap-0.5 rounded-lg border border-line bg-bg-2/60 p-0.5">
-          {([["controls", "Bots & shortcuts", Zap], ["modo", "Modo", Sparkles]] as const).map(([k, label, Icon]) => (
-            <button key={k} onClick={() => setTab(k)} className={cx("flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors", tab === k ? "bg-accent-soft text-text" : "text-muted hover:text-text")}>
+          {([["activity", "Live", Activity], ["controls", "Bots", Zap], ["modo", "Modo", Sparkles]] as const).map(([k, label, Icon]) => (
+            <button key={k} onClick={() => setTab(k)} className={cx("flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors", tab === k ? "nav-active" : "text-muted hover:text-text")}>
               <Icon className={cx("size-3.5", tab === k && "text-accent-2")} />{label}
             </button>
           ))}
@@ -72,6 +76,7 @@ export function RightRail({ open, onToggle }: { open: boolean; onToggle: () => v
       </div>
 
       {tab === "modo" && <div className="flex-1 overflow-y-auto p-3 pb-40"><ModoPanel active={open && tab === "modo"} /></div>}
+      {tab === "activity" && <div className="flex min-h-0 flex-1 flex-col p-3 pb-28"><RailActivity /></div>}
       <div className={cx("flex-1 space-y-5 overflow-y-auto p-3 pb-40", tab !== "controls" && "hidden")}>
         <section>
           <div className="mb-2 flex items-center justify-between">

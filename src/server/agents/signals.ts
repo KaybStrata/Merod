@@ -87,27 +87,33 @@ export function decide(strategy: any, ind: Indicators, ctx: { holding: boolean; 
 }
 
 /** Bar-by-bar backtest of an agent strategy on real history, with fees, slippage and exits. */
-export function backtestStrategy(strategy: any, bars: Bars, opts: { startCash?: number; feeBps?: number; slippageBps?: number } = {}) {
+export function backtestStrategy(strategy: any, bars: Bars & { ts?: number[] }, opts: { startCash?: number; feeBps?: number; slippageBps?: number; barMs?: number } = {}) {
   const start = opts.startCash ?? 10_000, fee = (opts.feeBps ?? 30) / 1e4, slip = (opts.slippageBps ?? 10) / 1e4;
   const tp = Number(strategy?.takeProfitPct ?? 0), sl = Number(strategy?.stopLossPct ?? 0), size = Math.min(Number(strategy?.tradeUsd ?? 100) * 10, start);
   let cash = start, qty = 0, entry = 0, peak = start, maxDD = 0, wins = 0, losses = 0, gp = 0, gl = 0, lastBuy: number | null = null;
   const rets: number[] = []; let prevEq = start;
+  const equity: { t: number; v: number }[] = [], trades: { t: number; side: "buy" | "sell"; price: number; pnl?: number }[] = [];
+  const barMs = opts.barMs ?? 3600_000, every = Math.max(1, Math.floor(bars.close.length / 300));
   for (let i = 30; i < bars.close.length; i++) {
-    const slice: Bars = { close: bars.close.slice(0, i + 1), volume: bars.volume.slice(0, i + 1), high: bars.high.slice(0, i + 1), low: bars.low.slice(0, i + 1) };
+    const from = Math.max(0, i - 200);
+    const slice: Bars = { close: bars.close.slice(from, i + 1), volume: bars.volume.slice(from, i + 1), high: bars.high.slice(from, i + 1), low: bars.low.slice(from, i + 1) };
+    const t = bars.ts?.[i] ?? i * barMs;
     const ind = indicators(slice), px = ind.price;
-    let action: "buy" | "sell" | "hold" = decide(strategy, ind, { holding: qty > 0, lastBuyAt: lastBuy, now: i * 3600_000 }).action;
+    let action: "buy" | "sell" | "hold" = decide(strategy, ind, { holding: qty > 0, lastBuyAt: lastBuy, now: t }).action;
     if (qty > 0 && ((tp && px >= entry * (1 + tp / 100)) || (sl && px <= entry * (1 - sl / 100)))) action = "sell";
-    if (action === "buy" && qty === 0 && cash > 1) { const n = Math.min(size, cash / (1 + fee)), fp = px * (1 + slip); qty = n / fp; entry = fp; cash -= n * (1 + fee); lastBuy = i * 3600_000; }
-    else if (action === "sell" && qty > 0) { const fp = px * (1 - slip), pnl = (fp - entry) * qty - fp * qty * fee; cash += fp * qty * (1 - fee); qty = 0; if (pnl >= 0) { wins++; gp += pnl; } else { losses++; gl -= pnl; } }
+    if (action === "buy" && qty === 0 && cash > 1) { const n = Math.min(size, cash / (1 + fee)), fp = px * (1 + slip); qty = n / fp; entry = fp; cash -= n * (1 + fee); lastBuy = t; trades.push({ t, side: "buy", price: fp }); }
+    else if (action === "sell" && qty > 0) { const fp = px * (1 - slip), pnl = (fp - entry) * qty - fp * qty * fee; cash += fp * qty * (1 - fee); qty = 0; trades.push({ t, side: "sell", price: fp, pnl }); if (pnl >= 0) { wins++; gp += pnl; } else { losses++; gl -= pnl; } }
     const eq = cash + qty * px; peak = Math.max(peak, eq); maxDD = Math.max(maxDD, (peak - eq) / peak);
     rets.push(prevEq ? (eq - prevEq) / prevEq : 0); prevEq = eq;
+    if ((i - 30) % every === 0 || i === bars.close.length - 1) equity.push({ t, v: eq });
   }
   const end = cash + qty * (bars.close.at(-1) ?? 0);
   const mean = rets.reduce((a, x) => a + x, 0) / Math.max(1, rets.length);
   const sd = Math.sqrt(rets.reduce((a, x) => a + (x - mean) ** 2, 0) / Math.max(1, rets.length));
   return {
     returnPct: ((end - start) / start) * 100, maxDrawdownPct: maxDD * 100, trades: wins + losses, winRate: wins + losses ? (wins / (wins + losses)) * 100 : null,
-    profitFactor: gl > 0 ? gp / gl : gp > 0 ? null : null, sharpe: sd > 0 ? (mean / sd) * Math.sqrt(24 * 365) : null, bars: bars.close.length,
+    profitFactor: gl > 0 ? gp / gl : null, sharpe: sd > 0 ? (mean / sd) * Math.sqrt((365 * 86_400_000) / barMs) : null, bars: bars.close.length,
+    equity, tradeLog: trades.slice(-300), startValue: start, endValue: end,
     assumptions: { feeBps: opts.feeBps ?? 30, slippageBps: opts.slippageBps ?? 10 },
   };
 }
