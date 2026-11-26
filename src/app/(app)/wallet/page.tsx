@@ -9,6 +9,7 @@ import { ValueHistory } from "@/components/ValueHistory";
 import { usd, ago, qty } from "@/lib/format";
 import { Badge, Button, Card, Empty, Input, Modal, Select, Skeleton, StatusPill, useToast } from "@/components/ui";
 import { FundingPanel } from "@/components/wallet/FundingPanel";
+import { MerodWalletCard, BrowserWallets, PendingSignatures, BuyFromMerod } from "@/components/wallet/SolanaWallets";
 
 function WalletInner() {
   const toast = useToast();
@@ -44,12 +45,19 @@ function WalletInner() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Wallet & Funding</h1>
-          <p className="text-sm text-muted">Stock brokerage funds and crypto wallet funds are accounted for separately. Merod never asks for private keys or seed phrases.</p>
+          <p className="text-sm text-muted">Stock brokerage funds and crypto wallet funds are accounted for separately. Merod never asks for your seed phrase. Only the Merod Wallet&apos;s own key is held by Merod (encrypted).</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => setModal("external")}><Plus className="size-4" /> Connect wallet</Button>
           <Button variant="secondary" onClick={() => setModal("byo")}><KeyRound className="size-4" /> Connect my broker (own keys)</Button>
         </div>
+      </div>
+
+      <PendingSignatures />
+      <BuyFromMerod />
+      <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
+        <MerodWalletCard />
+        <BrowserWallets onChanged={refresh} />
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

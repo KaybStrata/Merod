@@ -9,6 +9,7 @@ import { usd, price, qty, pct, ago, tone } from "@/lib/format";
 import { AssetIcon, Badge, Button, Card, ChangeText, Empty, Input, Modal, PaperBadge, Pills, Skeleton, SourceBadge, Sparkline, Stat, StatusPill, cx, useToast } from "@/components/ui";
 import { useRealtime } from "@/components/shell/context";
 import { ValueHistory } from "@/components/ValueHistory";
+import { PendingSignatures } from "@/components/wallet/SolanaWallets";
 
 type Tab = "overview" | "holdings" | "transactions" | "orders" | "performance";
 
@@ -115,6 +116,7 @@ function PortfolioInner() {
   return (
     <div className="space-y-4">
       <SectionTabs tabs={[{ href: "/portfolio", label: "Portfolio", icon: PieChart }, { href: "/wallet", label: "Wallet & funding", icon: Wallet }]} />
+      <PendingSignatures />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3"><h1 className="text-xl font-semibold">Portfolio</h1><PaperBadge paper={book === "paper"} /></div>
         <div className="flex flex-wrap gap-2">

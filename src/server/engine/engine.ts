@@ -118,6 +118,8 @@ export async function candidateProviders(asset: AssetRow, account: AccountRow): 
     // Exchanges list coins by ticker, so the on-chain route map doesn't restrict them.
     if (mapped.size && !mapped.has(ad.id) && !EXCHANGE_IDS.has(ad.id)) continue;
     if (account.kind === "brokerage" && account.provider_id !== ad.id) continue;
+    // Solana wallets (Merod Wallet, Phantom, Solflare) swap through Jupiter only.
+    if (account.kind === "wallet" && account.network === "solana" && ad.id !== "jupiter") continue;
     const env: ProviderEnv = account.metadata?.environment === "sandbox" ? "sandbox" : "production";
     if (account.metadata?.byo_keys) {
       const ok = await one("SELECT 1 FROM user_provider_secrets WHERE user_id=$1 AND provider_id=$2 AND environment=$3 AND status='connected' LIMIT 1", [account.user_id, ad.id, env]);
@@ -442,6 +444,8 @@ async function route(orderId: string) {
   } else if (result.status === "awaiting_signature") {
     await q("UPDATE orders SET status='pending_approval', status_reason='Awaiting wallet signature', provider_order_id=$2, unsigned_tx=$3, updated_at=now() WHERE id=$1",
       [o.id, result.providerOrderId, JSON.stringify({ tx: result.unsignedTx, network: result.signingNetwork, instructions: result.instructions })]);
+    // Merod Wallet: Merod holds the key, so it signs (within the wallet's caps) and submits right away.
+    if (account.provider_id === "merod_wallet") await (await import("../wallet/merod-wallet")).autoSign(o.id);
   } else {
     await q("UPDATE orders SET provider_order_id=$2, status_reason=$3, updated_at=now() WHERE id=$1",
       [o.id, result.providerOrderId, o.provider_id === "paper" ? "Resting (simulated) — fills when price reaches your level" : "Working at provider"]);

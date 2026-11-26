@@ -4,6 +4,7 @@ import { readJson, ProviderError } from "./http";
 import type { ExecutionQuote, ProviderContext, ProviderEnv } from "./types";
 import type { AssetRow } from "../market/prices";
 import { EXCHANGE_ADAPTERS } from "./exchanges";
+import { one } from "../db";
 
 /**
  * Execution adapters. Every adapter returns the same ExecutionQuote shape and submit result,
@@ -186,22 +187,33 @@ export const snaptradeAdapter: ExecutionAdapter = {
 
 /* ───────────── Jupiter Swap v2 (Solana) ───────────── */
 const USDC_SOL = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const SOL_MINT_J = "So11111111111111111111111111111111111111112";
 export const jupiterAdapter: ExecutionAdapter = {
   id: "jupiter",
   supports: (a) => a.asset_class === "crypto" && a.venue === "solana" && a.identifier !== USDC_SOL,
   async quote(ctx, r) {
     const key = await ctx.cred("JUPITER_API_KEY");
     if (!key) throw new ProviderError("jupiter", 0, "JUPITER_API_KEY required for Swap v2 quotes");
-    const dec = r.asset.decimals ?? 6;
+    const isSol = r.asset.identifier === "native" || r.asset.identifier === SOL_MINT_J;
+    const mint = isSol ? SOL_MINT_J : r.asset.identifier;
+    const dec = isSol ? 9 : r.asset.decimals ?? 6;
+    const usdIn = r.notionalUsd ?? qtyFor(r) * r.refPrice;
+    // Pay with SOL when the wallet is set to (buying SOL itself always pays with USDC).
+    const payWithSol = !isSol && r.side === "buy" && r.account.metadata?.pay_with === "SOL";
+    let solPx = 0;
+    if (payWithSol) {
+      solPx = Number((await one<any>("SELECT last_price FROM assets WHERE upper(symbol)='SOL' AND asset_class='crypto' AND last_price IS NOT NULL ORDER BY market_cap DESC NULLS LAST LIMIT 1"))?.last_price ?? 0);
+      if (!solPx) throw new ProviderError("jupiter", 0, "No live SOL price to size a SOL-paid swap");
+    }
     const [inputMint, outputMint, amount] = r.side === "buy"
-      ? [USDC_SOL, r.asset.identifier, Math.round((r.notionalUsd ?? qtyFor(r) * r.refPrice) * 1e6)]
-      : [r.asset.identifier, USDC_SOL, Math.round(qtyFor(r) * 10 ** dec)];
+      ? (payWithSol ? [SOL_MINT_J, mint, Math.round((usdIn / solPx) * 1e9)] : [USDC_SOL, mint, Math.round(usdIn * 1e6)])
+      : [mint, USDC_SOL, Math.round(qtyFor(r) * 10 ** dec)];
     const taker = r.account.external_ref ? `&taker=${r.account.external_ref}` : "";
     const j = await readJson(await ctx.fetch(`https://api.jup.ag/swap/v2/order?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}&slippageBps=${r.slippageBps}${taker}`,
       { headers: { "x-api-key": key } }), "jupiter");
     const inAmt = Number(j.inAmount), outAmt = Number(j.outAmount);
     const quantity = r.side === "buy" ? outAmt / 10 ** dec : inAmt / 10 ** dec;
-    const usd = r.side === "buy" ? inAmt / 1e6 : outAmt / 1e6;
+    const usd = r.side === "buy" ? (payWithSol ? (inAmt / 1e9) * solPx : inAmt / 1e6) : outAmt / 1e6;
     return { providerId: "jupiter", price: usd / quantity, quantity, notionalUsd: usd, feeUsd: Number(j.feeBps ?? 0) * usd / 10_000,
       slippageBps: Number(j.slippageBps ?? r.slippageBps), priceImpactBps: Math.round(Number(j.priceImpactPct ?? 0) * 100),
       route: (j.routePlan ?? []).map((p: any) => p.swapInfo?.label).filter(Boolean).join(" → ") || "Jupiter", quoteId: j.requestId,
