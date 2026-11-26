@@ -208,6 +208,25 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
           <Field k="Checks every" v={c.schedule.replace("every_", "")} />
           <Field k="Approval per trade" v={c.approvalRequired ? "Yes" : "No"} />
         </div>
+        {(actionable || botId) && (
+          <div className={cx("mt-2 flex items-center justify-between gap-3 rounded-lg border px-2.5 py-2", c.allowRisky ? "border-down/40 bg-down-soft/30" : "border-line bg-bg/40")}>
+            <div className="min-w-0 text-[11.5px]">
+              <div className="font-semibold">Risk flagging {c.allowRisky ? <span className="text-down">OFF</span> : <span className="text-up">ON</span>}</div>
+              <div className="text-faint">{c.allowRisky ? "Won't reject new, unverified or low-liquidity coins, or high slippage." : "Rejects buys of new, unverified or low-liquidity coins, and high slippage."}</div>
+            </div>
+            <button role="switch" aria-checked={!c.allowRisky} aria-label="Risk flagging" disabled={busy === "approve"}
+              onClick={async () => {
+                const next = !c.allowRisky;
+                if (!botId) { setBotEdits((e: any) => ({ ...e, allowRisky: next })); return; }
+                setBusy("approve");
+                try { await api(`/api/bots/${botId}`, { method: "PATCH", json: { allowRisky: next } }); setBotEdits((e: any) => ({ ...e, allowRisky: next })); toast(next ? "Risk flagging off for this bot" : "Risk flagging on for this bot", next ? "neutral" : "up"); }
+                catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }
+              }}
+              className={cx("relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50", !c.allowRisky ? "bg-up" : "bg-panel-2")}>
+              <span className={cx("absolute top-0.5 size-5 rounded-full bg-white transition-all", !c.allowRisky ? "left-[22px]" : "left-0.5")} />
+            </button>
+          </div>
+        )}
         <p className="mt-2 flex gap-1 text-[11px] text-muted"><ShieldCheck className="size-3 shrink-0" /> Runs on Merod's servers (not your browser). Every order passes the trading engine's risk checks. Profit is not guaranteed.</p>
         <Actions status={status} actionable={actionable} busy={busy} onApprove={approve} onDismiss={dismiss} label="Activate bot"
           result={result?.botId && <Link className="underline" href={`/bots/${result.botId}`}>Bot {result.status} — open activity log</Link>} />

@@ -5,6 +5,7 @@ import { Activity, X, Brain, Target, CheckCircle2, AlertTriangle, BarChart3, Gau
 import { api } from "@/lib/api";
 import { useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
+import { PortfolioSpark } from "./PortfolioSpark";
 
 type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string };
 const KIND: Record<string, [any, string]> = {
@@ -55,6 +56,7 @@ export function TalkActivity() {
                 <button onClick={() => setOpen(false)} className="rounded-md p-1 text-muted hover:text-text" aria-label="Close"><X className="size-4" /></button>
               </div>
             </div>
+            <div className="border-b border-line px-4 py-3"><div className="mb-1 text-[11px] font-semibold text-muted">Portfolio · P&L</div><PortfolioSpark height={70} /></div>
             <div className="flex flex-wrap gap-1 border-b border-line px-3 py-2">
               {SOURCES.map(([k, l]) => (
                 <button key={k} onClick={() => setSrc(k)} className={cx("rounded-md px-2 py-0.5 text-[11.5px]", src === k ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>{l}</button>

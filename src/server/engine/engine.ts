@@ -256,7 +256,8 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
   const allowRisky = !!ctx.botLimits?.allowRisky && ctx.source === "bot";
   const allowed = (ok: boolean, detail: string) => (ok || !allowRisky ? detail : `${detail} (allowed: bot set to never reject)`);
   if (quote) add("slippage", allowRisky || quote.slippageBps <= slippageBps, allowed(quote.slippageBps <= slippageBps, `Est. slippage ${quote.slippageBps} bps vs max ${slippageBps} bps`));
-  const minLiq = Math.max(risk.min_liquidity_usd, ctx.botLimits?.minLiquidityUsd ?? 0);
+  // With flagged coins allowed in your Risk settings, a bot's own minimum liquidity doesn't block either (your setting wins).
+  const minLiq = risk.block_risky_tokens ? Math.max(risk.min_liquidity_usd, ctx.botLimits?.minLiquidityUsd ?? 0) : Number(risk.min_liquidity_usd) || 0;
   if (asset.asset_class === "crypto" && asset.liquidity_usd != null && intent.side === "buy")
     add("liquidity", allowRisky || asset.liquidity_usd >= minLiq, allowed(asset.liquidity_usd >= minLiq, `Liquidity $${fmtUsd(asset.liquidity_usd)} vs min $${fmtUsd(minLiq)}`), ctx.source === "bot" || ctx.source === "agent" ? "block" : "approval");
   const risky = asset.risk_flags.filter((f) => RISKY_FLAGS.includes(f));

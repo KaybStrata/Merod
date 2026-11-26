@@ -26,6 +26,8 @@ export const BotConfigSchema = z.object({
   stopLossPct: z.number().positive().nullable().optional(),
   schedule: z.enum(["every_15s", "every_1m", "every_5m", "every_15m", "every_1h"]).default("every_1m"),
   approvalRequired: z.boolean().default(false),
+  /** Never reject trades for risk flags / liquidity / slippage. Unset = follow your Risk setting (flagged coins blocked or not). */
+  allowRisky: z.boolean().optional(),
   notify: z.object({ trades: z.boolean(), errors: z.boolean() }).default({ trades: true, errors: true }),
   createdFromPrompt: z.string().max(2000).optional(),
   start: z.boolean().default(false),
@@ -43,14 +45,15 @@ export async function createBot(userId: string, cfg: BotConfig, actor: "user" | 
   if (!account) throw new HttpError(400, cfg.isPaper ? "No paper account" : "Connect a live account first");
   const isPaper = account.kind === "paper" || account.metadata?.environment === "sandbox";
   const params = Object.fromEntries(strat.params.map((p) => [p.key, cfg.params[p.key] ?? p.default ?? null]));
+  const allowRisky = cfg.allowRisky ?? ((await one<{ b: boolean }>("SELECT block_risky_tokens AS b FROM risk_settings WHERE user_id=$1", [userId]))?.b === false);
   const bot = await one<any>(
     `INSERT INTO trading_bots (user_id, name, description, strategy_id, params, asset_ids, markets, account_id, is_paper, status, budget_usd, max_position_usd,
        max_daily_spend_usd, max_daily_loss_usd, max_trades_per_day, min_liquidity_usd, max_slippage_bps, max_price_deviation_pct, profit_target_pct, stop_loss_pct,
-       schedule, approval_required, notify, created_from_prompt)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
+       schedule, approval_required, notify, created_from_prompt, allow_risky)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
     [userId, cfg.name, cfg.description, cfg.strategyId, JSON.stringify(params), cfg.assetIds, cfg.markets, account.id, isPaper, cfg.budgetUsd, cfg.maxPositionUsd,
      cfg.maxDailySpendUsd, cfg.maxDailyLossUsd, cfg.maxTradesPerDay, cfg.minLiquidityUsd, cfg.maxSlippageBps, cfg.maxPriceDeviationPct, cfg.profitTargetPct ?? null,
-     cfg.stopLossPct ?? null, cfg.schedule, cfg.approvalRequired, JSON.stringify(cfg.notify), cfg.createdFromPrompt ?? null]);
+     cfg.stopLossPct ?? null, cfg.schedule, cfg.approvalRequired, JSON.stringify(cfg.notify), cfg.createdFromPrompt ?? null, allowRisky]);
   await q("INSERT INTO bot_activity_logs (bot_id, level, message, data) VALUES ($1,'control',$2,$3)", [bot.id, `Created by ${actor}${isPaper ? " (paper)" : ""}`, JSON.stringify({ params })]);
   await audit({ actorType: actor, actorId: userId, userId, action: "bot.create", target: bot.id, data: { strategy: cfg.strategyId, paper: isPaper } });
   if (cfg.start) {

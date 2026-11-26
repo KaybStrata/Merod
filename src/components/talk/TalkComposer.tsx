@@ -54,7 +54,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
               className={cx("flex h-full items-center gap-1.5 rounded-md px-2.5", book === "live" ? "border border-down/50 bg-down-soft/40 text-down" : "text-muted hover:text-text")}><Zap className="size-3.5" />Real money / crypto</button>
           </div>
           <div role="radiogroup" aria-label="Which AI answers" className="flex h-8 items-center rounded-lg border border-line p-0.5 text-[12.5px]">
-            {([["merod", "Merod AI"], ["openai", "OpenAI"], ["anthropic", "Claude"]] as const).map(([k, l]) => (
+            {([["merod", "Modo"], ["openai", "OpenAI"], ["anthropic", "Claude"]] as const).map(([k, l]) => (
               <button key={k} role="radio" aria-checked={ai === k} onClick={() => onAi?.(k)}
                 title={k === "merod" ? "Merod's built-in rules: trades, bots, settings, mimic and market data. No key needed." : `Answers and plans from ${l}, using your own ${l} key (Broker & AI keys).`}
                 className={cx("flex h-full items-center gap-1 rounded-md px-2.5", ai === k ? "border border-accent/50 bg-accent-soft/40 text-accent-2" : "text-muted hover:text-text")}><Sparkles className="size-3.5" />{l}</button>

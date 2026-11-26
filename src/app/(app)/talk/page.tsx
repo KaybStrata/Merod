@@ -31,7 +31,7 @@ function Talk() {
   const [book, setBookState] = useState<"paper" | "live">("paper");
   useEffect(() => { try { if (localStorage.getItem("merod-talk-book") === "live") setBookState("live"); } catch { /* ignore */ } }, []);
   const setBook = (b: "paper" | "live") => { setBookState(b); try { localStorage.setItem("merod-talk-book", b); } catch { /* ignore */ } };
-  // Which AI answers Talk prompts (remembered in this browser). Merod AI = built-in rules, no key needed.
+  // Which AI answers Talk prompts (remembered in this browser). Modo = built-in rules, no key needed.
   const [ai, setAiState] = useState<"merod" | "openai" | "anthropic">("merod");
   useEffect(() => { try { const v = localStorage.getItem("merod-talk-ai"); if (v === "openai" || v === "anthropic" || v === "merod") setAiState(v); } catch { /* ignore */ } }, []);
   const setAi = (v: "merod" | "openai" | "anthropic") => { setAiState(v); try { localStorage.setItem("merod-talk-ai", v); } catch { /* ignore */ } };

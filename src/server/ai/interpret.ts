@@ -262,6 +262,14 @@ export async function handlePrompt(userId: string, input: PromptInput) {
     return reply("AI prompt trading is disabled in your automation permissions (Settings → Automation).", { type: "clarify", question: "Enable AI prompt trading in Settings to continue.", suggestions: [] }, "info");
 
   async function reply(message: string, card: PlanCard | null, status: string, interp: Instruction | null = instruction, hint?: WidgetHint) {
+    // Every new bot asks: risk flagging on or off? Default follows your Risk setting; the card has the switch.
+    if (card?.type === "bot" && status === "needs_approval" && card.config.allowRisky === undefined) {
+      const off = (await one<{ b: boolean }>("SELECT block_risky_tokens AS b FROM risk_settings WHERE user_id=$1", [userId]))?.b === false;
+      card = { ...card, config: { ...card.config, allowRisky: off } };
+      message += off
+        ? `\n\nRisk flagging is OFF for this bot (it won't reject new, unverified or low-liquidity coins). Want it on? Flip "Risk flagging" on the card before you activate.`
+        : `\n\nRisk flagging is ON for this bot: it rejects buys of new, unverified or low-liquidity coins. Want it off? Flip "Risk flagging" on the card before you activate, or say "turn off risk flagging".`;
+    }
     let row = await one<any>(
       `INSERT INTO trading_prompts (user_id, conversation_id, role, content, ai_provider, ai_model, interpretation, plan, status) VALUES ($1,$2,'assistant',$3,$4,$5,$6,$7,$8) RETURNING *`,
       [userId, convId, input.part ? `${input.part} · ${text}\n${message}` : message, usedProvider, usedModel, interp ? JSON.stringify(interp) : null, card ? JSON.stringify(card) : null, status]);

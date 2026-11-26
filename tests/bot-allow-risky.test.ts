@@ -26,3 +26,18 @@ test("a bot set to 'never reject' passes risk-flag and liquidity checks; without
     await q("UPDATE assets SET risk_flags=$2, liquidity_usd=$3 WHERE id=$1", [a.id, a.risk_flags, a.liquidity_usd]);
   }
 });
+
+test("new bots follow your Risk setting: flagged coins allowed → the bot never rejects them", async () => {
+  const { createBot, BotConfigSchema } = await import("@/server/bots/service");
+  const u = await newUser(); await freshPrices();
+  const sol = (await one<any>("SELECT id FROM assets WHERE symbol='SOL' LIMIT 1"))!;
+  const base: any = { name: "t", strategyId: "dip_rebound_loop", params: { amount_usd: 10, dip_pct: 3, take_profit_pct: 5 }, assetIds: [sol.id], isPaper: true };
+  const mk = (c: any) => createBot(u, BotConfigSchema.parse(c) as any, "user");
+  const strict = await mk(base);
+  assert.equal(strict.allow_risky, false);
+  await q("UPDATE risk_settings SET block_risky_tokens=false WHERE user_id=$1", [u]);
+  const loose = await mk({ ...base, name: "t2" });
+  assert.equal(loose.allow_risky, true);
+  const pinned = await mk({ ...base, name: "t3", allowRisky: false });
+  assert.equal(pinned.allow_risky, false, "an explicit choice on the card wins");
+});
