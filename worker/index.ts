@@ -42,7 +42,7 @@ function every(name: string, ms: number, fn: () => Promise<unknown>) {
     if (running || stopping) return;
     running = true;
     try { await fn(); lastRun[name] = { at: Date.now(), ok: true }; }
-    catch (e: any) { lastRun[name] = { at: Date.now(), ok: false, error: e?.message }; console.error(`[${name}]`, e?.message ?? e); }
+    catch (e: any) { lastRun[name] = { at: Date.now(), ok: false, error: e?.message }; console.error(`[${name}]`, String(e?.message ?? e).split("\n")[0].slice(0, 300)); }
     finally { running = false; }
   };
   setTimeout(run, 500 + Math.random() * 1000);

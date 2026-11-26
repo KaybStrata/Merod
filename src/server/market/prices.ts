@@ -103,6 +103,20 @@ const DEX_CHAIN: Record<string, string> = { solana: "solana", ethereum: "ethereu
  */
 /** After CoinGecko rate-limits us (HTTP 429), skip it for a few minutes instead of hammering it every 30s. */
 let coingeckoPausedUntil = 0;
+
+/** DEX Screener: at most 300 tokens per price run (10 batched requests every 30s ≈ 20/min, well under its limits). */
+const DEX_TOKENS_PER_RUN = 300;
+/** Shared DEX Screener back-off: a 429 pauses price refresh and launch discovery together, doubling up to 10 minutes. */
+let dexPausedUntil = 0, dexPauseMs = 60_000;
+const dexReady = () => Date.now() >= dexPausedUntil;
+function dexBackoff(e: any, where: string): boolean {
+  const msg = String(e?.message ?? e);
+  const limited = /429|rate limit|too many requests/i.test(msg);
+  if (limited) { dexPausedUntil = Date.now() + dexPauseMs; console.warn(`[${where}] dexscreener rate-limited: pausing ${Math.round(dexPauseMs / 1000)}s`); dexPauseMs = Math.min(dexPauseMs * 2, 10 * 60_000); }
+  else console.warn(`[${where}] dexscreener: ${msg.split("\n")[0].slice(0, 160)}`);
+  return limited;
+}
+const dexOk = () => { dexPauseMs = 60_000; };
 export async function refreshLivePrices(): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   const env = "production" as const;
@@ -131,16 +145,27 @@ export async function refreshLivePrices(): Promise<Record<string, number>> {
     console.warn(`[live_prices] coingecko skipped: ${String(e?.message).slice(0, 120)}${coingeckoPausedUntil > Date.now() ? " (paused 5 min)" : ""}`);
   }
 
-  if (await keylessUsable("dexscreener")) {
+  if (dexReady() && await keylessUsable("dexscreener")) {
     const ctx = contextFor("dexscreener", env);
-    const assets = await q<AssetRow>("SELECT * FROM assets WHERE asset_class='crypto' AND identifier <> 'native' AND venue = ANY($1) AND coingecko_id IS NULL", [Object.keys(DEX_CHAIN)]);
+    // A fixed request budget per run (DEX Screener rate-limits). Coins someone is actually using come first — bot, agent,
+    // position and watchlist coins — then everything else, least recently updated first, so all coins rotate through.
+    const assets = await q<AssetRow>(
+      `SELECT a.* FROM assets a WHERE a.asset_class='crypto' AND a.identifier <> 'native' AND a.venue = ANY($1) AND a.coingecko_id IS NULL
+        ORDER BY (EXISTS (SELECT 1 FROM trading_bots b WHERE b.status='running' AND a.id = ANY(b.asset_ids))
+               OR EXISTS (SELECT 1 FROM agents g WHERE g.status='running' AND a.id = ANY(g.asset_ids))
+               OR EXISTS (SELECT 1 FROM positions p WHERE p.asset_id=a.id AND p.quantity > 0)
+               OR EXISTS (SELECT 1 FROM watchlist_items w WHERE w.asset_id=a.id)) DESC,
+                 a.price_updated_at ASC NULLS FIRST
+        LIMIT $2`, [Object.keys(DEX_CHAIN), DEX_TOKENS_PER_RUN]);
     const byChain = new Map<string, AssetRow[]>();
     for (const a of assets) byChain.set(a.venue, [...(byChain.get(a.venue) ?? []), a]);
     let n = 0;
-    for (const [chain, list] of byChain) {
+    chains: for (const [chain, list] of byChain) {
       for (let i = 0; i < list.length; i += 30) {
         const chunk = list.slice(i, i + 30);
-        const pairs = await readJson(await ctx.fetch(`https://api.dexscreener.com/tokens/v1/${DEX_CHAIN[chain]}/${chunk.map((a) => a.identifier).join(",")}`), "dexscreener");
+        let pairs: any;
+        try { pairs = await readJson(await ctx.fetch(`https://api.dexscreener.com/tokens/v1/${DEX_CHAIN[chain]}/${chunk.map((a) => a.identifier).join(",")}`), "dexscreener"); }
+        catch (e: any) { if (dexBackoff(e, "live_prices")) break chains; continue; } // one bad batch never stops the rest; a rate limit pauses
         for (const a of chunk) {
           const best = (pairs as any[]).filter((p) => p.baseToken?.address?.toLowerCase() === a.identifier.toLowerCase())
             .sort((x, y) => (y.liquidity?.usd ?? 0) - (x.liquidity?.usd ?? 0))[0];
@@ -154,6 +179,7 @@ export async function refreshLivePrices(): Promise<Record<string, number>> {
       }
     }
     counts.dexscreener = n;
+    if (n > 0) dexOk();
   }
 
   for (const pid of ["alpaca_trading", "alpaca_broker"] as const) {
@@ -188,13 +214,29 @@ export async function refreshLivePrices(): Promise<Record<string, number>> {
 
 /** Discover new tokens from DEX Screener's latest token profiles (only when connected). */
 export async function discoverLaunches(): Promise<number> {
-  if (!(await providerUsable("dexscreener", "production"))) return 0;
+  if (!dexReady() || !(await providerUsable("dexscreener", "production"))) return 0;
   const ctx = contextFor("dexscreener", "production");
-  const profiles = await readJson(await ctx.fetch("https://api.dexscreener.com/token-profiles/latest/v1"), "dexscreener");
+  let profiles: any[];
+  try { profiles = await readJson(await ctx.fetch("https://api.dexscreener.com/token-profiles/latest/v1"), "dexscreener"); }
+  catch (e: any) { dexBackoff(e, "launch_discovery"); return 0; }
+  // Only tokens we don't know yet (known ones are refreshed by the price loop), looked up in batches of 30 per chain
+  // instead of one request per token.
+  const fresh = (profiles ?? []).slice(0, 50).filter((p: any) => DEX_CHAIN[p.chainId] && p.tokenAddress);
+  const known = new Set((await q<{ k: string }>("SELECT venue || ':' || lower(identifier) AS k FROM assets WHERE venue || ':' || lower(identifier) = ANY($1)",
+    [fresh.map((p: any) => `${p.chainId}:${String(p.tokenAddress).toLowerCase()}`)])).map((r) => r.k));
+  const todo = fresh.filter((p: any) => !known.has(`${p.chainId}:${String(p.tokenAddress).toLowerCase()}`));
+  const pairsByToken = new Map<string, any[]>();
+  const byChain = new Map<string, string[]>();
+  for (const p of todo) byChain.set(p.chainId, [...(byChain.get(p.chainId) ?? []), p.tokenAddress]);
+  for (const [chain, addrs] of byChain) for (let i = 0; i < addrs.length; i += 30) {
+    try {
+      const rows = await readJson(await ctx.fetch(`https://api.dexscreener.com/tokens/v1/${chain}/${addrs.slice(i, i + 30).join(",")}`), "dexscreener");
+      for (const pr of rows as any[]) { const k = String(pr.baseToken?.address ?? "").toLowerCase(); pairsByToken.set(k, [...(pairsByToken.get(k) ?? []), pr]); }
+    } catch (e: any) { if (dexBackoff(e, "launch_discovery")) return 0; }
+  }
   let n = 0;
-  for (const p of (profiles as any[]).slice(0, 50)) {
-    if (!DEX_CHAIN[p.chainId] || !p.tokenAddress) continue;
-    const pairs = await readJson(await ctx.fetch(`https://api.dexscreener.com/token-pairs/v1/${p.chainId}/${p.tokenAddress}`), "dexscreener").catch(() => []);
+  for (const p of todo) {
+    const pairs = pairsByToken.get(String(p.tokenAddress).toLowerCase()) ?? [];
     const best = (pairs as any[]).sort((x, y) => (y.liquidity?.usd ?? 0) - (x.liquidity?.usd ?? 0))[0];
     if (!best?.baseToken) continue;
     // Token names/descriptions are untrusted text: stored as data, truncated, never fed to AI as instructions.
