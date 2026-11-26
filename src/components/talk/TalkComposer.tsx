@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, AtSign, Mic, Paperclip, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb } from "lucide-react";
+import { ArrowUp, AtSign, Mic, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { useApi } from "@/lib/api";
 import { cx } from "@/components/ui";
+import { AttachButton, AttachmentChips, filesFrom, useAttachments } from "@/components/shell/Attachments";
 
 /** Talk composer: text (and optional browser speech-to-text), Attach, Paper badge, @Agents, suggestion pills. Sends via the existing prompt API. */
-export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi }: { onSend: (t: string) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic"; onAi?: (a: "merod" | "openai" | "anthropic") => void }) {
+export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi }: { onSend: (t: string, attachmentIds?: string[]) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic"; onAi?: (a: "merod" | "openai" | "anthropic") => void }) {
   const { user } = useShell();
   const [text, setText] = useState("");
   const [listening, setListening] = useState(false);
@@ -20,7 +21,13 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
   useEffect(() => { ta.current?.focus(); }, []);
   useEffect(() => { const el = ta.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(180, el.scrollHeight)}px`; } }, [text]);
 
-  const send = (t = text) => { const v = t.trim(); if (!v || busy) return; onSend(v); setText(""); };
+  const att = useAttachments();
+  // Files can be sent on their own (Merod summarizes them) or with a prompt; it waits while any are still uploading.
+  const send = (t = text) => {
+    const v = t.trim();
+    if ((!v && !att.ids.length) || busy || att.uploading) return;
+    onSend(v, att.ids.length ? att.ids : undefined); setText(""); att.clear();
+  };
   function toggleVoice() { // browser speech → text only; nothing is sent until you press send
     if (listening) { rec.current?.stop(); return; }
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -41,8 +48,12 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
           ))}
         </div>
       )}
-      <div className="rounded-2xl border border-accent/40 bg-panel/80 p-3 shadow-[0_0_40px_-12px_rgba(214,179,122,.35)] focus-within:border-accent/70">
+      <div className="rounded-2xl border border-accent/40 bg-panel/80 p-3 shadow-[0_0_40px_-12px_rgba(214,179,122,.35)] focus-within:border-accent/70"
+        onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
+        onDrop={(e) => { const f = filesFrom(e.dataTransfer); if (f.length) { e.preventDefault(); att.add(f); } }}>
+        <AttachmentChips items={att.items} onRemove={att.remove} className="mb-2" />
         <textarea ref={ta} value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder={placeholder}
+          onPaste={(e) => { const f = filesFrom(e.clipboardData); if (f.length) { e.preventDefault(); att.add(f); } }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
           className="w-full resize-none bg-transparent px-1 text-[15.5px] outline-none placeholder:font-serif placeholder:italic placeholder:text-faint" />
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -76,7 +87,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
               </div>
             )}
           </div>
-          <button disabled title="Attachments are coming soon" className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] text-muted opacity-50"><Paperclip className="size-3.5" /> Attach</button>
+          <AttachButton onFiles={att.add} />
           <div className="relative">
             <button onClick={() => setAgentsOpen((o) => !o)} className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] text-muted hover:text-text"><AtSign className="size-3.5" /> Agents</button>
             {agentsOpen && (
@@ -98,7 +109,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
               <button onClick={toggleVoice} aria-label={listening ? "Stop listening" : "Speak"} title="Speech to text (in your browser)"
                 className={cx("flex size-10 items-center justify-center rounded-full", listening ? "bg-grad text-bg" : "border border-line-2 text-muted hover:text-text")}><Mic className="size-4" /></button>
             )}
-            <button onClick={() => send()} disabled={busy || !text.trim()} aria-label="Send" className="flex size-10 items-center justify-center rounded-full border border-line-2 text-text hover:border-accent/60 disabled:opacity-40">
+            <button onClick={() => send()} disabled={busy || att.uploading || (!text.trim() && !att.ids.length)} aria-label="Send" className="flex size-10 items-center justify-center rounded-full border border-line-2 text-text hover:border-accent/60 disabled:opacity-40">
               {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
             </button>
           </div>

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Sparkles, ArrowUp, ChevronDown, ChevronUp, Maximize2, Minimize2, Loader2, X, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
+import { AttachButton, AttachmentChips, filesFrom, useAttachments } from "./Attachments";
 import { cx } from "@/components/ui";
 import { useShell } from "./context";
 import { PlanCard } from "./PlanCard";
@@ -43,13 +44,16 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
   useEffect(() => { const el = inputRef.current; if (!el) return; el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 150)}px`; }, [text]);
   const hasChat = messages.length > 0;
 
+  const att = useAttachments();
   async function send(t = text) {
     const value = t.trim();
-    if (!value || busy) return;
+    const ids = t === text ? att.ids : [];
+    if ((!value && !ids.length) || busy || (t === text && att.uploading)) return;
     setBusy(true); setView((v) => (v === "min" ? "open" : v)); setText("");
-    setMessages((m) => [...m, { id: `u${Date.now()}`, role: "user", content: value }]);
+    if (ids.length) att.clear();
+    setMessages((m) => [...m, { id: `u${Date.now()}`, role: "user", content: `${value}${ids.length ? `${value ? "\n" : ""}📎 ${ids.length} file${ids.length > 1 ? "s" : ""} attached` : ""}` }]);
     try {
-      const r = await api("/api/ai/prompt", { method: "POST", json: { text: value, conversationId, screenAssetId: screenAsset?.id ?? null } });
+      const r = await api("/api/ai/prompt", { method: "POST", json: { text: value, conversationId, screenAssetId: screenAsset?.id ?? null, attachmentIds: ids.length ? ids : undefined } });
       setConversationId(r.conversationId);
       setNote(r.fallbackReason);
       setMessages((m) => [...m, ...(Array.isArray(r.messages) && r.messages.length ? r.messages : [r.message])]);
@@ -100,14 +104,19 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
           </>
         )}
         <form onSubmit={(e) => { e.preventDefault(); send(); }}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
+          onDrop={(e) => { const f = filesFrom(e.dataTransfer); if (f.length) { e.preventDefault(); att.add(f); } }}
           className="relative z-50 flex items-end gap-2 rounded-2xl border border-line-2 bg-panel/95 p-1.5 shadow-[0_10px_40px_rgba(0,0,0,.45)] backdrop-blur focus-within:border-accent">
+          <AttachButton onFiles={att.add} label={null} className="mb-0.5 size-9 shrink-0 justify-center rounded-xl border-transparent px-0" />
           <div className="min-w-0 flex-1">
+            <AttachmentChips items={att.items} onRemove={att.remove} className="px-1 pt-1" />
             <textarea ref={inputRef} rows={1} value={text} onChange={(e) => setText(e.target.value)}
+              onPaste={(e) => { const f = filesFrom(e.clipboardData); if (f.length) { e.preventDefault(); att.add(f); } }}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               aria-label="Prompt" placeholder="What would you like to do today?"
               className="block max-h-[150px] min-h-[36px] w-full resize-none bg-transparent px-2.5 py-2 text-[14px] leading-5 outline-none placeholder:text-faint" />
           </div>
-          <button type="submit" disabled={!text.trim() || busy} className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-grad text-white disabled:opacity-40" aria-label="Send">
+          <button type="submit" disabled={busy || att.uploading || (!text.trim() && !att.ids.length)} className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-grad text-white disabled:opacity-40" aria-label="Send">
             {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
           </button>
         </form>

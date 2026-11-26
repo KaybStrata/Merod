@@ -66,16 +66,16 @@ function Talk() {
     if (convId) loadConversation(convId).catch(() => {});
   });
 
-  async function send(text: string) {
+  async function send(text: string, attachmentIds?: string[]) {
     setBusy(true); setNote(null);
-    setMessages((m) => [...m, { id: `u${Date.now()}`, role: "user", content: text }]);
+    setMessages((m) => [...m, { id: `u${Date.now()}`, role: "user", content: `${text}${attachmentIds?.length ? `${text ? "\n" : ""}📎 ${attachmentIds.length} file${attachmentIds.length > 1 ? "s" : ""} attached` : ""}` }]);
     try {
-      const r: any = await api("/api/ai/prompt", { method: "POST", json: { text, conversationId: convId, book, provider: ai } });
+      const r: any = await api("/api/ai/prompt", { method: "POST", json: { text, conversationId: convId, book, provider: ai, attachmentIds } });
       const replies = Array.isArray(r.messages) && r.messages.length ? r.messages : [r.message];
       setMessages((m) => [...m, ...replies]);
       setNote(r.fallbackReason ?? null);
       if (r.conversationId && r.conversationId !== convId) {
-        held.current = r.conversationId; setConvId(r.conversationId); setTitle(text.slice(0, 60));
+        held.current = r.conversationId; setConvId(r.conversationId); setTitle((text || "Attached files").slice(0, 60));
         router.replace(`/talk?c=${r.conversationId}`);
       }
       window.dispatchEvent(new Event("merod-talk-refresh"));
