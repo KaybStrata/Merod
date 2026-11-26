@@ -446,7 +446,7 @@ async function supervisorTick(a: any) {
   }
   const warn = conc > 60 && byAsset.size > 0 ? ` · ${top![0]} is ${conc.toFixed(0)}% of invested capital` : "";
   await note(a, "risk", lossPct >= limit * 0.75 || conc > 60 || failed.length ? "warning" : "analysis", lossPct < limit ? "Within limits" : "Limit reached",
-    `${members.length} agents · daily P&L ${fmt(day)} (${lossPct > 0 ? "-" : "+"}${Math.abs(lossPct).toFixed(2)}% vs ${limit}% limit) · invested ${fmt(invested)}${warn}${failed.length ? ` · failed: ${failed.join(", ")}` : ""}`);
+    `${members.length} agents · daily P&L ${day < 0 ? "−" : "+"}${fmt(Math.abs(day))} (${lossPct > 0 ? `down ${lossPct.toFixed(2)}%` : `up ${Math.abs(lossPct).toFixed(2)}%`}; pauses at a ${limit}% daily loss) · invested ${fmt(invested)}${warn}${failed.length ? ` · failed: ${failed.join(", ")}` : ""}`);
 }
 
 async function portfolioTick(a: any) {

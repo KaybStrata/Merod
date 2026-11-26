@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Brain, Target, CheckCircle2, AlertTriangle, Gauge, Bot, Sparkles, Cpu, Repeat, ArrowLeftRight, Landmark, Pause, Play, Search, BarChart3, TrendingUp, ArrowUpRight, ShoppingCart } from "lucide-react";
 import { TradeHistory } from "@/components/activity/TradeHistory";
 import { api } from "@/lib/api";
+import { capFeed } from "@/lib/feed";
 import { usePageTitle, useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 
@@ -50,14 +51,24 @@ export default function LiveActivity() {
         const seen = new Set(cur.map((i) => i.id));
         const add = (r.items as Item[]).filter((i) => !seen.has(i.id));
         if (add.length && !initial) { setFresh(new Set(add.map((i) => i.id))); setTimeout(() => setFresh(new Set()), 2500); }
-        return [...add, ...cur].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 500);
+        return capFeed([...add, ...cur], 500);
       });
     } catch { setOk(false); }
   }
   useEffect(() => { pull(true); const t = setInterval(() => pull(), 3000); return () => clearInterval(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const kick = useRef(0);
   useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade"].includes(e.type) && Date.now() - kick.current > 800) { kick.current = Date.now(); pull(); } });
-  const shown = useMemo(() => items.filter((i) => (src === "all" || i.source === src) && kinds.has(i.kind) && (!q || `${i.actor} ${i.title} ${i.body ?? ""}`.toLowerCase().includes(q.toLowerCase()))), [items, src, kinds, q]);
+  // A source tab other than All is fetched from the server (last 30 days) so chatty bots can't push it off the list.
+  const [bySrc, setBySrc] = useState<{ key: string; items: Item[] } | null>(null);
+  useEffect(() => {
+    if (src === "all") return;
+    let live = true;
+    const load = () => api(`/api/live-stream?filter=${src}&limit=300`).then((r: any) => { if (live) setBySrc({ key: src, items: r.items }); }).catch(() => {});
+    load(); const t = setInterval(load, 6000);
+    return () => { live = false; clearInterval(t); };
+  }, [src]);
+  const base = src === "all" ? items : bySrc?.key === src ? bySrc.items : [];
+  const shown = useMemo(() => base.filter((i) => kinds.has(i.kind) && (!q || `${i.actor} ${i.title} ${i.body ?? ""}`.toLowerCase().includes(q.toLowerCase()))), [base, kinds, q]);
   const minute = items.filter((i) => Date.now() - new Date(i.at).getTime() < 60_000).length;
   const counts = (k: string) => items.filter((i) => i.source === k).length;
   // Events per minute over the last 30 minutes (histogram) and the mix of kinds in the last hour.

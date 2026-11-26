@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Activity, X, Brain, Target, CheckCircle2, AlertTriangle, BarChart3, Gauge } from "lucide-react";
 import { api } from "@/lib/api";
+import { capFeed } from "@/lib/feed";
 import { useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 import { PortfolioSpark } from "./PortfolioSpark";
@@ -15,8 +16,6 @@ const KIND: Record<string, [any, string]> = {
 const SOURCES: [string, string][] = [["all", "All"], ["order", "Trades"], ["bot", "Bots"], ["agent", "Agents"], ["auto", "Auto"], ["modo", "Modo"], ["copy", "Mimic"], ["buy", "Buys"], ["sell", "Sells"], ["profit", "Profit"], ["loss", "Loss"]];
 /** Profit / Loss: closed trades by realized P&L in $ (or % for theoretical Auto/Modo trades with no order). */
 const pnlOf = (i: Item) => i.pnl ?? i.pnlPct;
-/** Buys / Sells filter by trade side across every source (orders, fills, Mimic, Auto, Modo). */
-const SIDE = new Set(["buy", "sell"]);
 const hms = (t: string) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 
 /** "Activity" button in the Talk top bar: opens a live side panel of everything trading for you, without leaving Talk. */
@@ -35,14 +34,30 @@ export function TalkActivity() {
         const seen = new Set(cur.map((i) => i.id));
         const add = (r.items as Item[]).filter((i) => !seen.has(i.id));
         if (add.length && !initial && !openRef.current) setFresh((n) => n + add.length);
-        return [...add, ...cur].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 300);
+        return capFeed([...add, ...cur], 300);
       });
     } catch { /* keep the last list */ }
   }
+  // Any filter other than All is fetched from the server (last 30 days), so busy bots can't crowd trades out of the list.
+  const [filtered, setFiltered] = useState<{ key: string; items: Item[] } | null>(null);
+  const srcRef = useRef(src); srcRef.current = src;
+  async function pullFiltered(key = srcRef.current) {
+    if (key === "all") return;
+    try {
+      const r: any = await api(`/api/live-stream?filter=${key}&limit=300`);
+      if (srcRef.current === key) setFiltered({ key, items: r.items as Item[] });
+    } catch { /* keep the last list */ }
+  }
   useEffect(() => { pull(true); const t = setInterval(() => pull(), 4000); return () => clearInterval(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade"].includes(e.type)) pull(); });
-  const shown = items.filter((i) => src === "all" || (SIDE.has(src) ? i.side === src
-    : src === "profit" ? (pnlOf(i) ?? 0) > 0 : src === "loss" ? (pnlOf(i) ?? 0) < 0 : i.source === src));
+  useEffect(() => {
+    if (!open || src === "all") return;
+    pullFiltered(src);
+    const t = setInterval(() => pullFiltered(src), 8000);
+    return () => clearInterval(t);
+  }, [open, src]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade"].includes(e.type)) { pull(); if (openRef.current) pullFiltered(); } });
+  const loadingFilter = src !== "all" && filtered?.key !== src;
+  const shown = src === "all" ? items : filtered?.key === src ? filtered.items : [];
   const closed = shown.filter((i) => i.pnl !== undefined);
   const net = closed.reduce((s, i) => s + (i.pnl ?? 0), 0);
 
@@ -76,7 +91,9 @@ export function TalkActivity() {
               </div>
             )}
             <ol className="flex-1 overflow-y-auto">
-              {!shown.length && <li className="p-8 text-center text-[12px] text-faint">Waiting for activity… Bots, agents, auto trading, Modo and your orders stream here the moment they think, decide or trade.</li>}
+              {loadingFilter && <li className="p-8 text-center text-[12px] text-faint">Loading…</li>}
+              {!shown.length && !loadingFilter && src !== "all" && <li className="p-8 text-center text-[12px] text-faint">{src === "profit" ? "No profitable closed trades" : src === "loss" ? "No losing closed trades" : "Nothing here"} in the last 30 days.</li>}
+              {!shown.length && src === "all" && <li className="p-8 text-center text-[12px] text-faint">Waiting for activity… Bots, agents, auto trading, Modo and your orders stream here the moment they think, decide or trade.</li>}
               {shown.map((i) => {
                 const [I, cls] = KIND[i.kind] ?? KIND.state;
                 const row = (

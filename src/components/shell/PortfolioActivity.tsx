@@ -22,7 +22,8 @@ export function PortfolioActivity({ active }: { active: boolean }) {
   const [book, setBook] = useState<"paper" | "live">("paper");
   const [filter, setFilter] = useState<"all" | "trades" | "funds" | "auto">("all");
   const pf = useApi<any>(active ? "/api/portfolio" : null, { refreshMs: 10_000 });
-  const feed = useApi<any>(active ? "/api/live-stream" : null, { refreshMs: 5_000 });
+  // Trades / Auto views ask the server for just those events (last 30 days), so bot status lines never crowd them out.
+  const feed = useApi<any>(active ? (filter === "trades" ? "/api/live-stream?filter=trades&limit=300" : filter === "auto" ? "/api/live-stream?filter=automation&limit=300" : "/api/live-stream") : null, { refreshMs: 5_000 });
   useRealtime((e) => { if (active && ["fill", "order", "auto", "copy", "trade", "funding"].includes(e.type)) { pf.refresh(); feed.refresh(); } });
   const s = pf.data?.[book];
   const paper = book === "paper";

@@ -13,21 +13,44 @@ type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" 
 const BOT_KIND: Record<string, Item["kind"]> = { observation: "analysis", trigger: "decision", instruction: "decision", order: "execution", result: "execution", warning: "warning", error: "warning", control: "state" };
 const AGENT_KIND: Record<string, Item["kind"]> = { thought: "thought", analysis: "analysis", decision: "decision", execution: "execution", warning: "warning", approval: "decision", training: "analysis", state: "state", message: "analysis", system: "state" };
 
+/** trades = your orders + Mimic copies; automation = Auto + Modo. */
+type Filter = "all" | "order" | "bot" | "agent" | "auto" | "modo" | "copy" | "buy" | "sell" | "profit" | "loss" | "trades" | "automation";
+const GROUP: Partial<Record<Filter, string[]>> = { trades: ["order", "copy"], automation: ["auto", "modo"] };
+const TRADE_FILTERS = new Set(["buy", "sell", "profit", "loss"]);
+/** Same predicate the panel uses: Buys/Sells by side across sources; Profit/Loss by realized $ (or % for theoretical trades). */
+function matches(i: Item, f: Filter) {
+  if (f === "all") return true;
+  if (f === "buy" || f === "sell") return i.side === f;
+  const p = i.pnl ?? i.pnlPct;
+  if (f === "profit") return p !== undefined && p > 0;
+  if (f === "loss") return p !== undefined && p < 0;
+  return GROUP[f] ? GROUP[f]!.includes(i.source) : i.source === f;
+}
+
 export const GET = route(async (req) => {
   const u = await requireUser();
   const sp = new URL(req.url).searchParams;
-  const since = sp.get("since") ? new Date(Number(sp.get("since"))) : new Date(Date.now() - 24 * 3600_000);
+  // `filter` narrows the stream on the server, so chatty sources (bot status lines every tick) can't push trades out of
+  // the list: all | order | bot | agent | auto | modo | copy | buy | sell | profit | loss. Filtered views look back 30 days.
+  const filter = (sp.get("filter") ?? "all") as Filter;
+  const since = sp.get("since") ? new Date(Number(sp.get("since"))) : new Date(Date.now() - (filter === "all" ? 24 : 30 * 24) * 3600_000);
   const lim = Math.min(300, Number(sp.get("limit") ?? 150));
   const owner = u.role === "super_admin";
+  const want = (src: Item["source"]) => filter === "all" || filter === src || !!GROUP[filter]?.includes(src) || (TRADE_FILTERS.has(filter) && ["order", "copy", "auto", "modo", "merod"].includes(src));
+  const none = Promise.resolve([] as any[]);
+  // Orders: a side / P&L filter is applied in SQL so the newest 150 rows are the ones that match.
+  const orderCond = filter === "buy" ? " AND o.side='buy'" : filter === "sell" ? " AND o.side='sell'"
+    : filter === "profit" ? " AND o.side='sell' AND o.realized_pnl > 0" : filter === "loss" ? " AND o.side='sell' AND o.realized_pnl < 0" : "";
+  const pnlOnly = filter === "profit" || filter === "loss";
   const [agents, bots, orders, copies, platform, system] = await Promise.all([
-    q<any>(`SELECT e.id, e.created_at, e.kind, e.title, e.body, e.agent_id, a.name FROM agent_events e LEFT JOIN agents a ON a.id=e.agent_id WHERE e.user_id=$1 AND e.created_at > $2 ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]),
-    q<any>(`SELECT l.id, l.created_at, l.level, l.message, b.id AS bot_id, b.name FROM bot_activity_logs l JOIN trading_bots b ON b.id=l.bot_id WHERE b.user_id=$1 AND l.created_at > $2 ORDER BY l.id DESC LIMIT $3`, [u.id, since, lim]),
-    q<any>(`SELECT o.id, o.updated_at, o.side, o.status, o.source, o.is_paper, o.filled_quantity, o.avg_fill_price, o.notional_usd, o.status_reason, o.realized_pnl, a.symbol, a.id AS asset_id
-              FROM orders o JOIN assets a ON a.id=o.asset_id WHERE o.user_id=$1 AND o.updated_at > $2 ORDER BY o.updated_at DESC LIMIT $3`, [u.id, since, lim]),
-    q<any>(`SELECT e.id, e.created_at, e.side, e.symbol, e.status, e.reason, e.venue, f.label FROM copy_trade_events e JOIN copy_follows f ON f.id=e.follow_id WHERE f.follower_id=$1 AND e.created_at > $2 ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]),
-    q<any>(`SELECT x.id, x.executed_at, o.side, x.quantity, x.price, o.is_paper, o.source, a.symbol, a.id AS asset_id FROM executions x JOIN orders o ON o.id=x.order_id JOIN assets a ON a.id=o.asset_id
-             WHERE x.executed_at > $1 AND o.user_id <> $2 ORDER BY x.executed_at DESC LIMIT 60`, [since, u.id]),
-    isAdminRole(u.role) ? q<any>(`SELECT id, created_at, source, level, message FROM system_events WHERE created_at > $1 ORDER BY id DESC LIMIT 40`, [since]) : Promise.resolve([] as any[]),
+    want("agent") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT e.id, e.created_at, e.kind, e.title, e.body, e.agent_id, a.name FROM agent_events e LEFT JOIN agents a ON a.id=e.agent_id WHERE e.user_id=$1 AND e.created_at > $2 ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]) : none,
+    want("bot") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT l.id, l.created_at, l.level, l.message, b.id AS bot_id, b.name FROM bot_activity_logs l JOIN trading_bots b ON b.id=l.bot_id WHERE b.user_id=$1 AND l.created_at > $2 ORDER BY l.id DESC LIMIT $3`, [u.id, since, lim]) : none,
+    want("order") ? q<any>(`SELECT o.id, o.updated_at, o.side, o.status, o.source, o.is_paper, o.filled_quantity, o.avg_fill_price, o.notional_usd, o.status_reason, o.realized_pnl, a.symbol, a.id AS asset_id
+              FROM orders o JOIN assets a ON a.id=o.asset_id WHERE o.user_id=$1 AND o.updated_at > $2${orderCond} ORDER BY o.updated_at DESC LIMIT $3`, [u.id, since, lim]) : none,
+    want("copy") && !pnlOnly ? q<any>(`SELECT e.id, e.created_at, e.side, e.symbol, e.status, e.reason, e.venue, f.label FROM copy_trade_events e JOIN copy_follows f ON f.id=e.follow_id WHERE f.follower_id=$1 AND e.created_at > $2${filter === "buy" || filter === "sell" ? ` AND e.side='${filter}'` : ""} ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]) : none,
+    want("merod") && !pnlOnly && filter !== "order" ? q<any>(`SELECT x.id, x.executed_at, o.side, x.quantity, x.price, o.is_paper, o.source, a.symbol, a.id AS asset_id FROM executions x JOIN orders o ON o.id=x.order_id JOIN assets a ON a.id=o.asset_id
+             WHERE x.executed_at > $1 AND o.user_id <> $2${filter === "buy" || filter === "sell" ? ` AND o.side='${filter}'` : ""} ORDER BY x.executed_at DESC LIMIT 60`, [since, u.id]) : none,
+    isAdminRole(u.role) && filter === "all" ? q<any>(`SELECT id, created_at, source, level, message FROM system_events WHERE created_at > $1 ORDER BY id DESC LIMIT 40`, [since]) : none,
   ]);
   const items: Item[] = [];
   for (const e of agents) items.push({ id: `ag${e.id}`, at: e.created_at, source: "agent", kind: AGENT_KIND[e.kind] ?? "state", actor: e.name ?? "Agent", title: e.title, body: e.body || undefined, link: e.agent_id ? `/agents/${e.agent_id}` : "/agents" });
@@ -43,7 +66,7 @@ export const GET = route(async (req) => {
   for (const c of copies) items.push({ id: `cp${c.id}`, at: c.created_at, source: "copy", side: c.side, kind: c.status === "copied" ? "execution" : c.status === "failed" ? "warning" : "decision", actor: `Mimic · ${c.label}`, title: `${c.label} ${c.side === "buy" ? "bought" : "sold"} ${c.symbol ?? "a token"} on ${c.venue ?? "?"} → ${c.status.replace("_", " ")}`, body: c.reason || undefined, link: "/mimic" });
   for (const p of platform) items.push({ id: `pl${p.id}`, at: p.executed_at, source: "merod", side: p.side, kind: "execution", actor: `Merod trader${p.is_paper ? " (paper)" : ""}`, title: `${p.side === "buy" ? "Bought" : "Sold"} ${Number(p.quantity).toPrecision(4)} ${p.symbol} @ $${Number(p.price).toPrecision(6)} · via ${p.source}`, link: `/terminal/${p.asset_id}` });
   for (const s of system) items.push({ id: `sy${s.id}`, at: s.created_at, source: "merod", kind: s.level === "info" ? "state" : "warning", actor: `Merod · ${s.source}`, title: s.message });
-  if (owner) {
+  if (owner && (want("auto") || want("modo"))) {
     const auto = await q<any>(`SELECT t.id, t.created_at, t.closed_at, t.symbol, t.mode, t.origin, t.confidence, t.return_pct, t.explain_during, eo.realized_pnl AS exit_pnl FROM auto_trades t LEFT JOIN orders eo ON eo.id=t.exit_order_id WHERE t.user_id=$1 AND greatest(t.created_at, COALESCE(t.closed_at, t.created_at)) > $2 ORDER BY t.created_at DESC LIMIT 60`, [u.id, since]);
     for (const t of auto) {
       const who = t.origin === "modo" ? "modo" : "auto";
@@ -51,13 +74,20 @@ export const GET = route(async (req) => {
         title: t.mode === "real" && t.explain_during ? `${t.symbol}: ${String(t.explain_during).split(".")[0]}` : `Decided to buy ${t.symbol}${t.mode === "theory" ? " (theoretical)" : ""} · ${Math.round(Number(t.confidence) * 100)}% confidence`, link: "/auto" });
       if (t.closed_at && new Date(t.closed_at) > since) items.push({ id: `ac${t.id}`, at: t.closed_at, source: who, side: "sell", pnl: t.exit_pnl != null && Number(t.exit_pnl) !== 0 ? Number(t.exit_pnl) : undefined, pnlPct: t.return_pct != null ? Number(t.return_pct) : undefined, kind: "execution", actor: who === "modo" ? "Modo Autopilot" : "Auto trading", title: `Closed ${t.symbol} ${Number(t.return_pct) >= 0 ? "+" : ""}${Number(t.return_pct).toFixed(2)}%${t.mode === "theory" ? " (theoretical)" : ""}`, link: "/auto" });
     }
-    const s = await getSettings(u.id);
+    const s = filter === "all" || filter === "modo" || filter === "automation" ? await getSettings(u.id) : { modo_thoughts: [] as any[] };
     for (const [i, th] of (s.modo_thoughts ?? []).slice(-80).entries()) {
       const at = new Date(th.at);
       if (at > since) items.push({ id: `mt${at.getTime()}${i}`, at: at.toISOString(), source: "modo", kind: th.kind === "idea" ? "decision" : "thought", actor: "Modo", title: th.text, link: "/auto" });
     }
   }
   for (const it of items) it.at = new Date(it.at as any).toISOString();
-  items.sort((a, b) => b.at.localeCompare(a.at));
-  return ok({ items: items.slice(0, lim), now: Date.now() });
+  const kept = items.filter((i) => matches(i, filter));
+  kept.sort((a, b) => b.at.localeCompare(a.at));
+  if (filter !== "all") return ok({ items: kept.slice(0, lim), filter, now: Date.now() });
+  // "All": up to half the list is reserved for trades (orders, fills, Mimic, Auto/Modo buys and closes), so a bot that
+  // logs a status line every few seconds can never push your buys and sells out of view.
+  const isTrade = (i: Item) => i.side !== undefined || i.pnl !== undefined;
+  const trades = kept.filter(isTrade).slice(0, Math.ceil(lim / 2));
+  const rest = kept.filter((i) => !isTrade(i)).slice(0, lim - trades.length);
+  return ok({ items: [...trades, ...rest].sort((a, b) => b.at.localeCompare(a.at)), filter, now: Date.now() });
 });

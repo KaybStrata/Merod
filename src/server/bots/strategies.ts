@@ -18,6 +18,10 @@ export interface StrategyDef {
 }
 
 const pct = (a: number, b: number) => ((a - b) / b) * 100;
+/** Price in plain dollars, with enough digits for micro-priced meme coins ($0.00000459). */
+export const usdPx = (n: number) => !Number.isFinite(n) ? "?" : n >= 1 ? `$${n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}` : `$${n.toPrecision(3).replace(/0+$/, "").replace(/\.$/, "")}`;
+/** "up 1.20%" / "down 1.72%" — words, so a minus sign can't be misread as a sell trigger. */
+export const moveTxt = (g: number) => Math.abs(g) < 0.005 ? "flat (0.00%)" : `${g > 0 ? "up" : "down"} ${Math.abs(g).toFixed(2)}%`;
 
 export const STRATEGIES: StrategyDef[] = [
   {
@@ -37,16 +41,16 @@ export const STRATEGIES: StrategyDef[] = [
         st.ref = Math.max(st.ref ?? o.price, o.price); // track the high since start / last exit
         const drop = -pct(o.price, st.ref);
         if (drop >= p.dip_pct) {
-          return { decision: { action: "buy", notionalUsd: p.amount_usd, quantity: p.quantity, reason: `Price ${o.price.toPrecision(6)} is ${drop.toFixed(2)}% below recent high ${st.ref.toPrecision(6)} (≥ ${p.dip_pct}%)`, tag: `c${st.cycles}:buy` }, state: { ...st, phase: "buy_pending" } };
+          return { decision: { action: "buy", notionalUsd: p.amount_usd, quantity: p.quantity, reason: `Dip buy: ${usdPx(o.price)} is ${drop.toFixed(2)}% below the recent high ${usdPx(st.ref)} (needed ${p.dip_pct}%)`, tag: `c${st.cycles}:buy` }, state: { ...st, phase: "buy_pending" } };
         }
-        return { decision: { action: "none", note: `Waiting for ${p.dip_pct}% dip (now ${drop.toFixed(2)}% below high ${st.ref.toPrecision(6)})` }, state: st };
+        return { decision: { action: "none", note: `Waiting to buy: needs a ${p.dip_pct}% drop from the recent high ${usdPx(st.ref)}, i.e. ${usdPx(st.ref * (1 - p.dip_pct / 100))} or lower. Now ${usdPx(o.price)} (${drop > 0 ? `${drop.toFixed(2)}% below the high` : "at the high"})` }, state: st };
       }
       if (st.phase === "holding") {
         const entry = st.entry ?? o.avgCost ?? o.price;
         const g = pct(o.price, entry);
-        if (g >= p.take_profit_pct) return { decision: { action: "sell", quantity: st.qty, reason: `+${g.toFixed(2)}% from entry ${entry.toPrecision(6)} (target ${p.take_profit_pct}%)`, tag: `c${st.cycles}:tp` }, state: { ...st, phase: "sell_pending" } };
-        if (p.stop_loss_pct && g <= -p.stop_loss_pct) return { decision: { action: "sell", quantity: st.qty, reason: `Stop-loss: ${g.toFixed(2)}% from entry`, tag: `c${st.cycles}:sl` }, state: { ...st, phase: "sell_pending" } };
-        return { decision: { action: "none", note: `Holding: ${g >= 0 ? "+" : ""}${g.toFixed(2)}% vs +${p.take_profit_pct}% target` }, state: st };
+        if (g >= p.take_profit_pct) return { decision: { action: "sell", quantity: st.qty, reason: `Take-profit: bought at ${usdPx(entry)}, now ${usdPx(o.price)} (${moveTxt(g)}, target up ${p.take_profit_pct}%)`, tag: `c${st.cycles}:tp` }, state: { ...st, phase: "sell_pending" } };
+        if (p.stop_loss_pct && g <= -p.stop_loss_pct) return { decision: { action: "sell", quantity: st.qty, reason: `Stop-loss: bought at ${usdPx(entry)}, now ${usdPx(o.price)} (${moveTxt(g)}, limit down ${p.stop_loss_pct}%)`, tag: `c${st.cycles}:sl` }, state: { ...st, phase: "sell_pending" } };
+        return { decision: { action: "none", note: `Holding: bought at ${usdPx(entry)}, now ${usdPx(o.price)} (${moveTxt(g)}). Sells at ${usdPx(entry * (1 + p.take_profit_pct / 100))} (up ${p.take_profit_pct}%)${p.stop_loss_pct ? ` or stop-loss at ${usdPx(entry * (1 - p.stop_loss_pct / 100))} (down ${p.stop_loss_pct}%)` : "; no stop-loss set, so it waits for the target"}` }, state: st };
       }
       return { decision: { action: "none", note: st.waitNote ?? (st.phase === "buy_pending" ? "Buy placed: waiting for it to fill before watching for the take-profit" : "Sell placed: waiting for it to fill") }, state: st };
     },
@@ -84,7 +88,7 @@ export const STRATEGIES: StrategyDef[] = [
       const ref = s.ref ?? o.price;
       const hit = p.condition === "price_above" ? o.price >= p.value : p.condition === "price_below" ? o.price <= p.value
         : p.condition === "gain_pct_from_entry" ? !!o.avgCost && pct(o.price, o.avgCost) >= p.value : -pct(o.price, ref) >= p.value;
-      if (!hit) return { decision: { action: "none", note: `Condition ${p.condition} ${p.value} not met (price ${o.price.toPrecision(6)})` }, state: { ...s, ref } };
+      if (!hit) return { decision: { action: "none", note: `Waiting: ${p.side === "sell" ? "sells" : "buys"} when ${p.condition === "price_above" ? `price is ${usdPx(p.value)} or higher` : p.condition === "price_below" ? `price is ${usdPx(p.value)} or lower` : p.condition === "gain_pct_from_entry" ? `it is up ${p.value}% from the buy price${o.avgCost ? ` (${usdPx(o.avgCost * (1 + p.value / 100))})` : ""}` : `price drops ${p.value}% from ${usdPx(ref)} (${usdPx(ref * (1 - p.value / 100))})`}. Now ${usdPx(o.price)}` }, state: { ...s, ref } };
       const d: Decision = p.side === "buy" ? { action: "buy", notionalUsd: p.amount_usd, reason: `Condition met: ${p.condition} ${p.value}`, tag: "trigger" }
         : { action: "sell", percent: p.percent ?? 100, reason: `Condition met: ${p.condition} ${p.value}`, tag: "trigger" };
       return { decision: d, state: { ...s, done: true } };
@@ -97,9 +101,9 @@ export const STRATEGIES: StrategyDef[] = [
     decide(o, s, p) {
       if (!o.positionQty || !o.avgCost) return { decision: { action: "none", note: "No position to protect" }, state: s };
       const g = pct(o.price, o.avgCost);
-      if (g <= -p.stop_loss_pct) return { decision: { action: "sell", percent: p.sell_percent, reason: `Stop-loss hit (${g.toFixed(2)}%)`, tag: `sl:${Math.floor(o.ts / 864e5)}` }, state: s };
-      if (p.take_profit_pct && g >= p.take_profit_pct) return { decision: { action: "sell", percent: p.sell_percent, reason: `Take-profit hit (+${g.toFixed(2)}%)`, tag: `tp:${Math.floor(o.ts / 864e5)}` }, state: s };
-      return { decision: { action: "none", note: `P&L ${g.toFixed(2)}% within guard band` }, state: s };
+      if (g <= -p.stop_loss_pct) return { decision: { action: "sell", percent: p.sell_percent, reason: `Stop-loss: cost ${usdPx(o.avgCost)}, now ${usdPx(o.price)} (${moveTxt(g)}, limit down ${p.stop_loss_pct}%)`, tag: `sl:${Math.floor(o.ts / 864e5)}` }, state: s };
+      if (p.take_profit_pct && g >= p.take_profit_pct) return { decision: { action: "sell", percent: p.sell_percent, reason: `Take-profit: cost ${usdPx(o.avgCost)}, now ${usdPx(o.price)} (${moveTxt(g)}, target up ${p.take_profit_pct}%)`, tag: `tp:${Math.floor(o.ts / 864e5)}` }, state: s };
+      return { decision: { action: "none", note: `Holding: cost ${usdPx(o.avgCost)}, now ${usdPx(o.price)} (${moveTxt(g)}). Sells at ${usdPx(o.avgCost * (1 - p.stop_loss_pct / 100))} (down ${p.stop_loss_pct}%)${p.take_profit_pct ? ` or ${usdPx(o.avgCost * (1 + p.take_profit_pct / 100))} (up ${p.take_profit_pct}%)` : ""}` }, state: s };
     },
   },
   {
