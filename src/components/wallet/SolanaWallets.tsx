@@ -98,48 +98,67 @@ export function PendingSignatures() {
 }
 
 /* ───────────── Merod Wallet (owner's own Solana wallet in Merod) ───────────── */
+/** All Merod Wallets (unlimited): a total, a "New wallet" button, and one panel per wallet. */
 export function MerodWalletCard() {
   const { user } = useShell();
   const owner = user.role === "super_admin";
   const { data, refresh } = useApi<any>(owner ? "/api/wallet/merod" : null, { refreshMs: 30000 });
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const [wd, setWd] = useState(false); const [to, setTo] = useState(""); const [amt, setAmt] = useState(""); const [code, setCode] = useState("");
-  const [lim, setLim] = useState<{ perTradeUsd: number; dailyUsd: number } | null>(null);
+  const [name, setName] = useState("");
   if (!owner) return null;
   async function create() {
-    if (!confirm("Create your Merod Wallet? Merod will hold this wallet's key (encrypted) so it can sign trades for you. It's a hot wallet: only fund it with what you're willing to risk.")) return;
+    if (!data?.exists && !confirm("Create a Merod Wallet? Merod will hold this wallet's key (encrypted) so it can sign trades for you. It's a hot wallet: only fund it with what you're willing to risk.")) return;
     setBusy(true);
-    try { await api("/api/wallet/merod", { method: "POST", json: { action: "create" } }); toast("Merod Wallet created. Send SOL or USDC to its address to start.", "up"); refresh(); }
-    catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
-  }
-  async function save(p: any) { try { await api("/api/wallet/merod", { method: "POST", json: { action: "settings", ...p } }); toast("Saved", "up"); refresh(); } catch (e: any) { toast(e.message, "down"); } }
-  async function withdraw() {
-    setBusy(true);
-    try { const r: any = await api("/api/wallet/merod", { method: "POST", json: { action: "withdraw", to, amountSol: Number(amt), code } }); toast(`Sent. Signature ${String(r.signature).slice(0, 10)}…`, "up"); setWd(false); setCode(""); refresh(); }
+    try { const r: any = await api("/api/wallet/merod", { method: "POST", json: { action: "create", name: name || undefined } }); toast(`Wallet created: ${r.address.slice(0, 4)}…${r.address.slice(-4)}. Send SOL or USDC to it to start.`, "up"); setName(""); refresh(); }
     catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
   }
   if (!data) return <section className="surface h-40 animate-pulse rounded-2xl" />;
-  if (!data.exists) return (
-    <section className="surface rounded-2xl p-5">
-      <h3 className="flex items-center gap-2 text-[1.05rem] font-semibold"><Sparkles className="size-5 text-accent-2" /> Merod Wallet</h3>
-      <p className="mt-1 max-w-2xl text-[13px] text-muted">Your own Solana wallet inside Merod. Buy SOL, meme coins and any Solana token through Jupiter, and let bots and mimic trading use it automatically (when Automated real money is on). Merod keeps the key encrypted. Per-trade and daily caps protect you, and withdrawals need your 2FA code.</p>
-      <button onClick={create} disabled={busy} className="mt-3 flex h-10 items-center gap-2 rounded-xl bg-grad px-4 text-sm font-semibold"><Plus className="size-4" /> Create my Merod Wallet</button>
+  return (
+    <section className="space-y-3">
+      <div className="surface rounded-2xl p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="flex items-center gap-2 text-[1.05rem] font-semibold"><Sparkles className="size-5 text-accent-2" /> Merod Wallets <span className="text-sm font-normal text-muted">({data.wallets?.length ?? 0})</span></h3>
+            <p className="mt-1 max-w-2xl text-[12.5px] text-muted">Your own Solana wallets inside Merod. Make as many as you want, e.g. one for meme coins, one for bots, one for long-term SOL. Each has its own address, caps and balances. Merod keeps every key encrypted; withdrawals need your 2FA code.</p>
+          </div>
+          {data.exists && <div className="text-right"><div className="text-[11px] text-muted">All wallets</div><div className="num text-[1.6rem] font-semibold">${(data.totalUsd ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}</div><button onClick={() => refresh()} className="ml-auto flex items-center gap-1 text-[11px] text-muted hover:text-text"><RefreshCw className="size-3" /> Refresh</button></div>}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="Name (optional), e.g. Meme coins" className="h-10 w-64 rounded-xl border border-line bg-panel-2/70 px-3 text-sm outline-none focus:border-accent/60" />
+          <button onClick={create} disabled={busy} className="flex h-10 items-center gap-2 rounded-xl bg-grad px-4 text-sm font-semibold"><Plus className="size-4" /> {data.exists ? "New wallet" : "Create my Merod Wallet"}</button>
+        </div>
+        {data.exists && !data.liveCrypto && <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-[12px] text-warn">Real crypto trading is off. Turn on the Real money switch in the top bar (needs 2FA) to trade from these wallets.</p>}
+      </div>
+      {(data.wallets ?? []).map((w: any) => <WalletPanel key={w.id} w={w} onChange={refresh} />)}
     </section>
   );
+}
+
+function WalletPanel({ w: data, onChange: refresh }: { w: any; onChange: () => void }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [wd, setWd] = useState(false); const [to, setTo] = useState(""); const [amt, setAmt] = useState(""); const [code, setCode] = useState("");
+  const [lim, setLim] = useState<{ perTradeUsd: number; dailyUsd: number } | null>(null);
+  async function save(p: any) { try { await api("/api/wallet/merod", { method: "POST", json: { action: "settings", accountId: data.id, ...p } }); toast("Saved", "up"); refresh(); } catch (e: any) { toast(e.message, "down"); } }
+  async function withdraw() {
+    setBusy(true);
+    try { const r: any = await api("/api/wallet/merod", { method: "POST", json: { action: "withdraw", accountId: data.id, to, amountSol: Number(amt), code } }); toast(`Sent. Signature ${String(r.signature).slice(0, 10)}…`, "up"); setWd(false); setCode(""); refresh(); }
+    catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
+  }
   const l = lim ?? data.limits;
   return (
     <section className="surface rounded-2xl p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="flex items-center gap-2 text-[1.05rem] font-semibold"><Sparkles className="size-5 text-accent-2" /> Merod Wallet <span className="rounded-md bg-down-soft px-1.5 py-0.5 text-[10px] font-semibold text-down">REAL MONEY</span></h3>
+          <h3 className="flex items-center gap-2 text-[1.05rem] font-semibold"><Wallet className="size-5 text-accent-2" />
+            <input defaultValue={data.name} onBlur={(e) => { if (e.target.value.trim() && e.target.value !== data.name) save({ name: e.target.value }); }} className="w-56 rounded-md border border-transparent bg-transparent px-1 hover:border-line focus:border-accent/60 focus:outline-none" aria-label="Wallet name" />
+            <span className="rounded-md bg-down-soft px-1.5 py-0.5 text-[10px] font-semibold text-down">REAL MONEY</span></h3>
           <button onClick={() => { navigator.clipboard.writeText(data.address); toast("Address copied", "neutral"); }} className="mt-1 flex items-center gap-1.5 font-mono text-[12.5px] text-muted hover:text-text">{data.address} <Copy className="size-3.5" /></button>
           <p className="mt-1 text-[11px] text-faint">Deposit: send SOL or USDC (Solana network only) to this address.</p>
         </div>
-        <div className="text-right"><div className="num text-[1.8rem] font-semibold">${(data.balances?.totalUsd ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}</div>
-          <button onClick={() => refresh()} className="ml-auto flex items-center gap-1 text-[11px] text-muted hover:text-text"><RefreshCw className="size-3" /> Refresh</button></div>
+        <div className="text-right"><div className="num text-[1.6rem] font-semibold">${(data.balances?.totalUsd ?? 0).toLocaleString("en-US", { maximumFractionDigits: 2 })}</div></div>
       </div>
-      {!data.liveCrypto && <p className="mt-3 rounded-lg bg-warn-soft px-3 py-2 text-[12px] text-warn">Real crypto trading is off. Turn on the Real money switch in the top bar (needs 2FA) to trade from this wallet.</p>}
       {data.error && <p className="mt-3 text-[12px] text-down">{data.error}</p>}
       <div className="mt-3 overflow-x-auto"><table className="w-full text-[12.5px]"><thead className="text-left text-[11px] text-muted"><tr><th className="py-1">Asset</th><th className="text-right">Amount</th><th className="text-right">Price</th><th className="text-right">Value</th></tr></thead>
         <tbody>{(data.balances?.tokens ?? []).map((t: any) => <tr key={t.mint} className="border-t border-line/60"><td className="py-1.5"><b>{t.symbol}</b> <span className="text-muted">{t.name}</span></td><td className="num text-right">{t.amount.toLocaleString("en-US", { maximumFractionDigits: 6 })}</td><td className="num text-right">{t.price != null ? `$${t.price.toPrecision(6)}` : "—"}</td><td className="num text-right">{t.usd != null ? `$${t.usd.toFixed(2)}` : "—"}</td></tr>)}</tbody></table></div>

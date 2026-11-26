@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { Keypair, VersionedTransaction, TransactionMessage, PublicKey, SystemProgram } from "@solana/web3.js";
 import { newUser } from "./helpers";
 import { one, q } from "@/server/db";
-import { createMerodWallet, getMerodWallet, updateSettings } from "@/server/wallet/merod-wallet";
+import { createMerodWallet, getMerodWallet, listMerodWallets, updateSettings } from "@/server/wallet/merod-wallet";
 
 test("Merod Wallet: key stored encrypted only, one per user, caps editable", async () => {
   const me = await newUser();
@@ -14,17 +14,23 @@ test("Merod Wallet: key stored encrypted only, one per user, caps editable", asy
   assert.ok(k.enc_secret && !k.enc_secret.includes(w.address), "secret stored encrypted");
   const acct = await one<any>("SELECT metadata FROM trading_accounts WHERE id=$1", [w.id]);
   assert.ok(!JSON.stringify(acct.metadata).includes(k.enc_secret), "secret never in account metadata");
-  await assert.rejects(createMerodWallet(me), /already have/);
-  await updateSettings(me, { perTradeUsd: 25, dailyUsd: 50, payWith: "SOL" });
-  const after = await getMerodWallet(me);
+  // Unlimited wallets: each new one has its own address and settings.
+  const w2 = await createMerodWallet(me, "Meme coins");
+  const w3 = await createMerodWallet(me);
+  assert.notEqual(w2.address, w.address); assert.notEqual(w3.address, w2.address);
+  assert.equal((await listMerodWallets(me)).length, 3);
+  await updateSettings(me, w2.id, { perTradeUsd: 25, dailyUsd: 50, payWith: "SOL", name: "Memes" });
+  const after = await getMerodWallet(me, w2.id);
   assert.equal(after.metadata.limits.perTradeUsd, 25);
   assert.equal(after.metadata.pay_with, "SOL");
+  assert.equal(after.label, "Memes");
+  assert.equal((await getMerodWallet(me, w.id)).metadata.limits.perTradeUsd, 100, "other wallets keep their own caps");
 });
 
 test("Merod Wallet auto-sign refuses buys above the per-trade cap and signs within it", async () => {
   const me = await newUser();
   const w = await createMerodWallet(me);
-  await updateSettings(me, { perTradeUsd: 10, dailyUsd: 100 });
+  await updateSettings(me, w.id, { perTradeUsd: 10, dailyUsd: 100 });
   const asset = (await one<any>("SELECT id FROM assets LIMIT 1"))!;
   const payer = new PublicKey(w.address);
   const msg = new TransactionMessage({ payerKey: payer, recentBlockhash: "11111111111111111111111111111111", instructions: [SystemProgram.transfer({ fromPubkey: payer, toPubkey: Keypair.generate().publicKey, lamports: 1 })] }).compileToV0Message();

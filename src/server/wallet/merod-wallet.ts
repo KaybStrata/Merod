@@ -23,18 +23,25 @@ export async function rpc() {
   return new Connection(helius ? `https://mainnet.helius-rpc.com/?api-key=${helius}` : "https://api.mainnet-beta.solana.com", "confirmed");
 }
 
-export async function getMerodWallet(userId: string) {
-  return one<any>(`SELECT t.*, k.public_key FROM trading_accounts t JOIN merod_wallet_keys k ON k.account_id=t.id WHERE t.user_id=$1 AND t.status='active' LIMIT 1`, [userId]);
+/** One Merod Wallet by id, or the user's oldest when no id is given. */
+export async function getMerodWallet(userId: string, accountId?: string | null) {
+  return one<any>(`SELECT t.*, k.public_key FROM trading_accounts t JOIN merod_wallet_keys k ON k.account_id=t.id
+                    WHERE t.user_id=$1 AND t.status='active' AND ($2::uuid IS NULL OR t.id=$2) ORDER BY t.created_at LIMIT 1`, [userId, accountId ?? null]);
+}
+export async function listMerodWallets(userId: string) {
+  return q<any>(`SELECT t.*, k.public_key FROM trading_accounts t JOIN merod_wallet_keys k ON k.account_id=t.id WHERE t.user_id=$1 AND t.status='active' ORDER BY t.created_at`, [userId]);
 }
 
-export async function createMerodWallet(userId: string) {
-  if (await getMerodWallet(userId)) throw new HttpError(409, "You already have a Merod Wallet");
+/** Create a new Merod Wallet. No limit on how many: each gets its own keypair, name, caps and balances. */
+export async function createMerodWallet(userId: string, name?: string) {
   const kp = Keypair.generate();
   const pub = kp.publicKey.toBase58();
+  const n = Number((await one<any>("SELECT count(*)::int AS n FROM trading_accounts WHERE user_id=$1 AND provider_id='merod_wallet'", [userId]))?.n ?? 0);
+  const label = (name?.trim() || (n ? `Merod Wallet ${n + 1}` : "Merod Wallet")).slice(0, 60);
   const acct = await one<any>(
     `INSERT INTO trading_accounts (user_id, kind, provider_id, label, external_ref, network, status, metadata)
-     VALUES ($1,'wallet','merod_wallet','Merod Wallet',$2,'solana','active',$3) RETURNING id`,
-    [userId, pub, JSON.stringify({ environment: "production", merod_wallet: true, limits: { perTradeUsd: 100, dailyUsd: 500 }, pay_with: "USDC" })]);
+     VALUES ($1,'wallet','merod_wallet',$4,$2,'solana','active',$3) RETURNING id`,
+    [userId, pub, JSON.stringify({ environment: "production", merod_wallet: true, limits: { perTradeUsd: 100, dailyUsd: 500 }, pay_with: "USDC" }), label]);
   await q("INSERT INTO merod_wallet_keys (account_id, user_id, public_key, enc_secret) VALUES ($1,$2,$3,$4)",
     [acct.id, userId, pub, encrypt(Buffer.from(kp.secretKey).toString("base64"), aad(acct.id))]);
   await audit({ actorType: "user", actorId: userId, userId, action: "merod_wallet.created", target: acct.id, data: { publicKey: pub } });
@@ -70,23 +77,25 @@ export async function balances(address: string) {
   return { sol, tokens: valued, totalUsd: valued.reduce((s, b) => s + (b.usd ?? 0), 0) };
 }
 
-export async function walletStatus(userId: string) {
-  const w = await getMerodWallet(userId);
-  if (!w) return { exists: false };
+async function oneStatus(w: any) {
   let bal: any = null, error: string | null = null;
   try { bal = await balances(w.external_ref); } catch (e: any) { error = `Couldn't read balances: ${String(e.message).slice(0, 120)}`; }
   const spent = await one<any>("SELECT COALESCE(SUM(notional_usd),0) AS s FROM orders WHERE account_id=$1 AND side='buy' AND status IN ('filled','submitted','partially_filled') AND created_at > date_trunc('day', now())", [w.id]);
+  return { id: w.id, name: w.label, address: w.external_ref, limits: w.metadata?.limits ?? { perTradeUsd: 100, dailyUsd: 500 }, payWith: w.metadata?.pay_with ?? "USDC", spentTodayUsd: Number(spent?.s ?? 0), balances: bal, error, createdAt: w.created_at };
+}
+export async function walletStatus(userId: string) {
+  const list = await listMerodWallets(userId);
   const flags = await getFlags();
-  return { exists: true, id: w.id, address: w.external_ref, limits: w.metadata?.limits ?? { perTradeUsd: 100, dailyUsd: 500 }, payWith: w.metadata?.pay_with ?? "USDC", spentTodayUsd: Number(spent?.s ?? 0), balances: bal, error,
-    liveCrypto: !!flags.live_crypto_trading, automated: !!flags.automated_real_money };
+  const wallets = await Promise.all(list.map(oneStatus));
+  return { exists: wallets.length > 0, wallets, totalUsd: wallets.reduce((s, w) => s + (w.balances?.totalUsd ?? 0), 0), liveCrypto: !!flags.live_crypto_trading, automated: !!flags.automated_real_money };
 }
 
-export async function updateSettings(userId: string, s: { perTradeUsd?: number; dailyUsd?: number; payWith?: "USDC" | "SOL" }) {
-  const w = await getMerodWallet(userId);
-  if (!w) throw new HttpError(404, "No Merod Wallet yet");
+export async function updateSettings(userId: string, accountId: string, s: { perTradeUsd?: number; dailyUsd?: number; payWith?: "USDC" | "SOL"; name?: string }) {
+  const w = await getMerodWallet(userId, accountId);
+  if (!w) throw new HttpError(404, "Merod Wallet not found");
   const limits = { ...(w.metadata?.limits ?? {}), ...(s.perTradeUsd ? { perTradeUsd: s.perTradeUsd } : {}), ...(s.dailyUsd ? { dailyUsd: s.dailyUsd } : {}) };
-  await q("UPDATE trading_accounts SET metadata = metadata || $2::jsonb WHERE id=$1", [w.id, JSON.stringify({ limits, ...(s.payWith ? { pay_with: s.payWith } : {}) })]);
-  await audit({ actorType: "user", actorId: userId, userId, action: "merod_wallet.settings", target: w.id, data: { limits, payWith: s.payWith } });
+  await q("UPDATE trading_accounts SET metadata = metadata || $2::jsonb, label=COALESCE($3, label) WHERE id=$1", [w.id, JSON.stringify({ limits, ...(s.payWith ? { pay_with: s.payWith } : {}) }), s.name?.trim()?.slice(0, 60) || null]);
+  await audit({ actorType: "user", actorId: userId, userId, action: "merod_wallet.settings", target: w.id, data: { limits, payWith: s.payWith, name: s.name } });
   return walletStatus(userId);
 }
 
@@ -115,10 +124,10 @@ async function reject(o: any, reason: string) {
 }
 
 /** Send SOL out of the Merod Wallet (2FA required). Keeps 0.002 SOL for fees/rent. */
-export async function withdrawSol(userId: string, to: string, amountSol: number, code: string) {
+export async function withdrawSol(userId: string, accountId: string, to: string, amountSol: number, code: string) {
   if (!(await verifyStepUp(userId, code))) throw new HttpError(403, "Invalid 2FA code (turn on 2FA in Settings → Security first)");
-  const w = await getMerodWallet(userId);
-  if (!w) throw new HttpError(404, "No Merod Wallet yet");
+  const w = await getMerodWallet(userId, accountId);
+  if (!w) throw new HttpError(404, "Merod Wallet not found");
   let dest: PublicKey;
   try { dest = new PublicKey(to); } catch { throw new HttpError(400, "That isn't a valid Solana address"); }
   const conn = await rpc();
