@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AiNote } from "@/components/talk/AiNote";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -26,6 +27,14 @@ function Talk() {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [digest, setDigest] = useState<DigestT | null>(null);
+  // Paper or real money for trades and bots from Talk prompts (remembered in this browser).
+  const [book, setBookState] = useState<"paper" | "live">("paper");
+  useEffect(() => { try { if (localStorage.getItem("merod-talk-book") === "live") setBookState("live"); } catch { /* ignore */ } }, []);
+  const setBook = (b: "paper" | "live") => { setBookState(b); try { localStorage.setItem("merod-talk-book", b); } catch { /* ignore */ } };
+  // Which AI answers Talk prompts (remembered in this browser). Merod AI = built-in rules, no key needed.
+  const [ai, setAiState] = useState<"merod" | "openai" | "anthropic">("merod");
+  useEffect(() => { try { const v = localStorage.getItem("merod-talk-ai"); if (v === "openai" || v === "anthropic" || v === "merod") setAiState(v); } catch { /* ignore */ } }, []);
+  const setAi = (v: "merod" | "openai" | "anthropic") => { setAiState(v); try { localStorage.setItem("merod-talk-ai", v); } catch { /* ignore */ } };
   const held = useRef<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   usePageTitle({ title: title ?? (convId ? "Conversation" : "New conversation"), section: new Date().toLocaleDateString([], { weekday: "long" }) }, [title, convId]);
@@ -61,7 +70,7 @@ function Talk() {
     setBusy(true); setNote(null);
     setMessages((m) => [...m, { id: `u${Date.now()}`, role: "user", content: text }]);
     try {
-      const r: any = await api("/api/ai/prompt", { method: "POST", json: { text, conversationId: convId } });
+      const r: any = await api("/api/ai/prompt", { method: "POST", json: { text, conversationId: convId, book, provider: ai } });
       const replies = Array.isArray(r.messages) && r.messages.length ? r.messages : [r.message];
       setMessages((m) => [...m, ...replies]);
       setNote(r.fallbackReason ?? null);
@@ -104,13 +113,13 @@ function Talk() {
           )}
           <TalkThread messages={messages} onSend={send} onDone={() => convId && loadConversation(convId)} allowed={allowed} />
           {busy && <div className="flex items-center gap-2 pl-12 text-[13px] text-muted"><span className="size-1.5 animate-pulse rounded-full bg-accent-2" /> Merod is thinking…</div>}
-          {note && <p className="pl-12 text-[11.5px] text-faint">{note}</p>}
+          <AiNote note={note} className="pl-12 text-[11.5px] text-faint" />
           <div ref={bottom} />
         </div>
       </div>
       <div className="shrink-0 px-4 pb-4 pt-2 sm:px-6">
         <div className="mx-auto w-full max-w-[860px]">
-          <TalkComposer onSend={send} busy={busy} suggestions={suggestions} voice={!!talk?.talkPrefs.voice}
+          <TalkComposer onSend={send} busy={busy} suggestions={suggestions} voice={!!talk?.talkPrefs.voice} book={book} onBook={setBook} ai={ai} onAi={setAi}
             placeholder={messages.length ? "Reply, or ask Merod anything…" : "Ask Merod anything, or just talk…"} />
           <p className="mt-1.5 text-center text-[10.5px] text-faint">Every plan runs through the same preview, risk checks, approval and audit log as Classic mode.</p>
         </div>

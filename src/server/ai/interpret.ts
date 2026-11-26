@@ -2,13 +2,13 @@ import "@/lib/server-only-shim";
 import { one, q } from "../db";
 import { audit } from "../audit";
 import { HttpError } from "../errors";
-import { preview, place, resolveAsset, cancelAll } from "../engine/engine";
+import { preview, place, resolveAsset, cancelAll, liveAccountFor } from "../engine/engine";
 import type { OrderIntent } from "../engine/types";
 import { createBot, type BotConfig } from "../bots/service";
 import { pauseAllBots, resumeAllBots } from "../bots/runner";
 import { parsePrompt, mergeClarification, setCatalog } from "./parser";
 import { trainingNotes } from "../learning/materials";
-import { aiAvailable, llmInterpret, llmResearch, type AIProvider } from "./llm";
+import { AI_MODELS, aiAvailable, llmInterpret, llmResearch, type AIProvider } from "./llm";
 import type { Instruction, TradeLeg } from "./schema";
 import { promptDefaults } from "../training/trainer";
 import { parseMimicRequest, parseMimicTop, topRoiLeaders } from "../copy/leaders";
@@ -24,7 +24,7 @@ import { attachWidgets, type WidgetHint } from "../talk/attach";
  *  → 5 engine validation → 6 show price/fees/risks → 7 approval when required → 8 route → 9 confirm → 10 portfolio.
  * The AI never calls the engine directly; this module turns a validated instruction into engine intents.
  */
-export interface PromptInput { text: string; conversationId?: string; screenAssetId?: string | null; provider?: AIProvider; model?: string; /** "2/5" when this is one instruction of a multi-instruction prompt (server-internal) */ part?: string }
+export interface PromptInput { text: string; conversationId?: string; screenAssetId?: string | null; provider?: AIProvider; model?: string; /** "2/5" when this is one instruction of a multi-instruction prompt (server-internal) */ part?: string; /** paper or real money for trades/bots from this prompt */ book?: "paper" | "live" }
 export type PlanCard =
   | { type: "order"; intent: OrderIntent; plan: any }
   | { type: "bot"; config: BotConfig; strategyName: string; assetLabel: string }
@@ -50,7 +50,12 @@ export async function ensureParserCatalog() {
 
 async function userAI(userId: string, input: PromptInput) {
   const p = await one<{ ai_provider: AIProvider; ai_model: string }>("SELECT ai_provider, ai_model FROM user_profiles WHERE user_id=$1", [userId]);
-  return { provider: input.provider ?? p?.ai_provider ?? "anthropic", model: input.model ?? p?.ai_model ?? "claude-opus-5-5" };
+  const provider = input.provider ?? p?.ai_provider ?? "anthropic";
+  // A provider picked for this prompt (e.g. the Talk switch) uses your saved model only if it belongs to that provider.
+  const list = ((AI_MODELS as any)[provider] ?? []) as { id: string }[];
+  const saved = input.model ?? p?.ai_model;
+  const model = saved && (provider === "merod" || list.some((m) => m.id === saved)) ? saved : list[0]?.id ?? saved ?? "claude-opus-5-5";
+  return { provider, model };
 }
 
 async function interpret(userId: string, input: PromptInput, screenSymbol: string | null) {
@@ -153,6 +158,23 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   let instruction: Instruction | null = null, usedProvider = "merod", usedModel = "deterministic", fallbackReason: string | null = null;
   let originText = text;
   await ensureParserCatalog();
+  // Typed approval ("approve", "yes", "do it", "confirm") approves the latest card waiting for you in this conversation.
+  if (/^(please\s+)?(approve|approved|yes|yep|yeah|confirm|confirmed|do it|go ahead|go|apply( it| them)?|ok(ay)?|sure)[\s.!]*$/i.test(text)) {
+    const pending = await one<any>("SELECT * FROM trading_prompts WHERE conversation_id=$1 AND user_id=$2 AND role='assistant' AND status='needs_approval' AND plan IS NOT NULL ORDER BY created_at DESC LIMIT 1", [convId, userId]);
+    if (pending) {
+      const card = pending.plan as PlanCard;
+      if (card.type === "app_action") {
+        // Settings are applied by your browser: hand the same card back marked to apply right away (you just approved it).
+        await q("UPDATE trading_prompts SET status='superseded' WHERE id=$1", [pending.id]);
+        return reply(`Applying ${card.steps.length === 1 ? "the change" : `the ${card.steps.length} changes`}:\n${card.steps.map((s) => `• ${s.label}`).join("\n")}`, { ...card, autoApply: true } as any, "needs_approval", null);
+      }
+      try {
+        const result = await approvePlan(userId, pending.id);
+        const what = card.type === "order" ? `Order ${result.status}${result.reason ? `: ${result.reason}` : ""}` : card.type === "bot" ? `Bot ${result.status}` : card.type === "mimic" ? `Mimicking @${result.handle}` : "Done";
+        return reply(`Approved. ${what}.`, { type: "executed", detail: what, orderId: result.orderId, status: result.status }, "executed", null);
+      } catch (e: any) { return reply(`Couldn't approve that: ${e.message}`, null, "rejected", null); }
+    }
+  }
   if (last?.status === "clarify" && last.interpretation) {
     // A full new command ("buy $100 of msft") replaces the pending question; it inherits the asset if it didn't name one.
     const fresh = parsePrompt(text);
@@ -275,6 +297,11 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const r = await legAsset(leg, input.screenAssetId);
       if (!r.asset) return reply(r.error!, { type: "clarify", question: r.error!, suggestions: [] }, "clarify");
       const intent = legToIntent(leg, r.asset.id, r.asset.last_price);
+      // Real money chosen in the composer: route to your real account for this asset (the engine still requires the Real money switch + 2FA).
+      if (input.book === "live") {
+        try { intent.accountId = (await liveAccountFor(userId, r.asset.id)).id; }
+        catch (e: any) { return reply(`Real money is selected, but ${e.message.replace(/^./, (c: string) => c.toLowerCase())}`, { type: "clarify", question: "Switch to Paper, or connect a real account?", suggestions: [] }, "rejected"); }
+      }
       // Auto-training: apply learned protective defaults (risk-reducing only).
       const learned = await promptDefaults(userId);
       const trainingNotes: string[] = [];
@@ -326,7 +353,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
         const sw = ins.swing;
         const entry = sw.dip_pct > 0 ? `dip ${sw.dip_pct}%` : "buy now";
         // No budget / daily spend / loss caps (0 = no limit); each coin's buy is the amount asked for.
-        const config = { description: ins.summary, assetIds: coins.map((c) => c.id), markets: [], isPaper: user?.trading_mode !== "live", createdFromPrompt: originText, start: true,
+        const config = { description: ins.summary, assetIds: coins.map((c) => c.id), markets: [], isPaper: input.book ? input.book !== "live" : user?.trading_mode !== "live", createdFromPrompt: originText, start: true,
           budgetUsd: 0, maxPositionUsd: amountUsd ?? 0, maxDailySpendUsd: 0, maxDailyLossUsd: 0, maxTradesPerDay: null, minLiquidityUsd: 0, maxSlippageBps: 300, maxPriceDeviationPct: 5,
           schedule: "every_15s" as const, approvalRequired: perms?.mode === "manual", notify: { trades: true, errors: true },
           name: `${gainers ? `Top ${coins.length} ${label}` : label} ${entry} → +${sw.take_profit_pct}%${sw.repeat ? " loop" : ""}`.slice(0, 80), strategyId: "dip_rebound_loop",
@@ -340,7 +367,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       const a = r.asset;
       const amountUsd = leg.amount_type === "usd" ? leg.amount! : leg.amount_type === "quantity" && a.last_price ? leg.amount! * a.last_price : null;
       const user = await one<any>("SELECT trading_mode FROM users WHERE id=$1", [userId]);
-      const base = { description: ins.summary, assetIds: [a.id], markets: [], isPaper: user?.trading_mode !== "live", createdFromPrompt: originText, start: true,
+      const base = { description: ins.summary, assetIds: [a.id], markets: [], isPaper: input.book ? input.book !== "live" : user?.trading_mode !== "live", createdFromPrompt: originText, start: true,
         budgetUsd: Math.max((amountUsd ?? 100) * 3, 100), maxPositionUsd: Math.max(amountUsd ?? 100, 1), maxDailySpendUsd: Math.max((amountUsd ?? 100) * 4, 100),
         maxDailyLossUsd: Math.max((amountUsd ?? 100), 50), maxTradesPerDay: null, minLiquidityUsd: 0, maxSlippageBps: 100, maxPriceDeviationPct: 5,
         schedule: "every_1m" as const, approvalRequired: perms?.mode === "manual", notify: { trades: true, errors: true } };
@@ -417,27 +444,40 @@ export async function handlePrompt(userId: string, input: PromptInput) {
         } catch (e: any) { fallbackReason = `Research model failed: ${e.message}`; }
       }
       const plain = factsAnswer(facts, dates);
+      // Say exactly why the AI didn't answer: no key, or a connected key the provider refused (e.g. out of credits).
+      const keyOn = provider !== "merod" && (await aiAvailable(provider, userId).catch(() => false));
+      const name = provider === "anthropic" ? "Claude" : "OpenAI";
+      const why = !keyOn ? "Connect a Claude or ChatGPT key under Broker & AI keys for full answers."
+        : /429|quota|credit|billing|insufficient/i.test(fallbackReason ?? "") ? `Your ${name} key is connected, but ${name} refused the request because the account has no credits left. Add credits in ${provider === "anthropic" ? "console.anthropic.com → Billing" : "platform.openai.com → Billing"} (or switch to the other provider in Settings → AI), then ask again.`
+        : /401|invalid|incorrect api key|unauthori/i.test(fallbackReason ?? "") ? `Your ${name} key is saved but ${name} says it's invalid. Paste a fresh key under Broker & AI keys.`
+        : fallbackReason ? `Your ${name} key is connected, but the request failed: ${fallbackReason.replace(/^Research model failed: /, "").slice(0, 160)}` : "";
       const t = plain
-        ? `${plain}${sourcesLine(facts)}${provider === "merod" || !(await aiAvailable(provider, userId).catch(() => false)) ? "\n\nAdd a Claude or ChatGPT key under AI Keys for full answers (news, reasons, comparisons and anything not in the price data)." : ""}`
-        : "Which stock or coin is this about? Name it (e.g. NVDA, Bitcoin, $BONK) and I'll pull its live price and history. For general questions, add a Claude or ChatGPT key under AI Keys.";
+        ? `${plain}${sourcesLine(facts)}${why ? `\n\n${why}` : ""}`
+        : `I couldn't answer that from price data alone.${why ? ` ${why}` : ""}`;
       return reply(t, { type: "research", text: t }, "info", instruction, { chartSymbol: facts[0]?.symbol ?? null });
     }
   }
 }
 
 /** Human approval of an assistant plan card. Runs through the engine with userConfirmed=true. */
-export async function approvePlan(userId: string, messageId: string, overrides?: { config?: Partial<BotConfig>; mimic?: { percent?: number; maxDailyUsd?: number } }) {
+export async function approvePlan(userId: string, messageId: string, overrides?: { config?: Partial<BotConfig>; mimic?: { percent?: number; maxDailyUsd?: number }; intent?: Record<string, unknown> }) {
   const m = await one<any>("SELECT * FROM trading_prompts WHERE id=$1 AND user_id=$2 AND role='assistant'", [messageId, userId]);
   if (!m?.plan) throw new HttpError(404, "Plan not found");
   if (m.status !== "needs_approval") throw new HttpError(409, `This plan is already ${m.status}`);
   const card = m.plan as PlanCard;
   let result: any;
   if (card.type === "order") {
-    const { order } = await place(card.intent, { userId, source: "prompt", sourceRef: m.id, idempotencyKey: `prompt-approve:${m.id}`, actor: { type: "user", id: userId }, userConfirmed: true });
+    // Edits made on the card (amount, limit, take-profit, stop-loss only); the engine re-runs every check when placing.
+    const allowed = ["notionalUsd", "quantity", "limitPrice", "takeProfit", "stopLoss"] as const;
+    const edits = Object.fromEntries(allowed.filter((k) => Number((overrides?.intent as any)?.[k]) > 0).map((k) => [k, Number((overrides!.intent as any)[k])]));
+    const intent: any = { ...card.intent, ...edits };
+    if ("quantity" in edits) delete intent.notionalUsd; if ("notionalUsd" in edits) delete intent.quantity;
+    const { order } = await place(intent, { userId, source: "prompt", sourceRef: m.id, idempotencyKey: `prompt-approve:${m.id}`, actor: { type: "user", id: userId }, userConfirmed: true });
     result = { orderId: order.id, status: order.status, reason: order.status_reason,
       fillPrice: Number(order.avg_fill_price) || null, filledQty: Number(order.filled_quantity) || 0, at: new Date(order.updated_at ?? Date.now()).toISOString() };
   } else if (card.type === "bot") {
-    const bot = await createBot(userId, { ...card.config, ...(overrides?.config ?? {}) } as BotConfig, "ai");
+    const edited: any = overrides?.config ?? {};
+    const bot = await createBot(userId, { ...card.config, ...edited, params: { ...(card.config.params ?? {}), ...(edited.params ?? {}) } } as BotConfig, "ai");
     result = { botId: bot.id, status: bot.status };
   } else if (card.type === "mimic") {
     if ((await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role !== "super_admin") throw new HttpError(403, "Mimic trading is only available on the platform owner's account");

@@ -36,7 +36,12 @@ export function parseAppAction(raw: string): AppAction | null {
 
   const steps: ActionStep[] = [];
   // Risk flagging / rejections / liquidity screening.
-  if (/\b(risk ?(flag|flags|flagging|factor|screen|screening|check|checks)|rejects?|rejections?|rejecting|flagged|risky (coins?|tokens?)|token screening|liquidity (min|minimum|limit|check|filter))\b/.test(t)) {
+  // "confidence" (auto trading / Modo's confidence bar) → force trading ignores the bar.
+  if (/\bconfidence\b[^.]{0,40}\b(flag|flags|flagging|check|checks|bar|filter|factor)\b|\b(flag|flagging)\b[^.]{0,20}\bconfidence\b/.test(t) || /\bconfidence\b/.test(t) && /\brisk\b/.test(t)) {
+    const off = OFF.test(t) && !/\b(turn (it )?on|enable)\b/.test(t);
+    steps.push({ op: "auto", body: { forceTrading: off }, label: off ? "Force trading on: auto trading and Modo ignore the confidence bar" : "Force trading off: auto trading and Modo use the confidence bar again" });
+  }
+  if (/\b(risk|confidence)\b[^.]{0,40}\b(flag|flags|flagging|factor|screen|screening|check|checks)\b|\b(rejects?|rejections?|rejecting|flagged|risky (coins?|tokens?)|token screening|liquidity (min|minimum|limit|check|filter))\b/.test(t)) {
     const off = OFF.test(t) && !/\b(turn (it )?on|enable|block)\b/.test(t);
     const on = !off && ON.test(t);
     if (off || on) {

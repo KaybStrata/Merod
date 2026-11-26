@@ -30,3 +30,28 @@ test("an app action comes back as a card to approve; the server never applies it
   const after = await q<any>("SELECT block_risky_tokens FROM risk_settings WHERE user_id=$1", [me]);
   assert.deepEqual(after, before, "nothing changed until the user approves in their browser");
 });
+
+test("typing 'approve' approves the waiting card: settings come back marked to apply right away", async () => {
+  const me = await newUser();
+  await q("UPDATE user_profiles SET ai_provider='merod' WHERE user_id=$1", [me]);
+  const r: any = await handlePrompt(me, { text: "risk flagging/factor to 0" });
+  const a: any = await handlePrompt(me, { text: "approve", conversationId: r.conversationId });
+  assert.equal(a.message.plan.type, "app_action");
+  assert.equal(a.message.plan.autoApply, true);
+  assert.match(a.message.content, /Applying/);
+});
+
+test("Real money in the composer routes prompt trades to a real account, and explains when there is none", async () => {
+  const me = await newUser();
+  await q("UPDATE user_profiles SET ai_provider='merod' WHERE user_id=$1", [me]);
+  await q("UPDATE trading_permissions SET allow_ai_prompts=true WHERE user_id=$1", [me]);
+  const r: any = await handlePrompt(me, { text: "buy $10 of SOL", book: "live" });
+  assert.match(r.message.content, /Real money is selected/, r.message.content);
+});
+
+test("'turn off all risk and confidence flagging for all bots' covers risk flags, every bot, and the confidence bar", () => {
+  const a = parseAppAction("turn off all risk and confidence flagging for all bots until further notice") as any;
+  const ops = a.steps.map((s: any) => s.op);
+  assert.ok(ops.includes("settings") && ops.includes("bots_allow_risky") && ops.includes("auto"), JSON.stringify(ops));
+  assert.equal(a.steps.find((s: any) => s.op === "auto").body.forceTrading, true);
+});

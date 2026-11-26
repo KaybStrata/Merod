@@ -73,7 +73,7 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
           <div className={cx("fade-up flex flex-col overflow-hidden rounded-xl border border-line bg-panel/95 shadow-2xl backdrop-blur",
             view === "full" ? "fixed inset-x-3 bottom-24 top-16 z-50 mx-auto max-w-[900px] sm:inset-x-8" : "mb-2")}>
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-3 py-1.5 text-xs text-muted">
-              <span className="flex min-w-0 items-center gap-1.5"><Sparkles className="size-3.5 shrink-0 text-accent-2" /> <span className="shrink-0">Merod AI</span> {note && <span className="truncate text-warn">· {note}</span>}</span>
+              <span className="flex min-w-0 items-center gap-1.5"><Sparkles className="size-3.5 shrink-0 text-accent-2" /> <span className="shrink-0">Merod AI</span> {note && <span className="truncate text-warn">· {/429|credit/i.test(note) ? <>OpenAI is out of credits. <a href="https://platform.openai.com/settings/organization/billing/" target="_blank" rel="noreferrer noopener" className="underline">Add credits →</a></> : note}</span>}</span>
               <span className="flex shrink-0 items-center gap-0.5">
                 <Link href={conversationId ? `/ai?c=${conversationId}` : "/ai"} className="rounded p-1 hover:text-text" title="Open full prompt history"><ExternalLink className="size-3.5" /></Link>
                 <button onClick={() => setView(view === "full" ? "open" : "full")} className="rounded p-1 hover:text-text" title={view === "full" ? "Exit full screen" : "Full screen"}>

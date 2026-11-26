@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Maximize2 } from "lucide-react";
@@ -54,12 +54,26 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
   const [status, setStatus] = useState<string>(message.status);
   const [result, setResult] = useState<any>(card?.result ?? null);
   const [mimic, setMimic] = useState({ percent: card?.settings?.percent ?? 100, maxDailyUsd: card?.settings?.maxDailyUsd ?? 0 });
+  const [editing, setEditing] = useState(false);
+  const [botEdits, setBotEdits] = useState<any>({});
+  const [orderEdits, setOrderEdits] = useState<any>({});
+  // Settings card you approved by typing "approve": apply it once, as soon as it arrives.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (card?.type !== "app_action" || !card.autoApply || message.status !== "needs_approval" || autoRan.current) return;
+    autoRan.current = true;
+    (async () => {
+      setBusy("approve");
+      try { await applyActions(card.steps); await api(`/api/ai/plans/${message.id}`, { method: "POST" }).catch(() => {}); setStatus("approved"); toast("Changes applied", "up"); onDone?.(); }
+      catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   if (!card) return null;
 
   async function approve() {
     setBusy("approve");
     try {
-      const r = await api(`/api/ai/plans/${message.id}`, { method: "POST", ...(card.type === "mimic" ? { json: { mimic } } : {}) });
+      const r = await api(`/api/ai/plans/${message.id}`, { method: "POST", ...(card.type === "mimic" ? { json: { mimic } } : card.type === "bot" && Object.keys(botEdits).length ? { json: { config: botEdits } } : card.type === "order" && Object.keys(orderEdits).length ? { json: { intent: orderEdits } } : {}) });
       setResult(r.result); setStatus("approved");
       toast(card.type === "bot" ? "Bot activated" : card.type === "mimic" ? `Mimicking @${card.handle}` : card.type === "order" ? `Order ${r.result.status}` : "Done", "up");
       onDone?.();
@@ -117,8 +131,18 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
             <span className={p.intent.side === "buy" ? "text-up" : "text-down"}>{p.intent.side.toUpperCase()}</span> {qty(p.quantity)} {p.asset.symbol}
             <span className="ml-1 text-xs font-normal text-muted">on {p.asset.venue}</span>
           </div>
-          <div className="flex gap-1.5"><PaperBadge paper={p.isPaper} /><SourceBadge source={p.price?.source} /></div>
+          <div className="flex items-center gap-1.5">
+            {actionable && !editing && <button onClick={() => setEditing(true)} className="rounded-md border border-line px-2 py-0.5 text-[11px] text-muted hover:border-accent/50 hover:text-text">Edit</button>}
+            <PaperBadge paper={p.isPaper} /><SourceBadge source={p.price?.source} />
+          </div>
         </div>
+        {actionable && editing && (
+          <OrderEditor intent={{ ...p.intent, ...orderEdits }} onCancel={() => setEditing(false)}
+            onSave={(e) => { setOrderEdits(e); setEditing(false); toast("Edits will be used when you approve (every check runs again)", "neutral"); }} />
+        )}
+        {Object.keys(orderEdits).length > 0 && actionable && (
+          <div className="mt-1 text-[11px] text-accent-2">Edited: {orderEdits.notionalUsd ? `$${orderEdits.notionalUsd}` : ""}{orderEdits.quantity ? `${orderEdits.quantity} units` : ""}{orderEdits.limitPrice ? ` · limit ${orderEdits.limitPrice}` : ""}{orderEdits.takeProfit ? ` · TP ${orderEdits.takeProfit}` : ""}{orderEdits.stopLoss ? ` · SL ${orderEdits.stopLoss}` : ""}</div>
+        )}
         {p.asset?.id && (
           <TradeChart assetId={p.asset.id} symbol={p.asset.symbol} side={p.intent.side}
             price={result?.fillPrice ?? p.quote?.price ?? p.price?.value ?? null} at={result?.at ?? null} filled={!!result?.fillPrice}
@@ -147,14 +171,34 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
   }
 
   if (card.type === "bot") {
-    const c = card.config;
+    const c = { ...card.config, ...botEdits, params: { ...(card.config.params ?? {}), ...(botEdits.params ?? {}) } };
+    const botId = result?.botId;
     return (
       <div className="mt-2 rounded-xl border border-line bg-bg-2/70 p-3 text-sm">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 font-semibold"><Bot className="size-4 text-accent-2" /> {c.name}</div>
-          <PaperBadge paper={c.isPaper} />
+          <div className="flex items-center gap-2">
+            {(actionable || botId) && !editing && <button onClick={() => setEditing(true)} className="rounded-md border border-line px-2 py-0.5 text-[11px] text-muted hover:border-accent/50 hover:text-text">Edit</button>}
+            <PaperBadge paper={c.isPaper} />
+          </div>
         </div>
         <div className="mt-1 text-xs text-muted">{card.strategyName} · {card.assetLabel}</div>
+        {editing && (
+          <BotEditor config={c} busy={busy === "approve"} after={!!botId}
+            onCancel={() => setEditing(false)}
+            onSave={async (patch) => {
+              if (!botId) { setBotEdits((e: any) => ({ ...e, ...patch, params: { ...(e.params ?? {}), ...(patch.params ?? {}) } })); setEditing(false); toast("Edits will be used when you approve", "neutral"); return; }
+              setBusy("approve");
+              try {
+                const cur: any = await api(`/api/bots/${botId}`);
+                const wasRunning = cur.bot?.status === "running";
+                if (wasRunning) await api(`/api/bots/${botId}`, { method: "POST", json: { action: "pause" } });
+                await api(`/api/bots/${botId}`, { method: "PATCH", json: patch });
+                if (wasRunning) await api(`/api/bots/${botId}`, { method: "POST", json: { action: "resume" } });
+                setBotEdits((e: any) => ({ ...e, ...patch, params: { ...(e.params ?? {}), ...(patch.params ?? {}) } })); setEditing(false); toast("Bot updated", "up");
+              } catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }
+            }} />
+        )}
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
           {Object.entries(c.params ?? {}).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => <Field key={k} k={k.replace(/_/g, " ")} v={String(v)} />)}
           <Field k="Budget" v={Number(c.budgetUsd) > 0 ? usd(c.budgetUsd) : "No limit"} />
@@ -287,4 +331,67 @@ async function applyActions(steps: any[]) {
       for (const b of r.bots ?? []) if (!!b.allow_risky !== s.value) await api(`/api/bots/${b.id}`, { method: "PATCH", json: { allowRisky: s.value } });
     }
   }
+}
+
+const numIn = "h-7 w-full rounded-md border border-line bg-panel-2 px-2 text-[12px] outline-none focus:border-accent/60";
+
+/** Edit a bot's numbers from its card: strategy values (amounts, %, levels), budget and caps (0 = no limit), approval. */
+function BotEditor({ config, busy, after, onSave, onCancel }: { config: any; busy: boolean; after: boolean; onSave: (patch: any) => void; onCancel: () => void }) {
+  const numericParams = Object.entries(config.params ?? {}).filter(([, v]) => typeof v === "number" || (typeof v === "string" && v !== "" && !isNaN(Number(v))));
+  const [params, setParams] = useState<Record<string, string>>(Object.fromEntries(numericParams.map(([k, v]) => [k, String(v)])));
+  const [lim, setLim] = useState({ budgetUsd: String(config.budgetUsd ?? 0), maxPositionUsd: String(config.maxPositionUsd ?? 0), maxDailySpendUsd: String(config.maxDailySpendUsd ?? 0), maxDailyLossUsd: String(config.maxDailyLossUsd ?? 0) });
+  const [approval, setApproval] = useState(!!config.approvalRequired);
+  const save = () => {
+    const p = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== "" && !isNaN(Number(v))).map(([k, v]) => [k, Number(v)]));
+    const l = Object.fromEntries(Object.entries(lim).map(([k, v]) => [k, Math.max(0, Number(v) || 0)]));
+    onSave({ params: p, ...l, approvalRequired: approval });
+  };
+  return (
+    <div className="mt-2 rounded-lg border border-accent/40 bg-bg/50 p-2.5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {numericParams.map(([k]) => (
+          <label key={k} className="text-[10.5px] text-faint">{k.replace(/_/g, " ")}<input inputMode="decimal" value={params[k]} onChange={(e) => setParams({ ...params, [k]: e.target.value })} className={numIn} /></label>
+        ))}
+        {([["budgetUsd", "Budget $"], ["maxPositionUsd", "Per coin buy $"], ["maxDailySpendUsd", "Max daily spend $"], ["maxDailyLossUsd", "Max daily loss $"]] as const).map(([k, l]) => (
+          <label key={k} className="text-[10.5px] text-faint">{l} <span className="text-faint/70">(0 = no limit)</span><input inputMode="decimal" value={lim[k]} onChange={(e) => setLim({ ...lim, [k]: e.target.value })} className={numIn} /></label>
+        ))}
+      </div>
+      <label className="mt-2 flex items-center gap-2 text-[11.5px] text-muted"><input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} /> Ask me before each trade</label>
+      <div className="mt-2 flex gap-2">
+        <Button size="sm" variant="primary" loading={busy} onClick={save}>{after ? "Save to bot" : "Use these values"}</Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+      {after && <p className="mt-1 text-[10.5px] text-faint">The bot is paused for a moment, updated and resumed. Past trades aren&apos;t changed.</p>}
+    </div>
+  );
+}
+
+/** Edit an order before approving it: amount (or quantity), limit price, take-profit and stop-loss. The engine re-checks everything. */
+function OrderEditor({ intent, onSave, onCancel }: { intent: any; onSave: (e: any) => void; onCancel: () => void }) {
+  const byQty = intent.quantity != null && intent.notionalUsd == null;
+  const [amount, setAmount] = useState(String(byQty ? intent.quantity : intent.notionalUsd ?? ""));
+  const [limit, setLimit] = useState(String(intent.limitPrice ?? ""));
+  const [tp, setTp] = useState(String(intent.takeProfit ?? ""));
+  const [sl, setSl] = useState(String(intent.stopLoss ?? ""));
+  const n = (s: string) => (s.trim() === "" ? undefined : Number(s));
+  return (
+    <div className="mt-2 rounded-lg border border-accent/40 bg-bg/50 p-2.5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <label className="text-[10.5px] text-faint">{byQty ? "Quantity" : "Amount $"}<input inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className={numIn} /></label>
+        {intent.orderType === "limit" && <label className="text-[10.5px] text-faint">Limit price<input inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value)} className={numIn} /></label>}
+        <label className="text-[10.5px] text-faint">Take-profit price<input inputMode="decimal" value={tp} onChange={(e) => setTp(e.target.value)} placeholder="optional" className={numIn} /></label>
+        <label className="text-[10.5px] text-faint">Stop-loss price<input inputMode="decimal" value={sl} onChange={(e) => setSl(e.target.value)} placeholder="optional" className={numIn} /></label>
+      </div>
+      <div className="mt-2 flex gap-2">
+        <Button size="sm" variant="primary" onClick={() => {
+          const e: any = byQty ? { quantity: n(amount) } : { notionalUsd: n(amount) };
+          if (intent.orderType === "limit" && n(limit)) e.limitPrice = n(limit);
+          if (n(tp)) e.takeProfit = n(tp); if (n(sl)) e.stopLoss = n(sl);
+          for (const k of Object.keys(e)) if (!(Number(e[k]) > 0)) delete e[k];
+          onSave(e);
+        }}>Use these values</Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
 }

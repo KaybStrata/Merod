@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, AtSign, Mic, Paperclip, Clock, Loader2 } from "lucide-react";
+import { ArrowUp, AtSign, Mic, Paperclip, Clock, Loader2, Zap, Sparkles } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { useApi } from "@/lib/api";
 import { cx } from "@/components/ui";
 
 /** Talk composer: text (and optional browser speech-to-text), Attach, Paper badge, @Agents, suggestion pills. Sends via the existing prompt API. */
-export function TalkComposer({ onSend, busy, suggestions, placeholder, voice }: { onSend: (t: string) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean }) {
+export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi }: { onSend: (t: string) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic"; onAi?: (a: "merod" | "openai" | "anthropic") => void }) {
   const { user } = useShell();
   const [text, setText] = useState("");
   const [listening, setListening] = useState(false);
@@ -44,11 +44,23 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice }: 
         <textarea ref={ta} value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder={placeholder}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
           className="w-full resize-none bg-transparent px-1 text-[15.5px] outline-none placeholder:font-serif placeholder:italic placeholder:text-faint" />
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <button disabled title="Attachments are coming soon" className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] text-muted opacity-60"><Paperclip className="size-3.5" /> Attach</button>
-          <span title="Talk follows your current trading mode. Real money can only be switched on in Classic mode." className={cx("flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px]", user.tradingMode === "live" ? "border-down/40 text-down" : "border-accent/50 bg-accent-soft/40 text-accent-2")}>
-            <Clock className="size-3.5" />{user.tradingMode === "live" ? "Live" : "Paper"}
-          </span>
+          <div role="radiogroup" aria-label="Paper or real money" className="flex h-8 items-center rounded-lg border border-line p-0.5 text-[12.5px]">
+            <button role="radio" aria-checked={book === "paper"} onClick={() => onBook?.("paper")}
+              className={cx("flex h-full items-center gap-1.5 rounded-md px-2.5", book === "paper" ? "border border-accent/50 bg-accent-soft/40 text-accent-2" : "text-muted hover:text-text")}><Clock className="size-3.5" />Paper</button>
+            <button role="radio" aria-checked={book === "live"} title="Trades and bots from your prompts use your real accounts: crypto through your exchange or Merod Wallet, stocks through your broker. Needs the Real money switch and 2FA."
+              onClick={() => { if (book !== "live" && !confirm("Use real money for trades and bots from your prompts? Crypto goes through your exchange or Merod Wallet, stocks through your broker.")) return; onBook?.("live"); }}
+              className={cx("flex h-full items-center gap-1.5 rounded-md px-2.5", book === "live" ? "border border-down/50 bg-down-soft/40 text-down" : "text-muted hover:text-text")}><Zap className="size-3.5" />Real money / crypto</button>
+          </div>
+          <div role="radiogroup" aria-label="Which AI answers" className="flex h-8 items-center rounded-lg border border-line p-0.5 text-[12.5px]">
+            {([["merod", "Merod AI"], ["openai", "OpenAI"], ["anthropic", "Claude"]] as const).map(([k, l]) => (
+              <button key={k} role="radio" aria-checked={ai === k} onClick={() => onAi?.(k)}
+                title={k === "merod" ? "Merod's built-in rules: trades, bots, settings, mimic and market data. No key needed." : `Answers and plans from ${l}, using your own ${l} key (Broker & AI keys).`}
+                className={cx("flex h-full items-center gap-1 rounded-md px-2.5", ai === k ? "border border-accent/50 bg-accent-soft/40 text-accent-2" : "text-muted hover:text-text")}><Sparkles className="size-3.5" />{l}</button>
+            ))}
+          </div>
+          {ai !== "merod" && <a href={ai === "openai" ? "https://platform.openai.com/settings/organization/billing/" : "https://console.anthropic.com/settings/billing"} target="_blank" rel="noreferrer noopener" className="text-[11.5px] text-accent-2 underline underline-offset-2 hover:text-text">{ai === "openai" ? "OpenAI" : "Claude"} credits →</a>}
           <div className="relative">
             <button onClick={() => setAgentsOpen((o) => !o)} className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2.5 text-[12.5px] text-muted hover:text-text"><AtSign className="size-3.5" /> Agents</button>
             {agentsOpen && (

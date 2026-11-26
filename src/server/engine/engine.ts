@@ -664,3 +664,10 @@ export async function notify(userId: string, kind: string, title: string, body =
 export const fmtQty = (n: number) => (n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 2 }) : n >= 1 ? n.toFixed(4).replace(/\.?0+$/, "") : n.toPrecision(4));
 export const fmtUsd = (n: number) => (n === Infinity ? "∞" : Number(n).toLocaleString("en-US", { maximumFractionDigits: 2 }));
 export const fmtPrice = (n: number) => (n >= 1 ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : n.toPrecision(4));
+
+/** The user's real-money account that would trade this asset (exchange, wallet or broker), as the engine would choose it. */
+export async function liveAccountFor(userId: string, assetId: string): Promise<AccountRow> {
+  const asset = await one<AssetRow>("SELECT * FROM assets WHERE id=$1", [assetId]);
+  if (!asset) throw new HttpError(404, "Asset not found");
+  return resolveAccount(userId, undefined, asset, "live");
+}
