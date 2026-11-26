@@ -9,6 +9,8 @@ import { pauseAllBots, resumeAllBots } from "../bots/runner";
 import { parsePrompt, mergeClarification, setCatalog } from "./parser";
 import { attachmentContext, trainingNotes } from "../learning/materials";
 import { isStatusQuestion, statusAnswer, statusPacket, statusSnapshot } from "./status";
+import { parseControl, runControl } from "./control";
+import { applyEdits, fmtEdit, parseEdits, parseTargets } from "./bulk-edit";
 import { AI_MODELS, aiAvailable, llmInterpret, llmResearch, llmStatus, type AIProvider } from "./llm";
 import type { Instruction, TradeLeg } from "./schema";
 import { promptDefaults } from "../training/trainer";
@@ -207,6 +209,23 @@ export async function handlePrompt(userId: string, input: PromptInput) {
         return reply(`Approved. ${what}.`, { type: "executed", detail: what, orderId: result.orderId, status: result.status }, "executed", null);
       } catch (e: any) { return reply(`Couldn't approve that: ${e.message}`, null, "rejected", null); }
     }
+  }
+  // "@SOL Momentum turn off" / "resume ETH Accumulation": control a specific bot or agent by name (even right after a question).
+  const ctl = await parseControl(userId, text);
+  if (ctl) {
+    const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role;
+    const lines = await runControl(userId, ctl.verb, ctl.targets, role === "super_admin");
+    const what = `${ctl.verb === "pause" ? "Turned off" : "Turned on"} ${ctl.targets.map((x) => x.name).join(", ")}`;
+    return reply(lines.join("\n"), { type: "executed", detail: what }, "executed", null, { agents: ctl.targets.some((x) => x.kind === "agent") });
+  }
+  // "Create a stop loss for all bots/agents at -8%", "take profit 5% on SOL Momentum", "all bots $20 per trade".
+  const edits = !/\b(create|make|build|launch|spin up)\b[^.]{0,30}\b(new|\d+)\s+(bots?|agents?)\b/i.test(text) ? parseEdits(text) : null;
+  const editTargets = edits ? await parseTargets(userId, text) : null;
+  if (edits && editTargets) {
+    const lines = await applyEdits(userId, editTargets, edits);
+    const nb = editTargets.filter((x) => x.kind === "bot").length, na = editTargets.length - nb;
+    return reply(`Updated ${[nb ? `${nb} bot${nb === 1 ? "" : "s"}` : "", na ? `${na} agent${na === 1 ? "" : "s"}` : ""].filter(Boolean).join(" and ")}: ${fmtEdit(edits)}.\n${lines.join("\n")}`,
+      { type: "executed", detail: `${fmtEdit(edits)} → ${editTargets.length} bot${editTargets.length === 1 ? "" : "s"}/agent${editTargets.length === 1 ? "" : "s"}` }, "executed", null, { agents: na > 0 });
   }
   if (last?.status === "clarify" && last.interpretation) {
     // A full new command ("buy $100 of msft") replaces the pending question; it inherits the asset if it didn't name one.
