@@ -274,6 +274,19 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   }
   // Questions about your own activity — bots, agents, orders, positions, P&L, Auto/Modo, Mimic — are answered from a live
   // snapshot of your account (by Modo with whichever AI is available, else directly from the data).
+  // "How did I do this week?", "review my last 18 days", "my monthly review" → the Review for that window (link to the full page).
+  if (!instruction && /\b(how did i do|review|recap|report card)\b/i.test(text) && !/\breview (my |the )?(settings|bot|agent|order|code)/i.test(text)) {
+    const t = text.toLowerCase();
+    const n = t.match(/\b(?:last|past)\s+(\d+)\s*(minutes?|mins?|hours?|days?|weeks?|months?|years?)\b/);
+    const unit = (u: string) => /^min/.test(u) ? 60 : /^h/.test(u) ? 3600 : /^d/.test(u) ? 86_400 : /^w/.test(u) ? 604_800 : /^mo/.test(u) ? 2_592_000 : 31_536_000;
+    const secs = n ? Number(n[1]) * unit(n[2]) : /\btoday|daily|day\b/.test(t) ? 86_400 : /\bmonth/.test(t) ? 2_592_000 : /\byear\b/.test(t) ? 31_536_000 : /\bhour\b/.test(t) ? 3600 : 604_800;
+    try {
+      const { buildReview, reviewText } = await import("../review/build");
+      const r = await buildReview(userId, { seconds: Math.min(5 * 365 * 86_400, Math.max(60, secs)) });
+      const body = `${reviewText(r)}\n\nFull review: /review?seconds=${r.window.seconds}`;
+      return reply(body, { type: "research", text: body }, "info", { kind: "portfolio_question", summary: "Review" } as any, { portfolio: true });
+    } catch { /* fall through to a normal answer */ }
+  }
   if (!instruction && isStatusQuestion(text)) {
     const snap = await statusSnapshot(userId);
     const packet = statusPacket(snap);

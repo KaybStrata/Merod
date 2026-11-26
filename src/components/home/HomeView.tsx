@@ -17,6 +17,21 @@ const MEME = (h: any) => (h.categories ?? []).some((c: string) => /meme/i.test(c
 function greeting() { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; }
 
 /** Home (screen 01): equity hero + chart, Ask Merod bar, holdings; right column with active agents, watchlist and recent fills. */
+/** "This week" review card (links to the full Review). */
+function WeekReviewCard() {
+  const { data } = useApi<any>("/api/review?range=1W");
+  const r = data?.review;
+  if (!r) return null;
+  const m = (n: number) => `${n < 0 ? "−" : "+"}$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
+  return (
+    <Link href="/review?seconds=604800" className="surface block rounded-xl px-3.5 py-3 hover:border-accent/40">
+      <div className="flex items-center justify-between"><h2 className="text-[13px] font-semibold">This week</h2><span className="text-[11px] text-accent-2">Review ›</span></div>
+      <div className={cx("num mt-1 text-[1.2rem] font-semibold", r.pnl.change >= 0 ? "text-up" : "text-down")}>{m(r.pnl.change)}{r.estimated ? <span className="ml-1 text-[10px] font-normal text-faint">est.</span> : null}</div>
+      <div className="text-[11px] text-muted">{r.habits.trades} trades{r.habits.winRate != null ? ` · ${r.habits.winRate.toFixed(0)}% win rate` : ""}{r.worked[0] ? ` · best: ${r.worked[0].label}` : ""}</div>
+    </Link>
+  );
+}
+
 export function HomeView() {
   usePageTitle(null);
   const { user } = useShell();
@@ -132,6 +147,7 @@ export function HomeView() {
         </div>
 
         <aside className="min-w-0 space-y-3">
+          <WeekReviewCard />
           <section className="surface rounded-xl">
             <div className="flex items-center justify-between border-b border-line px-3.5 py-2.5">
               <h2 className="text-[13px] font-semibold">Active agents</h2>

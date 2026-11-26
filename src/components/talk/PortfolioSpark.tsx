@@ -4,6 +4,8 @@ import { useApi } from "@/lib/api";
 import { useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 import { usd } from "@/lib/format";
+import { dialToSec, secLabel } from "@/lib/timeDial";
+import { TimeDial } from "@/components/TimeDial";
 
 type Pt = { time: number; value: number };
 type Trade = { id: string; time: number; side: "buy" | "sell"; source: string; symbol: string; quantity: number; price: number; usd: number; feeUsd: number; realizedPnl: number | null };
@@ -19,23 +21,20 @@ const pctLabel = (change: number, base: number) => {
   const p = (change / base) * 100, a = Math.abs(p);
   return a === 0 ? "0.00" : a >= 0.01 ? p.toFixed(2) : a >= 0.0001 ? p.toFixed(4) : "<0.0001";
 };
-/** Custom dial: 0–100 mapped on a log scale from 1 minute to 5 years. */
-const MIN_S = 60, MAX_S = 5 * 365 * 86_400;
-const dialToSec = (v: number) => Math.round(MIN_S * Math.pow(MAX_S / MIN_S, v / 100));
-const secLabel = (s: number) => s < 3600 ? `${Math.round(s / 60)}m` : s < 86_400 ? `${+(s / 3600).toFixed(s < 36_000 ? 1 : 0)}h` : s < 30 * 86_400 ? `${+(s / 86_400).toFixed(s < 864_000 ? 1 : 0)}d` : s < 365 * 86_400 ? `${+(s / (30 * 86_400)).toFixed(1)}mo` : `${+(s / (365 * 86_400)).toFixed(1)}y`;
+/** Custom dial: shared with the Review (src/lib/timeDial.ts), 1 minute → 5 years on a log scale. */
 
 /**
  * Portfolio value / P&L chart (paper book) from /api/portfolio/history. The last point is always the live value.
  * Shows the change for the chosen range and draws an area chart, green when up and red when down.
  */
-export function PortfolioSpark({ height = 56, compact = false, className }: { height?: number; compact?: boolean; className?: string }) {
+/** `seconds`: lock the chart to a window that ends now (the Review uses this); the range buttons are hidden. */
+export function PortfolioSpark({ height = 56, compact = false, className, seconds }: { height?: number; compact?: boolean; className?: string; seconds?: number }) {
   const [range, setRange] = useState<(typeof RANGES)[number]>("1D");
   // Break even: measure against what you put in (starting balance + deposits − withdrawals) instead of the range's start.
   const [beOn, setBeOn] = useState(() => { try { return localStorage.getItem("merod-pnl-breakeven") === "1"; } catch { return false; } });
   const toggleBe = () => setBeOn((v) => { try { localStorage.setItem("merod-pnl-breakeven", v ? "0" : "1"); } catch { /* ignore */ } return !v; });
-  const [dial, setDial] = useState(45);
   const [dialSec, setDialSec] = useState(() => dialToSec(45));
-  const { data, refresh } = useApi<any>(range === "Custom" ? `/api/portfolio/history?seconds=${Math.max(60, dialSec)}` : SHORT[range] ? `/api/portfolio/history?seconds=${SHORT[range]}` : `/api/portfolio/history?range=${range}`, { refreshMs: 30_000 });
+  const { data, refresh } = useApi<any>(seconds ? `/api/portfolio/history?seconds=${Math.max(60, Math.round(seconds))}` : range === "Custom" ? `/api/portfolio/history?seconds=${Math.max(60, dialSec)}` : SHORT[range] ? `/api/portfolio/history?seconds=${SHORT[range]}` : `/api/portfolio/history?range=${range}`, { refreshMs: 30_000 });
   useRealtime((e) => { if (e.type === "fill") refresh(); });
   const pts: Pt[] = useMemo(() => (data?.points ?? []).map((p: any) => ({ time: Number(p.time), value: Number(p.value) })).filter((p: Pt) => Number.isFinite(p.value)), [data]);
   const breakEven: number | null = data?.breakEven ? Number(data.breakEven) : null;
@@ -96,7 +95,7 @@ export function PortfolioSpark({ height = 56, compact = false, className }: { he
             Break even
           </button>
         )}
-        {compact ? (
+        {seconds ? <span className="ml-auto text-[10px] text-faint">last {secLabel(seconds)}</span> : compact ? (
           <select value={range} aria-label="Time range" onClick={(e) => e.stopPropagation()} onChange={(e) => setRange(e.target.value as (typeof RANGES)[number])}
             className="ml-auto rounded border border-line bg-bg-2 px-1 py-px text-[10px] text-muted outline-none">
             {RANGES.map((r) => <option key={r} value={r}>{r === "Custom" && range === "Custom" ? secLabel(dialSec) : r}</option>)}
@@ -107,17 +106,7 @@ export function PortfolioSpark({ height = 56, compact = false, className }: { he
           </div>
         )}
       </div>
-      {range === "Custom" && (
-        <div className="mt-1.5 flex items-center gap-2 text-[10px] text-faint" onClick={(e) => e.stopPropagation()}>
-          <span>1m</span>
-          <input type="range" min={0} max={100} step={1} value={dial} aria-label="Custom time range"
-            onChange={(e) => setDial(Number(e.target.value))}
-            onPointerUp={() => setDialSec(dialToSec(dial))} onKeyUp={() => setDialSec(dialToSec(dial))} onTouchEnd={() => setDialSec(dialToSec(dial))}
-            className="h-1 flex-1 cursor-pointer accent-[var(--color-accent-2,#d6b37a)]" />
-          <span>5y</span>
-          <span className="num w-12 text-right font-semibold text-accent-2">{secLabel(dialToSec(dial))}</span>
-        </div>
-      )}
+      {range === "Custom" && !seconds && <TimeDial value={dialSec} onChange={setDialSec} className="mt-1.5" />}
       {path ? (
         <div ref={boxRef} className="relative mt-1 cursor-crosshair touch-none select-none" style={{ height }}
           onPointerMove={onMove} onPointerDown={onMove} onPointerLeave={() => setHover(null)} onClick={(e) => e.stopPropagation()}>

@@ -4,7 +4,7 @@ import { AutoEnableSwitch, AutoTradingSwitch, AutoActivityFeed } from "./Sidebar
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useEffect, useRef, useState } from "react";
-import {
+import { ClipboardCheck,
   Home, Wallet, Activity, BarChart3, ArrowLeftRight, Zap, Layers, Search, Bot, Sparkles, Library, LineChart, Settings, Shield, Bell, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
   Radio, Percent, KeyRound, Plus, PieChart, Users, Brain, Copy, Repeat, Cpu, Bitcoin, Newspaper, Crown, ChevronDown, ArrowUpRight, Compass, GitBranch, MessagesSquare, Swords, TrendingUp, Radar,
 } from "lucide-react";
@@ -39,6 +39,7 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
   ] },
   { label: "Insight", items: [
     { href: "/live", label: "Activity", icon: Activity, also: ["/activity", "/world"] },
+    { href: "/review", label: "Review", icon: ClipboardCheck },
     { href: "/analytics", label: "Analytics", icon: LineChart, also: ["/portfolio", "/progress"] },
     { href: "/research", label: "Research", icon: Search, also: ["/news"] },
     { href: "/learning", label: "AI Learning", icon: Brain, also: ["/training"] },
