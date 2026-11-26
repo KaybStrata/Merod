@@ -20,6 +20,8 @@ export const GET = route(async (req) => {
   for (const th of (s.modo_thoughts ?? []).slice(modoOnly ? -80 : -6))
     if (!(modoOnly && th.kind === "idea" && /^Bought /.test(th.text))) // executions already come from the trade records
       events.push({ at: new Date(th.at).toISOString(), kind: "thought", text: modoOnly ? th.text : `Modo: ${th.text}` });
+  // Postgres returns Date objects; normalise every timestamp to ISO text before sorting.
+  for (const e of events) e.at = new Date(e.at as any).toISOString();
   events.sort((a, b) => b.at.localeCompare(a.at));
   return ok({ enabled: !!s.enabled, modoAutopilot: !!s.modo_autopilot, lastRun: s.modo_last_run_at, events: events.slice(0, modoOnly ? 100 : 14) });
 });

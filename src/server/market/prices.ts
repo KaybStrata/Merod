@@ -101,11 +101,14 @@ const DEX_CHAIN: Record<string, string> = { solana: "solana", ethereum: "ethereu
  * Refresh prices from whichever market-data providers an admin has tested + enabled.
  * Assets updated here switch from "simulated" to the real provider source.
  */
+/** After CoinGecko rate-limits us (HTTP 429), skip it for a few minutes instead of hammering it every 30s. */
+let coingeckoPausedUntil = 0;
 export async function refreshLivePrices(): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
   const env = "production" as const;
 
-  if (await keylessUsable("coingecko")) {
+  // Each source runs on its own: a CoinGecko rate limit must never stop DEX Screener (meme coin) prices.
+  if (Date.now() >= coingeckoPausedUntil && await keylessUsable("coingecko")) try {
     const ctx = contextFor("coingecko", env);
     const assets = await q<AssetRow>("SELECT * FROM assets WHERE coingecko_id IS NOT NULL");
     const key = await ctx.cred("COINGECKO_API_KEY");
@@ -122,6 +125,10 @@ export async function refreshLivePrices(): Promise<Record<string, number>> {
       await recordTick(a.id, r.current_price, "coingecko");
     }
     counts.coingecko = (rows as any[]).length;
+  } catch (e: any) {
+    if (/429|rate limit/i.test(String(e?.message))) coingeckoPausedUntil = Date.now() + 5 * 60_000;
+    counts.coingecko_error = 1;
+    console.warn(`[live_prices] coingecko skipped: ${String(e?.message).slice(0, 120)}${coingeckoPausedUntil > Date.now() ? " (paused 5 min)" : ""}`);
   }
 
   if (await keylessUsable("dexscreener")) {

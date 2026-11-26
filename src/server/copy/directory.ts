@@ -245,21 +245,25 @@ export async function mimicTokenTraders(userId: string, assetId: string, count: 
 export async function mimicTop(userId: string, o: { count: number; crypto: boolean; stocks: boolean; period: GainerPeriod } & MimicOpts) {
   const n = Math.max(1, Math.min(50, o.count));
   const out: { crypto?: any; stocks?: any; merodCrypto?: any } = {};
+  // Each market runs on its own: a missing wallet/broker for one never cancels the other.
+  const dir = await directory(userId, o.period).catch(() => null);
   if (o.crypto) {
-    const wallets = (await gainersForPeriod(userId, o.period)).slice(0, n);
-    const { settings, note } = await mimicSettings(userId, "crypto", o);
-    out.crypto = wallets.length ? { ...(await mimicMany(userId, "wallets", true, wallets.map((w: any) => w.address), null, settings)), account: note, window: wallets[0]?.window, kind: wallets[0]?.kind }
-      : { done: 0, skipped: [], note: "No public wallets found (connect Birdeye)" };
-    const dir = await directory(userId, o.period);
-    const merodCrypto = dir.merod.filter((t: any) => t.copyable && t.cryptoTrades > 0).sort((a: any, b: any) => b.cryptoPnl - a.cryptoPnl).slice(0, n);
-    if (merodCrypto.length) out.merodCrypto = await mimicMany(userId, "merod", true, merodCrypto.map((t: any) => t.handle), null, settings);
+    try {
+      const { settings, note } = await mimicSettings(userId, "crypto", o);
+      const wallets = (await gainersForPeriod(userId, o.period).catch(() => [] as any[])).slice(0, n);
+      out.crypto = wallets.length ? { ...(await mimicMany(userId, "wallets", true, wallets.map((w: any) => w.address), null, settings)), account: note, window: wallets[0]?.window, kind: wallets[0]?.kind }
+        : { done: 0, skipped: [], account: note, note: "No public wallets found (connect Birdeye in Admin → Integrations)" };
+      const merodCrypto = (dir?.merod ?? []).filter((t: any) => t.copyable && t.cryptoTrades > 0).sort((a: any, b: any) => b.cryptoPnl - a.cryptoPnl).slice(0, n);
+      if (merodCrypto.length) out.merodCrypto = await mimicMany(userId, "merod", true, merodCrypto.map((t: any) => t.handle), { label: "Crypto only", assetClasses: ["crypto"] }, settings);
+    } catch (e: any) { out.crypto = { done: 0, skipped: [], note: e.message }; }
   }
   if (o.stocks) {
-    const dir = await directory(userId, o.period);
-    const top = dir.stocks.filter((t: any) => t.copyable).sort((a: any, b: any) => b.stockPnl - a.stockPnl).slice(0, n);
-    const { settings, note } = await mimicSettings(userId, "stock", o);
-    out.stocks = top.length ? { ...(await mimicMany(userId, "stocks", true, top.map((t: any) => t.handle), { label: "Stocks only", assetClasses: ["stock", "etf"] }, settings)), account: note }
-      : { done: 0, skipped: [], note: "No Merod stock traders allow copying yet" };
+    try {
+      const { settings, note } = await mimicSettings(userId, "stock", o);
+      const top = (dir?.stocks ?? []).filter((t: any) => t.copyable).sort((a: any, b: any) => b.stockPnl - a.stockPnl).slice(0, n);
+      out.stocks = top.length ? { ...(await mimicMany(userId, "stocks", true, top.map((t: any) => t.handle), { label: "Stocks only", assetClasses: ["stock", "etf"] }, settings)), account: note }
+        : { done: 0, skipped: [], account: note, note: "No Merod stock traders allow copying yet" };
+    } catch (e: any) { out.stocks = { done: 0, skipped: [], note: e.message }; }
   }
   return out;
 }
