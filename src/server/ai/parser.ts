@@ -178,7 +178,7 @@ export function parsePrompt(raw: string): Instruction {
 
   // Control commands
   if (/\bcancel\b.*\b(all|every)\b.*\border/.test(t) || /\bcancel (my )?open orders\b/.test(t)) return base("cancel_all_orders", "Cancel all open orders");
-  if (/\b(pause|stop|halt)\b.*\b(all|every)?\b.*\bbots?\b/.test(t)) return base("pause_all_bots", "Pause all active bots");
+  if (/\b(pause|stop|halt)\b(?![ -]?(loss|losses|limit|price|order))[^.]*\bbots?\b/.test(t) && !/\bstop[ -]?loss/.test(t)) return base("pause_all_bots", "Pause all active bots");
   if (/\b(resume|restart|unpause)\b.*\bbots?\b/.test(t)) return base("resume_all_bots", "Resume paused bots");
 
   // Swing loop: "buy at 3% dip and sell at 5% increase, rinse and repeat"

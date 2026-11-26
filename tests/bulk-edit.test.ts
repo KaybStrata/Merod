@@ -36,6 +36,12 @@ test("prompt box: 'create a stop loss for all bots/agents at -8%' updates every 
   await handlePrompt(u, { text: "set take profit to 5% on SOL Momentum", provider: "merod" } as any);
   assert.equal((await p(a.id)).params.take_profit_pct, 5);
   assert.equal((await p(b.id)).params.take_profit_pct, 30, "unnamed bots untouched");
+  // The exact prompt from the screenshot: number first, leading decimal point, and "stop" must NOT pause the bots.
+  const r2: any = await handlePrompt(u, { text: "add .70% stop loss to all bots/agents", provider: "merod" } as any);
+  assert.match(r2.message.content, /stop-loss −0\.7%/, r2.message.content);
+  assert.equal((await p(a.id)).params.stop_loss_pct, 0.7);
+  assert.equal((await p(a.id)).status, "running", "not paused");
+  assert.deepEqual(parseEdits("8% stop loss on SOL Momentum"), { stopLossPct: 8 });
   await q("DELETE FROM trading_bots WHERE user_id=$1", [u]);
 });
 

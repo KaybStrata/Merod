@@ -13,18 +13,26 @@ import { log } from "../bots/runner";
 export type Edit = { stopLossPct?: number; takeProfitPct?: number; amountUsd?: number; dipPct?: number };
 type Target = { kind: "bot" | "agent"; id: string; name: string };
 
+/** A percentage written either way round: "stop loss 8%", "stop loss at -8%", "8% stop loss", ".70% stop loss", "0.7 % sl". */
+const NUM = "(-?(?:\\d+(?:\\.\\d+)?|\\.\\d+))";
+const pctNear = (t: string, word: string) => {
+  const after = t.match(new RegExp(`\\b(?:${word})\\b[^0-9%.\\-]{0,30}${NUM}\\s*%`));
+  const before = t.match(new RegExp(`${NUM}\\s*%\\s*(?:a |an |the )?(?:${word})\\b`));
+  const m = after ?? before;
+  return m ? Math.abs(Number(m[1])) : undefined;
+};
 const pctAfter = (t: string, re: RegExp) => { const m = t.match(re); return m ? Math.abs(Number(m[m.length - 1])) : undefined; };
 
 export function parseEdits(raw: string): Edit | null {
   const t = raw.toLowerCase().replace(/\s+/g, " ");
   const e: Edit = {};
   if (/\b(remove|delete|no|clear|drop|without)\b[^.]{0,20}\bstop.?loss(es)?\b/.test(t)) e.stopLossPct = 0;
-  else { const v = pctAfter(t, /\b(?:stop.?loss(?:es)?|sl)\b[^0-9%]{0,30}(-?\d+(?:\.\d+)?)\s*%/); if (v !== undefined) e.stopLossPct = v; }
+  else { const v = pctNear(t, "stop.?loss(?:es)?|sl"); if (v !== undefined) e.stopLossPct = v; }
   if (/\b(remove|delete|no|clear|drop)\b[^.]{0,20}\b(take.?profit|target)s?\b/.test(t)) e.takeProfitPct = 0;
-  else { const v = pctAfter(t, /\b(?:take.?profits?|tp|profit target|targets?|sell at)\b[^0-9%]{0,30}\+?(\d+(?:\.\d+)?)\s*%/); if (v !== undefined) e.takeProfitPct = v; }
+  else { const v = pctNear(t, "take.?profits?|tp|profit target|targets?|sell at"); if (v !== undefined) e.takeProfitPct = v; }
   const amt = t.match(/\$\s*([\d,]+(?:\.\d+)?)\s*(?:per|each|a|every)?\s*(?:trade|buy|cycle|order)|(?:per|each) (?:trade|buy|cycle|order)[^0-9$]{0,15}\$?\s*([\d,]+(?:\.\d+)?)|(?:trade size|amount)[^0-9$]{0,15}\$?\s*([\d,]+(?:\.\d+)?)/);
   if (amt) e.amountUsd = Number(String(amt[1] ?? amt[2] ?? amt[3]).replace(/,/g, ""));
-  const dip = pctAfter(t, /\b(?:buy on (?:a )?|dip(?: of)?|on a)\s*(\d+(?:\.\d+)?)\s*%\s*(?:dip|drop)?/);
+  const dip = pctAfter(t, /\b(?:buy on (?:a )?|dip(?: of)?|on a)\s*(\d+(?:\.\d+)?|\.\d+)\s*%\s*(?:dip|drop)?/);
   if (dip !== undefined && /\bdip|drop\b/.test(t)) e.dipPct = dip;
   return Object.keys(e).length ? e : null;
 }
