@@ -66,7 +66,7 @@ function strength(pw: string) {
   return Math.min(4, s);
 }
 
-function deviceName(ua: string | null) {
+export function deviceName(ua: string | null) {
   if (!ua) return "Unknown device";
   const browser = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Browser";
   const os = /iPhone/.test(ua) ? "iPhone" : /iPad/.test(ua) ? "iPad" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "device";
@@ -245,7 +245,7 @@ export function SecurityTab({ data, refresh }: { data: any; refresh: () => void 
   );
 }
 
-function TwoFactor({ on, refresh }: { on: boolean; refresh: () => void }) {
+export function TwoFactor({ on, refresh }: { on: boolean; refresh: () => void }) {
   const toast = useToast();
   const [enroll, setEnroll] = useState<any>(null);
   const [code, setCode] = useState("");
@@ -327,7 +327,7 @@ function TwoFactor({ on, refresh }: { on: boolean; refresh: () => void }) {
   );
 }
 
-function ChangePassword({ needs2fa }: { needs2fa: boolean }) {
+export function ChangePassword({ needs2fa }: { needs2fa: boolean }) {
   const toast = useToast();
   const [v, setV] = useState({ current: "", next: "", confirm: "", code: "" });
   const [busy, setBusy] = useState(false);

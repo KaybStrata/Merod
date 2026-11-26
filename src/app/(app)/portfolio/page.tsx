@@ -7,7 +7,7 @@ import { PieChart as PieIcon, Layers, ArrowLeftRight, Bot, RotateCcw, ListChecks
 import { api, useApi } from "@/lib/api";
 import { usd, price, qty, pct, ago, tone } from "@/lib/format";
 import { AssetIcon, Badge, Button, Card, ChangeText, Empty, Input, Modal, PaperBadge, Pills, Skeleton, SourceBadge, Sparkline, Stat, StatusPill, cx, useToast } from "@/components/ui";
-import { useRealtime } from "@/components/shell/context";
+import { useRealtime, usePageTitle } from "@/components/shell/context";
 import { ValueHistory } from "@/components/ValueHistory";
 import { PendingSignatures } from "@/components/wallet/SolanaWallets";
 
@@ -45,6 +45,7 @@ function History() {
 
 function PortfolioInner() {
   const toast = useToast();
+  usePageTitle({ section: "Trade · Portfolio", title: "Positions & orders", accent: "orders" });
   const highlight = useSearchParams().get("order");
   const { data, error, loading, refresh } = useApi<any>("/api/portfolio", { refreshMs: 15000 });
   const [tab, setTab] = useState<Tab>(highlight ? "orders" : "overview");
@@ -118,7 +119,7 @@ function PortfolioInner() {
       <SectionTabs tabs={[{ href: "/portfolio", label: "Portfolio", icon: PieChart }, { href: "/wallet", label: "Wallet & funding", icon: Wallet }]} />
       <PendingSignatures />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3"><h1 className="page-title">Portfolio</h1><PaperBadge paper={book === "paper"} /></div>
+        <div className="flex items-center gap-3"><PaperBadge paper={book === "paper"} /><Link href="/analytics" className="text-[12px] text-accent-2 hover:underline">Performance, P&L calendar & attribution →</Link></div>
         <div className="flex flex-wrap gap-2">
           <Pills size="sm" value={book} onChange={setBook} options={[{ value: "paper", label: "Paper (simulated)" }, { value: "live", label: "Live accounts" }]} />
           {book === "paper" && <Button size="sm" variant="ghost" onClick={() => setResetOpen(true)}><RotateCcw className="size-4" /> Reset paper</Button>}

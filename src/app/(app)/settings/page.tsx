@@ -2,59 +2,145 @@
 import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { User, ShieldCheck, CandlestickChart, Gauge, Bot, Bell, Link2, Sparkles, KeyRound, Eye, OctagonX, Monitor } from "lucide-react";
+import { User, ShieldCheck, KeyRound, Gauge, Bell, Palette, CreditCard, Database, OctagonX, Download, Plus, Sun, Moon, Cpu, Wallet, ArrowRight } from "lucide-react";
 import { api, useApi } from "@/lib/api";
-import { ago } from "@/lib/format";
-import { Badge, Button, Card, Empty, Input, Modal, Select, Skeleton, Toggle, cx, useToast } from "@/components/ui";
+import { Badge, Button, Card, Empty, Input, Select, Skeleton, Toggle, cx, useToast } from "@/components/ui";
 import { UserApiKeys } from "@/components/UserApiKeys";
-import { AccountTab as AccountTabUI, SecurityTab as SecurityTabUI } from "@/components/settings/AccountSecurity";
+import { AccountTab as AccountTabUI, ChangePassword } from "@/components/settings/AccountSecurity";
+import { SecurityOverview, useSecurityScore, Panel } from "@/components/settings/SecurityOverview";
+import { usePageTitle, useShell } from "@/components/shell/context";
 
 const TABS = [
-  { id: "account", label: "Profile & account", icon: User }, { id: "security", label: "Security & 2FA", icon: ShieldCheck },
-  { id: "trading", label: "Trading", icon: CandlestickChart }, { id: "risk", label: "Risk management", icon: Gauge },
-  { id: "automation", label: "Automation permissions", icon: Bot }, { id: "notifications", label: "Notifications", icon: Bell },
-  { id: "accounts", label: "Connected accounts", icon: Link2 }, { id: "ai", label: "AI preferences", icon: Sparkles },
-  { id: "apikeys", label: "My API keys", icon: KeyRound }, { id: "privacy", label: "Privacy", icon: Eye },
+  { id: "account", label: "Profile", icon: User }, { id: "security", label: "Security", icon: ShieldCheck },
+  { id: "keys", label: "Broker & AI keys", icon: KeyRound }, { id: "risk", label: "Risk limits", icon: Gauge },
+  { id: "notifications", label: "Notifications", icon: Bell }, { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "billing", label: "Billing", icon: CreditCard }, { id: "data", label: "Data & export", icon: Database },
 ];
+/** Old links (?tab=trading etc.) still land on the right tab. */
+const ALIAS: Record<string, string> = { trading: "risk", automation: "risk", accounts: "keys", ai: "keys", apikeys: "keys", privacy: "data" };
 
 function SettingsInner() {
   const sp = useSearchParams();
   const router = useRouter();
-  const tab = TABS.some((t) => t.id === sp.get("tab")) ? sp.get("tab")! : "account";
+  const { user } = useShell();
+  const raw = sp.get("tab") ?? "security";
+  const tab = TABS.some((t) => t.id === (ALIAS[raw] ?? raw)) ? (ALIAS[raw] ?? raw) : "security";
   const { data, error, loading, refresh } = useApi<any>("/api/settings");
+  const score = useSecurityScore(data);
+  usePageTitle({ section: "Account · Settings", title: "Security & keys", accent: "keys" });
 
   return (
     <div className="space-y-4">
-      <h1 className="page-title">Settings</h1>
-      <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)]">
-        <nav className="flex gap-1 overflow-x-auto lg:flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <nav className="-mx-1 flex max-w-full gap-0.5 overflow-x-auto px-1" aria-label="Settings sections">
           {TABS.map((t) => (
             <button key={t.id} onClick={() => router.replace(`/settings?tab=${t.id}`)}
-              className={cx("flex shrink-0 items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm", tab === t.id ? "bg-accent-soft text-text" : "text-muted hover:bg-panel-2 hover:text-text")}>
-              <t.icon className={cx("size-4", tab === t.id && "text-accent-2")} />{t.label}
+              className={cx("flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-medium", tab === t.id ? "nav-active" : "text-muted hover:bg-panel-2 hover:text-text")}>
+              <t.icon className={cx("size-3.5", tab === t.id ? "text-accent-2" : "text-faint")} />{t.label}
             </button>
           ))}
         </nav>
-        <div className="min-w-0">
-          {loading && !data ? <Skeleton className="h-72" /> : error ? <Empty title="Couldn't load settings">{error}</Empty> : (
-            <>
-              {tab === "account" && <AccountTab data={data} refresh={refresh} />}
-              {tab === "security" && <SecurityTab data={data} refresh={refresh} />}
-              {tab === "trading" && <TradingTab data={data} />}
-              {tab === "risk" && <RiskTab data={data} refresh={refresh} />}
-              {tab === "automation" && <AutomationTab data={data} refresh={refresh} />}
-              {tab === "notifications" && <NotificationsTab data={data} refresh={refresh} />}
-              {tab === "accounts" && (
-                <Card title="Connected accounts & wallets"><p className="text-sm text-muted">Manage wallets, brokerage connections and your own broker keys on the Wallet & Funding page.</p><Link href="/wallet"><Button className="mt-3" variant="primary">Open Wallet & Funding</Button></Link></Card>
-              )}
-              {tab === "ai" && <AiTab data={data} refresh={refresh} />}
-              {tab === "apikeys" && <UserApiKeys />}
-              {tab === "privacy" && <PrivacyTab data={data} refresh={refresh} />}
-            </>
-          )}
+        <div className="flex shrink-0 items-center gap-2">
+          {data && <span className={cx("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-semibold", score.score === 100 ? "border-up/40 text-up" : "border-warn/40 text-warn")}><ShieldCheck className="size-3.5" /> Security score <span className="num">{score.score}</span></span>}
+          <a href="/api/settings/audit?format=csv" className="hidden h-8 items-center gap-1.5 rounded-lg border border-line px-3 text-[12.5px] text-muted hover:text-text sm:flex"><Download className="size-3.5" /> Download audit log</a>
+          <Link href="/broker-keys#my-keys" className="flex h-8 items-center gap-1.5 rounded-lg bg-grad px-3 text-[12.5px] font-semibold text-bg"><Plus className="size-3.5" /> Add key</Link>
         </div>
       </div>
+      {loading && !data ? <Skeleton className="h-72" /> : error ? <Empty title="Couldn't load settings">{error}</Empty> : (
+        <div className="min-w-0">
+          {tab === "account" && <AccountTab data={data} refresh={refresh} />}
+          {tab === "security" && (
+            <div className="space-y-4">
+              <SecurityOverview data={data} refresh={refresh} owner={user.role === "super_admin"} score={score} />
+              <ChangePassword needs2fa={!!data.user.totp_enabled} />
+            </div>
+          )}
+          {tab === "keys" && <KeysTab data={data} refresh={refresh} />}
+          {tab === "risk" && <div className="space-y-4"><TradingTab data={data} /><RiskTab data={data} refresh={refresh} /><AutomationTab data={data} refresh={refresh} /></div>}
+          {tab === "notifications" && <NotificationsTab data={data} refresh={refresh} />}
+          {tab === "appearance" && <AppearanceTab data={data} refresh={refresh} />}
+          {tab === "billing" && <BillingTab />}
+          {tab === "data" && <div className="space-y-4"><PrivacyTab data={data} refresh={refresh} /><DataTab /></div>}
+        </div>
+      )}
     </div>
+  );
+}
+
+function KeysTab({ data, refresh }: any) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          { href: "/broker-keys", icon: KeyRound, title: "Broker & exchange keys", text: "Alpaca, Coinbase, Kraken, Binance and more. Your own accounts only." },
+          { href: "/ai-keys", icon: Cpu, title: "AI keys", text: "Claude or ChatGPT keys, and which model reads your prompts." },
+          { href: "/wallet", icon: Wallet, title: "Connected accounts & wallets", text: "Connect a tested key as an account, or add a Merod Wallet." },
+        ].map((c) => (
+          <Link key={c.href} href={c.href} className="surface group rounded-2xl p-4 hover:border-accent/40">
+            <c.icon className="size-5 text-accent-2" />
+            <div className="mt-2 flex items-center gap-1 text-[14px] font-semibold">{c.title}<ArrowRight className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100" /></div>
+            <p className="mt-1 text-[12px] text-muted">{c.text}</p>
+          </Link>
+        ))}
+      </div>
+      <AiTab data={data} refresh={refresh} />
+      <UserApiKeys />
+    </div>
+  );
+}
+
+function AppearanceTab({ data, refresh }: any) {
+  const [theme, setTheme] = useState<"dark" | "light">(data.profile.theme === "light" ? "light" : "dark");
+  const { save, busy } = useSave(refresh);
+  useEffect(() => { const t = document.documentElement.dataset.theme; if (t === "light" || t === "dark") setTheme(t); }, []);
+  async function pick(t: "dark" | "light") {
+    setTheme(t); document.documentElement.dataset.theme = t;
+    try { localStorage.setItem("merod-theme", t); } catch {}
+    await save("theme", { theme: t }, t === "dark" ? "Dark theme" : "Light theme");
+  }
+  return (
+    <Panel title="Appearance" icon={Palette} sub="Merod's black and champagne-gold theme, or a light version.">
+      <div className="grid max-w-xl grid-cols-2 gap-3">
+        {(["dark", "light"] as const).map((t) => (
+          <button key={t} disabled={busy} onClick={() => pick(t)} className={cx("rounded-2xl border p-3 text-left", theme === t ? "border-accent bg-accent-soft" : "border-line hover:border-line-2")}>
+            <div className={cx("h-20 rounded-xl border", t === "dark" ? "border-[#262420] bg-[#0a0908]" : "border-[#e7e0d3] bg-[#f7f4ee]")}>
+              <div className={cx("m-2 h-2 w-16 rounded", t === "dark" ? "bg-[#d6b37a]" : "bg-[#a77b3c]")} />
+              <div className={cx("mx-2 h-8 rounded-lg", t === "dark" ? "bg-[#131210]" : "bg-white")} />
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold">{t === "dark" ? <Moon className="size-3.5" /> : <Sun className="size-3.5" />}{t === "dark" ? "Dark" : "Light"}{theme === t && <Badge tone="accent" className="ml-auto">Active</Badge>}</div>
+          </button>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function BillingTab() {
+  return (
+    <Panel title="Billing" icon={CreditCard} sub="Plan and payments">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line/70 bg-bg-2/40 p-4">
+        <div><div className="text-[14px] font-semibold">Merod · Free</div><p className="mt-0.5 text-[12px] text-muted">Every feature is open to you now. Paid plans aren&apos;t available yet: pricing and premium data still need review before launch.</p></div>
+        <Badge tone="up">Current plan</Badge>
+      </div>
+      <p className="mt-3 text-[11.5px] text-faint">Trading fees, if any, are shown on each order before you confirm it. No card is stored on Merod.</p>
+    </Panel>
+  );
+}
+
+function DataTab() {
+  return (
+    <Panel title="Data & export" icon={Database} sub="Download a copy of your records.">
+      <ul className="space-y-2 text-[13px]">
+        <li className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line/70 bg-bg-2/40 px-3 py-2.5">
+          <span><span className="font-medium">Audit log</span><span className="block text-[11.5px] text-muted">Every settings change, key, 2FA event and trade action on your account (CSV, newest first, up to 5,000 rows).</span></span>
+          <a href="/api/settings/audit?format=csv"><Button size="sm"><Download className="size-3.5" /> Download CSV</Button></a>
+        </li>
+        <li className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line/70 bg-bg-2/40 px-3 py-2.5">
+          <span><span className="font-medium">Orders, fills and receipts</span><span className="block text-[11.5px] text-muted">Funding history and receipts are on Wallet & Funds; trade history on Analytics.</span></span>
+          <Link href="/wallet"><Button size="sm" variant="ghost">Open Wallet & Funds</Button></Link>
+        </li>
+      </ul>
+    </Panel>
   );
 }
 
@@ -77,10 +163,6 @@ function AccountTab({ data, refresh }: any) {
   return <AccountTabUI data={data} save={save} busy={busy} refresh={refresh} />;
 }
 
-function SecurityTab({ data, refresh }: any) {
-  return <SecurityTabUI data={data} refresh={refresh} />;
-}
-
 function TradingTab({ data }: any) {
   return (
     <Card title="Trading preferences">
@@ -89,11 +171,11 @@ function TradingTab({ data }: any) {
           <div><div className="font-medium text-warn">Paper trading (simulated)</div><div className="text-xs text-warn/80">All orders use virtual funds and are clearly marked as simulated.</div></div>
           <Badge tone="warn">Active</Badge>
         </div>
-        <div className="flex items-center justify-between rounded-xl border border-line px-4 py-3 opacity-60">
-          <div><div className="font-medium">Live trading (real money)</div><div className="text-xs text-muted">Disabled until brokerage commercial approvals, wallet security review and compliance sign-off are complete.</div></div>
-          <Button size="sm" disabled>Unavailable</Button>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-line px-4 py-3">
+          <div><div className="font-medium">Live trading (real money)</div><div className="text-xs text-muted">Real-money orders go to a connected real account (Alpaca live, an exchange, or a Merod Wallet) when the Real money switch is on and 2FA is set up. You pick Paper or Real money on each order.</div></div>
+          <Link href="/wallet"><Button size="sm">Accounts</Button></Link>
         </div>
-        <p className="text-xs text-muted">Current mode: <b>{data.user.trading_mode}</b>. Your own broker paper accounts (connected with your keys) also count as paper.</p>
+        <p className="text-xs text-muted">Default mode: <b>{data.user.trading_mode}</b>. Your own broker paper accounts (connected with your keys) also count as paper.</p>
       </div>
     </Card>
   );

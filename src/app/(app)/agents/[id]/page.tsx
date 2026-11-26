@@ -4,7 +4,7 @@ import { use, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Brain, History, GitBranch, Lock, Unlock, RotateCcw, Play, Pause, Square, Share2, ArrowRightLeft, Repeat2, Database } from "lucide-react";
 import { api, useApi } from "@/lib/api";
-import { useRealtime } from "@/components/shell/context";
+import { useRealtime, usePageTitle } from "@/components/shell/context";
 import { Modal, Skeleton, cx, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
 import { LiveExecution } from "@/components/agents/LiveExecution";
@@ -23,6 +23,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
   const toast = useToast();
   const [tab, setTab] = useState<Tab>((sp.get("tab") as Tab) || "overview");
   useRealtime((e) => { if (e.type === "agent" && e.payload?.agent_id === id) refresh(); });
+  usePageTitle({ section: `Automate · Agents${data?.agent?.roleName ? ` · ${data.agent.roleName}` : ""}`, title: data?.agent?.name ?? "Agent", accent: data?.agent?.name }, [data?.agent?.name]);
   if (!data) return <Skeleton className="h-[500px] rounded-2xl" />;
   const a = data.agent, m = a.metrics;
   const running = a.status === "running" || a.status === "queued";
@@ -32,10 +33,10 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
     <div className="space-y-4">
       <Link href="/agents" className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-text"><ArrowLeft className="size-3.5" /> Agents</Link>
       <div className="flex flex-wrap items-center gap-4">
-        <AgentAvatar agent={{ ...a, symbols: data.assets.map((x: any) => x.symbol) }} size={52} />
+        <AgentAvatar agent={{ ...a, symbols: data.assets.map((x: any) => x.symbol) }} size={40} />
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2"><h1 className="text-[1.9rem] font-semibold tracking-tight">{a.name}</h1><StatusDot status={a.status} /><span className="rounded-md border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[10px] font-semibold text-warn">PAPER</span></div>
-          <div className="text-sm text-muted">{a.roleName} · autonomy {a.autonomy_level} ({AUT[a.autonomy_level]}) · v{a.version} · model {a.routedModel}{a.fleet_id && <> · <Link href={`/agents/fleets/${a.fleet_id}`} className="underline">fleet</Link></>}{a.stop_reason && <span className="text-warn"> · {a.stop_reason}</span>}</div>
+          <div className="flex flex-wrap items-center gap-2"><h2 className="text-[1.15rem] font-semibold tracking-tight">{a.name}</h2><StatusDot status={a.status} /><span className="rounded-md border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[10px] font-semibold text-warn">PAPER</span></div>
+          <div className="text-[12px] text-muted">{a.roleName} · autonomy {a.autonomy_level} ({AUT[a.autonomy_level]}) · v{a.version} · model {a.routedModel}{a.fleet_id && <> · <Link href={`/agents/fleets/${a.fleet_id}`} className="underline">fleet</Link></>}{a.stop_reason && <span className="text-warn"> · {a.stop_reason}</span>}</div>
         </div>
         <div className="ml-auto flex flex-wrap gap-2">
           {a.status === "pending_approval" && <GoldButton onClick={() => act("approve")}>Approve configuration</GoldButton>}

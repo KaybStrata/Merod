@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { Button, Input } from "@/components/ui";
+import { Steps } from "../onboarding/steps";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export default function SignupPage() {
     try {
       const r = await api<{ role: string }>("/api/auth/signup", { method: "POST", json: { ...f, setupCode: f.setupCode || undefined } });
       // Owner/super admin: go straight to two-factor setup.
-      router.push(r.role === "super_admin" ? "/settings?tab=security" : "/"); router.refresh();
+      router.push(r.role === "super_admin" ? "/settings?tab=security" : "/onboarding"); router.refresh();
     } catch (e: any) {
       if (e.body?.code === "setup_code_required") setNeedsCode(true);
       setError(e.body?.issues?.[0]?.message ?? e.message);
@@ -26,8 +27,9 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="fade-up w-full max-w-md rounded-xl border border-line bg-panel/90 p-7">
-      <h1 className="text-xl font-semibold">Create your account</h1>
+    <div className="fade-up surface w-full max-w-md rounded-2xl p-7">
+      <Steps at={1} />
+      <h1 className="mt-4 text-[26px] font-semibold tracking-tight">Create your <span className="serif-accent text-[30px] text-accent-2">account</span></h1>
       <p className="mt-1 text-sm text-muted">Start with $100,000 in virtual funds. Paper trading only — no real money.</p>
       <form onSubmit={submit} className="mt-6 space-y-4">
         <div className="grid grid-cols-2 gap-3">

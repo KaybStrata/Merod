@@ -5,6 +5,7 @@ import {
   LineChart, Megaphone, MessagesSquare, Newspaper, PieChart, Radar, Repeat, Scale, ScanSearch, Shield, ShieldCheck, Sparkles, Target, TrendingUp, Users, Wallet, Zap, LogOut, Landmark, Swords,
 } from "lucide-react";
 import { AssetIcon, cx } from "@/components/ui";
+import { usePageTitle } from "@/components/shell/context";
 
 export const ROLE_ICON: Record<string, any> = {
   stock_trading: CandlestickChart, crypto_trading: Bitcoin, memecoin: Zap, sniping: Crosshair, mimic: Repeat, copy_trading: Users, news: Newspaper, social_sentiment: Megaphone,
@@ -124,23 +125,23 @@ export const AGENT_TABS = [
   { href: "/agents/capital", label: "Capital & Risk", icon: Shield },
   { href: "/agents/marketplace", label: "Marketplace", icon: TrendingUp },
 ];
+/** Page header: the title goes to the top bar (section crumb + gold serif accent); the page keeps a compact subtitle row + actions. */
 export function PageHead({ eyebrow, title, accent, sub, right }: { eyebrow?: string; title: string; accent?: string; sub?: string; right?: React.ReactNode }) {
+  const full = accent ? `${title}${title.endsWith("-") ? "" : " "}${accent}`.trim() : title;
+  usePageTitle({ section: `Automate · ${eyebrow?.replace(/^Merod\s+/, "") ?? "Agents"}`, title: full, accent });
+  if (!sub && !right) return null;
   return (
-    <div className="relative mb-5 flex flex-wrap items-end justify-between gap-4">
-      <div className="relative z-10 min-w-0">
-        {eyebrow && <div className="eyebrow mb-2">{eyebrow}</div>}
-        <h1 className="text-[2.15rem] font-semibold leading-tight tracking-tight sm:text-[2.6rem]">{title}{accent && <> <span className="serif-accent text-[1.12em]">{accent}</span></>}</h1>
-        {sub && <p className="mt-1.5 max-w-3xl text-[1.05rem] text-muted">{sub}</p>}
-      </div>
-      {right && <div className="relative z-10">{right}</div>}
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      {sub ? <p className="max-w-3xl text-[13px] leading-relaxed text-muted">{sub}</p> : <span />}
+      {right && <div className="shrink-0">{right}</div>}
     </div>
   );
 }
 export function GoldButton({ children, className, ...p }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button {...p} className={cx("inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-grad px-4 text-sm font-semibold disabled:opacity-50", className)}>{children}</button>;
+  return <button {...p} className={cx("inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-grad px-3.5 text-[13px] font-semibold text-bg disabled:opacity-50", className)}>{children}</button>;
 }
 export function GhostButton({ children, className, ...p }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return <button {...p} className={cx("inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-line-2 bg-panel/60 px-4 text-sm font-medium text-text hover:border-accent/50 disabled:opacity-50", className)}>{children}</button>;
+  return <button {...p} className={cx("inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-line-2 bg-panel/60 px-3 text-[13px] font-medium text-text hover:border-accent/50 disabled:opacity-50", className)}>{children}</button>;
 }
 export function SectionLink({ href, children }: { href: string; children: React.ReactNode }) {
   return <Link href={href} className="text-xs text-muted hover:text-text">{children}</Link>;

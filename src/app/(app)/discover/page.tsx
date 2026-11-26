@@ -9,6 +9,8 @@ import { api, useApi } from "@/lib/api";
 import { Card, Badge, Pills, Sparkline, Skeleton, Empty, ChangeText, AssetIcon, Input, Select, Button, Modal, SourceBadge, useToast, cx } from "@/components/ui";
 import { price, compact, usd, ago } from "@/lib/format";
 import { TradabilityBadge } from "@/components/terminal/TradabilityBadge";
+import { MarketsOverview, type Market } from "@/components/markets/MarketsOverview";
+import { usePageTitle } from "@/components/shell/context";
 
 type Tab = "trending" | "new" | "gainers" | "losers" | "volume" | "cap" | "articles";
 const SORT: Record<Tab, string> = { trending: "volume", new: "new", gainers: "gainers", losers: "losers", volume: "volume", cap: "cap", articles: "volume" };
@@ -33,6 +35,9 @@ function DiscoverInner() {
   const [minLiq, setMinLiq] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [listModal, setListModal] = useState(tabParam === "watchlist");
+  usePageTitle({ section: "Trade · Markets", title: "Markets overview", accent: "overview" });
+  const [market, setMarket] = useState<Market>(clsParam === "crypto" ? "crypto" : "stocks");
+  useEffect(() => { if (clsParam === "crypto" || clsParam === "stocks") setMarket(clsParam); }, [clsParam]);
   useEffect(() => { const t = setTimeout(() => setDebounced(term), 200); return () => clearTimeout(t); }, [term]);
 
   const qs = useMemo(() => {
@@ -59,19 +64,18 @@ function DiscoverInner() {
   const filterCount = [cls, venue, minCap, maxCap, minLiq].filter(Boolean).length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div><h1 className="page-title">Discover</h1><p className="text-sm text-muted">Search every stock and token Merod knows about — by ticker, name or contract address.</p></div>
-        <Button variant="secondary" onClick={() => setListModal(true)}><ListPlus className="size-4" /> Watchlists</Button>
-      </div>
+    <div className="space-y-3">
+      <MarketsOverview market={market} onMarket={setMarket} />
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="flex flex-col gap-2 pt-1 lg:flex-row lg:items-center">
+        <h2 className="shrink-0 text-[13px] font-semibold">All assets</h2>
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" />
-          <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Ticker, name, or contract / mint address…"
-            className="h-11 w-full rounded-xl border border-line bg-panel/70 pl-9 pr-3 text-sm outline-none placeholder:text-faint focus:border-accent" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-faint" />
+          <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search every stock and token by ticker, name, or contract / mint address…"
+            className="h-9 w-full rounded-lg border border-line bg-panel/70 pl-8 pr-3 text-[13px] outline-none placeholder:text-faint focus:border-accent" />
         </div>
-        <Button variant={showFilters ? "outline" : "secondary"} onClick={() => setShowFilters(!showFilters)}><Filter className="size-4" /> Filters{filterCount ? ` (${filterCount})` : ""}</Button>
+        <Button size="sm" variant={showFilters ? "outline" : "secondary"} onClick={() => setShowFilters(!showFilters)}><Filter className="size-4" /> Filters{filterCount ? ` (${filterCount})` : ""}</Button>
+        <Button size="sm" variant="secondary" onClick={() => setListModal(true)}><ListPlus className="size-4" /> Watchlists</Button>
       </div>
 
       {showFilters && (

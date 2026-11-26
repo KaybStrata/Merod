@@ -11,6 +11,7 @@ import {
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
 import { PromptBar } from "./PromptBar";
+import { MobileNav } from "./MobileNav";
 import { Logo } from "./Logo";
 import { ToastProvider, useToast, cx, Modal, Button } from "@/components/ui";
 import { api, useApi } from "@/lib/api";
@@ -30,7 +31,7 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
     { href: "/agents", label: "Agents", icon: Sparkles },
     { href: "/bots", label: "Bots", icon: Bot },
     { href: "/strategies", label: "Strategies", icon: Layers, also: ["/library"] },
-    { href: "/auto", label: "Auto trading", icon: Cpu, also: ["/automations", "/sessions"] },
+    { href: "/auto", label: "Auto trading", icon: Cpu, also: ["/automations", "/sessions", "/modo"] },
     { href: "/mimic", label: "Mimic", icon: Repeat, also: ["/copy"] },
     { href: "/shortcuts", label: "Shortcuts", icon: Zap },
   ] },
@@ -106,7 +107,7 @@ function Frame({ children }: { children: React.ReactNode }) {
           {active && <span className="ml-auto size-1.5 rounded-full bg-accent-2" />}
         </Link>
         {n.href === "/discover" && pathname.startsWith("/discover") && <Suspense fallback={null}><DiscoverSubLinks /></Suspense>}
-        {n.href === "/auto" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/auto", label: "Auto trading", icon: Cpu, extra: <AutoTradingSwitch />, below: <AutoActivityFeed /> }, { href: "/sessions", label: "Sessions", icon: Layers }]} />}
+        {n.href === "/auto" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} exact items={[{ href: "/auto", label: "Auto trading", icon: Cpu, extra: <AutoTradingSwitch />, below: <AutoActivityFeed /> }, { href: "/auto/activity", label: "Auto trade activity", icon: Activity }, { href: "/modo/activity", label: "Modo activity", icon: Sparkles }, { href: "/sessions", label: "Sessions", icon: Layers }]} />}
         {n.href === "/mimic" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }]} />}
         {n.href === "/live" && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/live", label: "Live stream", icon: Activity }, { href: "/activity", label: "World activity", icon: Radio }]} />}
         {n.href === "/agents" && isActive(pathname, n) && <SubLinks pathname={pathname} exact items={[
@@ -122,7 +123,6 @@ function Frame({ children }: { children: React.ReactNode }) {
     <nav className="relative flex h-full flex-col">
       <div className="relative z-10 flex shrink-0 items-center justify-between px-4 pb-3 pt-4">
         <Link href="/" aria-label="Merod home" className="flex items-center gap-2"><Logo /><span className="rounded-md border border-warn/40 bg-warn-soft px-1.5 py-0.5 text-[9.5px] font-bold tracking-wider text-warn">{user.tradingMode === "live" ? "LIVE" : "PAPER"}</span></Link>
-        <button onClick={toggle} className="hidden rounded-lg p-1.5 text-faint hover:bg-panel-2 hover:text-text lg:block" title="Hide menu  ( [ )" aria-label="Hide menu"><PanelLeftClose className="size-4" /></button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2.5 pb-3">
         {groups.map((g) => (
@@ -141,7 +141,8 @@ function Frame({ children }: { children: React.ReactNode }) {
           </span>
         </Link>
         <div className="mt-1.5 flex items-center justify-between rounded-lg px-1.5 py-1 text-[12px] text-muted">
-          <span>Real money</span><RealMoneySwitch owner={owner} bare />
+          <span>Real money</span>
+          <span className="flex items-center gap-1.5"><RealMoneySwitch owner={owner} bare /><button onClick={toggle} className="hidden rounded p-1 text-faint hover:bg-panel-2 hover:text-text lg:block" title="Hide menu  ( [ )" aria-label="Hide menu"><PanelLeftClose className="size-3.5" /></button></span>
         </div>
       </div>
     </nav>
@@ -168,7 +169,8 @@ function Frame({ children }: { children: React.ReactNode }) {
         <TopBar onMenu={() => setMobileOpen(true)} unread={me.data?.unread ?? 0} connected={connected} onModo={() => { try { localStorage.setItem("merod-rail-tab", "modo"); } catch {} if (!railOpen) toggleRail(); window.dispatchEvent(new Event("merod-rail-tab")); }} />
         <main className="mx-auto max-w-[1680px] px-4 pb-28 pt-4 sm:px-6">{children}</main>
       </div>
-      <PromptBar leftCollapsed={collapsed} railOpen={railOpen} />
+      <div className={pathname === "/ai" ? "hidden" : "hidden lg:block"}><PromptBar leftCollapsed={collapsed} railOpen={railOpen} /></div>
+      <MobileNav />
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { KeyRound, ShieldCheck, Wallet, ArrowRight, Building2, Globe2, Bitcoin, 
 import { UserApiKeys } from "@/components/UserApiKeys";
 import { PlatformApis } from "@/components/PlatformApis";
 import { PersonalApis } from "@/components/PersonalApis";
-import { useShell } from "@/components/shell/context";
+import { useShell, usePageTitle } from "@/components/shell/context";
 import { UserRound } from "lucide-react";
 import { Card } from "@/components/ui";
 
@@ -23,11 +23,11 @@ const SECTIONS = [
 export default function BrokerKeysPage() {
   const { user } = useShell();
   const owner = user.role === "super_admin";
+  usePageTitle({ section: "Account · Keys", title: "Broker & AI keys", accent: "keys" });
   return (
     <div className="space-y-4">
       <SectionTabs tabs={[{ href: "/broker-keys", label: "Broker keys", icon: KeyRound }, { href: "/ai-keys", label: "AI keys", icon: Cpu }]} />
       <div>
-        <h1 className="page-title"><KeyRound className="size-5 text-accent-2" /> Broker & API keys</h1>
         <p className="mt-1 max-w-3xl text-sm text-muted">Two separate sets of keys: <b className="text-text">Merod&apos;s platform APIs</b>, which serve Merod and all its users, and <b className="text-text">your own trading APIs</b>, which only ever trade your personal accounts.</p>
       </div>
       <PlatformApis />

@@ -467,6 +467,42 @@ export const PROVIDERS: ProviderDefinition[] = [
       return { ok: true, message: `Profile ${j.profile.name ?? j.profile.id}` };
     }),
   },
+  {
+    id: "moonpay", name: "MoonPay (card on-ramp)", category: "wallet", phase: 2,
+    description: "Buy SOL, USDC and other Solana tokens with a card, Apple Pay or bank transfer, delivered straight to the user's own Solana wallet. Merod never touches the money.",
+    docsUrl: "https://dev.moonpay.com/docs/on-ramp-overview", signupUrl: "https://dashboard.moonpay.com/",
+    authMethod: "api_key", supportsWebhooks: true, supportsOAuth: false,
+    credentials: [
+      { name: "MOONPAY_PUBLISHABLE_KEY", label: "Publishable key (pk_live_… or pk_test_…)", secret: false, required: true },
+      { name: "MOONPAY_SECRET_KEY", label: "Secret key (signs widget URLs)", secret: true, required: false, help: "Required by MoonPay in production whenever a wallet address is prefilled." },
+    ],
+    settings: [],
+    assetClasses: ["crypto"], networks: ["solana"], capabilities: ["onramp"], environments: ["sandbox", "production"],
+    commercialRequirements: "MoonPay partner account with your domain allow-listed. Production needs KYB approval from MoonPay.",
+    troubleshooting: ["Use pk_test_ keys with the sandbox environment", "Widget refuses the address: add MOONPAY_SECRET_KEY so URLs are signed"],
+    test: (ctx) => timed(async () => {
+      const { MOONPAY_PUBLISHABLE_KEY } = await need(ctx, "MOONPAY_PUBLISHABLE_KEY");
+      const j = await readJson(await ctx.fetch(`https://api.moonpay.com/v4/ip_address?apiKey=${encodeURIComponent(MOONPAY_PUBLISHABLE_KEY)}`), "moonpay");
+      if (typeof j?.isAllowed !== "boolean") throw new Error("Unexpected payload");
+      return { ok: true, message: `Key accepted · buying ${j.isBuyAllowed ? "allowed" : "not allowed"} from this server's region` };
+    }),
+  },
+  {
+    id: "transak", name: "Transak (card on-ramp)", category: "wallet", phase: 2,
+    description: "Card / bank on-ramp for SOL, USDC and Solana tokens into the user's own wallet.",
+    docsUrl: "https://docs.transak.com/", signupUrl: "https://dashboard.transak.com/",
+    authMethod: "api_key", supportsWebhooks: true, supportsOAuth: false,
+    credentials: [{ name: "TRANSAK_API_KEY", label: "API key", secret: false, required: true }],
+    settings: [],
+    assetClasses: ["crypto"], networks: ["solana"], capabilities: ["onramp"], environments: ["sandbox", "production"],
+    commercialRequirements: "Transak partner account; production keys after KYB.",
+    troubleshooting: ["Staging keys only work on the staging widget"],
+    test: (ctx) => timed(async () => {
+      const { TRANSAK_API_KEY } = await need(ctx, "TRANSAK_API_KEY");
+      if (!/^[0-9a-f-]{20,}$/i.test(TRANSAK_API_KEY)) throw new Error("That doesn't look like a Transak API key");
+      return { ok: true, unverified: true, message: "Key stored. Transak checks it when the widget opens." };
+    }),
+  },
   ...DIRECTORY_PROVIDERS,
 ];
 

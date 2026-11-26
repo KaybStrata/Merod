@@ -4,13 +4,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { GraduationCap, ShieldCheck, Undo2, Bot, Zap, Sparkles, Brain } from "lucide-react";
 import { api, useApi } from "@/lib/api";
-import { useRealtime } from "@/components/shell/context";
+import { useRealtime, usePageTitle } from "@/components/shell/context";
 import { Badge, Button, Card, Empty, Select, Skeleton, Stat, StatusPill, Toggle, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
 
 export default function TrainingPage() {
   const { data, refresh, loading } = useApi<any>("/api/training");
   const toast = useToast();
+  usePageTitle({ section: "Insight · AI Learning", title: "Auto-Training", accent: "Training" });
   const [busy, setBusy] = useState<string | null>(null);
   useRealtime((e) => { if (e.type === "training") { refresh(); toast(`Auto-training: ${e.payload.reason}`); } });
 
@@ -33,8 +34,7 @@ export default function TrainingPage() {
       <SectionTabs tabs={[{ href: "/learning", label: "AI Learning", icon: Brain }, { href: "/training", label: "Auto-Training", icon: GraduationCap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="page-title"><GraduationCap className="size-6 text-accent-2" /> Auto-Training</h1>
-          <p className="mt-1 max-w-3xl text-sm text-muted">
+          <p className="max-w-3xl text-[13px] text-muted">
             Automatically corrects your bots, shortcuts and prompt-trade defaults after mistakes, wrong trades or losses — and only ever in the
             direction of <b className="text-text">less risk</b>. Every change is logged and can be reverted.
           </p>

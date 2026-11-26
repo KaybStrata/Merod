@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Wallet, Users, CandlestickChart, ExternalLink, Info, Search, Repeat, Trophy, Bitcoin, LineChart } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { cx, useToast } from "@/components/ui";
@@ -27,7 +27,10 @@ export function Switch({ on, onClick, disabled, label = "Mimic", title }: { on: 
  * Merod traders (crypto + stocks), consenting traders' outside brokers, and live crypto / stock trade feeds —
  * each with stats and a Mimic switch, plus Mimic all per list.
  */
-export function TraderDirectory({ compact = false }: { compact?: boolean }) {
+export type DirSizing = { live: boolean; perTrade: string; maxDaily: string };
+export type DirPick = { row: any; group: "wallets" | "merod" | "stocks"; target: string; kind: Tab };
+
+export function TraderDirectory({ compact = false, sizing, onSelect, selected, onData }: { compact?: boolean; sizing?: DirSizing; onSelect?: (p: DirPick) => void; selected?: string | null; onData?: (d: any) => void }) {
   const [period, setPeriod] = useState<"today" | "1h" | "4h" | "12h" | "24h" | "7d">("today");
   const { data, refresh } = useApi<any>(`/api/traders?period=${period}`, { refreshMs: 60000 });
   const [tab, setTab] = useState<Tab>("gainers");
@@ -37,9 +40,12 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
   const onchain = useApi<any>(tab === "cryptoTrades" ? "/api/world/onchain?symbols=SOL" : null, { refreshMs: 15000 });
   const [qs, setQs] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
-  const [live, setLive] = useState(false);
+  const [liveLocal, setLive] = useState(false);
   const [topN, setTopN] = useState(0);
-  const [perTrade, setPerTrade] = useState("");
+  const [perTradeLocal, setPerTrade] = useState("");
+  const live = sizing ? sizing.live : liveLocal;
+  const perTrade = sizing ? sizing.perTrade : perTradeLocal;
+  const maxDaily = sizing?.maxDaily ?? "";
   const toast = useToast();
   const can = !!data?.canMimic;
   const group = (t: Tab): "wallets" | "merod" | "stocks" => (t === "gainers" || t === "wallets" ? "wallets" : t === "stocks" ? "stocks" : "merod");
@@ -59,7 +65,7 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
     setBusy(key);
     try {
       if (on && live && !confirm(`Mimic ${targets.length} trader${targets.length === 1 ? "" : "s"} with REAL money?`)) { setBusy(null); return; }
-      const r: any = await api("/api/traders", { method: "POST", json: { group: g, on, targets: [...new Set(targets)], live, perTradeUsd: perTrade ? Number(perTrade) : null } });
+      const r: any = await api("/api/traders", { method: "POST", json: { group: g, on, targets: [...new Set(targets)], live, perTradeUsd: perTrade ? Number(perTrade) : null, maxDailyUsd: maxDaily ? Number(maxDaily) : null } });
       toast(on ? `Mimicking ${r.done} ${g === "wallets" ? "wallet" : "trader"}${r.done === 1 ? "" : "s"}: their new trades are repeated at the same size (no spending cap)` : `Paused ${r.done}`, on ? "up" : "neutral");
       if (r.skipped?.length) toast(`Skipped ${r.skipped.length}: ${r.skipped[0]}`, "down");
       refresh();
@@ -67,13 +73,19 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
   }
   const TABS: [Tab, string, any, number | undefined][] = [["gainers", "Top gainers", Trophy, data?.gainers?.length], ["wallets", "Public wallets", Wallet, data?.wallets?.length], ["merod", "Merod traders", Users, data?.merod?.length],
     ["stocks", "Stock traders", CandlestickChart, data?.stocks?.length], ["cryptoTrades", "Crypto trades", Bitcoin, data?.cryptoTrades?.length], ["stockTrades", "Stock trades", LineChart, data?.stockTrades?.length]];
+  useEffect(() => { if (data) onData?.(data); }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Click a row to feature that trader (the Mimic page shows its stats and settings); the Mimic switch still works on its own.
+  const rowProps = (r: any, g: "wallets" | "merod" | "stocks", target: string) => ({
+    className: cx("border-t border-line/60 transition-colors", onSelect && "cursor-pointer hover:bg-panel-2/60", selected && selected === target && "bg-accent-soft/40"),
+    onClick: onSelect ? (e: React.MouseEvent) => { if ((e.target as HTMLElement).closest("a,button,input")) return; onSelect({ row: r, group: g, target, kind: tab }); } : undefined,
+  });
   const mimicCell = (r: any, g: "wallets" | "merod" | "stocks", target: string | null, copyable = true) =>
     !can ? <span className="text-[10px] text-faint">Owner only</span> : !target ? null : !copyable ? <span className="text-[10px] text-faint" title="This trader hasn't allowed copy trading">Not shared</span>
       : <Switch on={!!r.mimic} disabled={busy === target} onClick={() => flip(g, [target], !r.mimic, target)} />;
   return (
-    <section className="surface rounded-2xl p-4">
+    <section className="surface rounded-2xl p-3.5">
       <header className="flex flex-wrap items-center gap-2">
-        <h3 className="flex items-center gap-2 text-[1.05rem] font-semibold"><Repeat className="size-5 text-accent-2" /> All traders</h3>
+        <h3 className="flex items-center gap-2 text-[15px] font-semibold"><Trophy className="size-4 text-accent-2" /> Leaderboard <span className="text-[11px] font-normal text-faint">on &amp; off Merod</span></h3>
         <div className="flex flex-wrap gap-1 rounded-xl border border-line bg-bg-2/60 p-1 text-[12px]">
           {TABS.map(([k, l, I, n]) => <button key={k} onClick={() => setTab(k)} className={cx("flex items-center gap-1.5 rounded-lg px-2.5 py-1", tab === k ? "nav-active" : "text-muted hover:text-text")}><I className="size-3.5" />{l}{n != null && <span className="text-faint">{n}</span>}</button>)}
         </div>
@@ -88,7 +100,7 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
           </span>
         )}
       </header>
-      {can && !isFeed && (
+      {can && !isFeed && !sizing && (
         <div className="mt-3 rounded-xl border border-line bg-bg-2/50 p-3 sm:flex sm:items-center sm:gap-4">
           <span className="mb-2 block shrink-0 text-[12px] font-medium sm:mb-0">New mimics use:</span>
           <div className="flex-1"><MimicSizing live={live} setLive={setLive} perTrade={perTrade} setPerTrade={setPerTrade} /></div>
@@ -122,7 +134,7 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
           </thead>
           <tbody>
             {rows.map((r: any, i: number) => tab === "gainers" ? (
-              <tr key={r.address} className="border-t border-line/60">
+              <tr key={r.address} {...rowProps(r, "wallets", r.address)}>
                 <td className="py-2 font-semibold text-accent-2">{i + 1}</td>
                 <td><a href={`https://solscan.io/account/${r.address}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 font-mono hover:underline">{short(r.address)} <ExternalLink className="size-3 text-faint" /></a></td>
                 <td className={cx("num text-right font-semibold", tone(r.value))}>{signed(r.value)}{r.kind === "net_flow" ? "*" : ""}</td>
@@ -133,7 +145,7 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
                 <td className="text-right">{mimicCell(r, "wallets", r.address)}</td>
               </tr>
             ) : tab === "wallets" ? (
-              <tr key={r.address} className="border-t border-line/60">
+              <tr key={r.address} {...rowProps(r, "wallets", r.address)}>
                 <td className="py-2"><a href={`https://solscan.io/account/${r.address}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 font-mono hover:underline">{short(r.address)} <ExternalLink className="size-3 text-faint" /></a></td>
                 <td className="text-muted">{r.tokens?.length ? [...new Set(r.tokens)].join(", ") : "—"}</td>
                 <td className="num text-right">{r.trades ?? "—"}</td>
@@ -144,7 +156,7 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
                 <td className="text-right">{mimicCell(r, "wallets", r.address)}</td>
               </tr>
             ) : isFeed ? (
-              <tr key={r.id} className="border-t border-line/60">
+              <tr key={r.id} {...rowProps(r, r.onchain ? "wallets" : "merod", r.onchain ? r.wallet : r.handle)}>
                 <td className="py-2 text-[11px] text-muted">{ago(r.at)}</td>
                 <td>{r.onchain ? <a href={`https://solscan.io/account/${r.wallet}`} target="_blank" rel="noreferrer" className="font-mono hover:underline">{short(r.wallet)}</a> : <Link href={`/social/${r.handle}`} className="hover:underline">@{r.handle}</Link>}</td>
                 <td className={r.side === "buy" ? "text-up" : "text-down"}>{r.side}</td>
@@ -155,7 +167,7 @@ export function TraderDirectory({ compact = false }: { compact?: boolean }) {
                 <td className="text-right">{mimicCell(r, r.onchain ? "wallets" : "merod", r.onchain ? r.wallet : r.handle, r.onchain || !!r.allow_copy_trading)}</td>
               </tr>
             ) : (
-              <tr key={r.handle} className="border-t border-line/60">
+              <tr key={r.handle} {...rowProps(r, group(tab), r.handle)}>
                 <td className="py-2"><Link href={`/social/${r.handle}`} className="flex items-center gap-2 hover:underline"><span className="flex size-6 items-center justify-center rounded-full text-[10px] font-semibold text-black" style={{ background: r.color || "#d6b37a" }}>{(r.name ?? r.handle).slice(0, 1).toUpperCase()}</span><span><span className="font-medium">{r.name}</span> <span className="text-muted">@{r.handle}</span></span></Link></td>
                 <td className={cx("num text-right", tone(r.cryptoPnl))}>{r.cryptoTrades ? signed(r.cryptoPnl) : "—"}</td>
                 <td className={cx("num text-right", tone(r.stockPnl))}>{r.stockTrades ? signed(r.stockPnl) : "—"}</td>

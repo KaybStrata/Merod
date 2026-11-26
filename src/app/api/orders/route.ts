@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { requireUser } from "@/server/auth";
+import { requireUser, verifyStepUp } from "@/server/auth";
+import { HttpError } from "@/server/errors";
 import { ok, parse, rateLimit, route } from "@/server/http";
 import { q } from "@/server/db";
 import { OrderIntentSchema } from "@/server/engine/types";
@@ -25,6 +26,8 @@ const Body = z.object({
   idempotencyKey: z.string().min(8).max(100).optional(),
   source: z.enum(["manual", "shortcut"]).default("manual"),
   sourceRef: z.string().max(100).optional(),
+  /** Optional 2-step verification (Review order screen): when sent, the authenticator code must be valid or nothing is placed. */
+  code: z.string().regex(/^\d{6,8}$/).optional(),
 });
 
 /** POST: preview (all engine checks, no side effects) or place (user-confirmed manual order). */
@@ -34,6 +37,7 @@ export const POST = route(async (req) => {
   const b = await parse(req, Body);
   const ctx = { userId: u.id, source: b.source, sourceRef: b.sourceRef, idempotencyKey: b.idempotencyKey ?? randomUUID(), actor: { type: "user" as const, id: u.id }, userConfirmed: b.mode === "place" };
   if (b.mode === "preview") return ok({ plan: await preview(b.intent, ctx) });
+  if (b.code !== undefined && !(await verifyStepUp(u.id, b.code))) throw new HttpError(401, "Invalid 2-step verification code. Nothing was placed.");
   const r = await place(b.intent, ctx);
   return ok({ order: r.order, plan: r.plan, replayed: r.replayed });
 });

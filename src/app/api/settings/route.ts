@@ -69,7 +69,7 @@ export const PATCH = route(async (req) => {
       if (!v.trading_halted) await q("UPDATE trading_bots SET status='paused' WHERE user_id=$1 AND status='halted'", [u.id]);
       break;
     case "automation":
-      if (v.auto_max_order_usd > v.auto_daily_cap_usd) throw new HttpError(400, "Per-order automation limit can't exceed the daily automation cap");
+      if (v.auto_daily_cap_usd > 0 && v.auto_max_order_usd > v.auto_daily_cap_usd) throw new HttpError(400, "Per-order automation limit can't exceed the daily automation cap");
       await q(`UPDATE trading_permissions SET mode=$2, auto_max_order_usd=$3, auto_daily_cap_usd=$4, allow_ai_prompts=$5, allow_bots=$6, allow_shortcuts=$7,
                  allowed_asset_classes=$8, updated_at=now() WHERE user_id=$1`,
         [u.id, v.mode, v.auto_max_order_usd, v.auto_daily_cap_usd, v.allow_ai_prompts, v.allow_bots, v.allow_shortcuts, v.allowed_asset_classes]);

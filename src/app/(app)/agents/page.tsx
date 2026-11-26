@@ -3,10 +3,9 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { Users, Zap, BarChart3, Target, Layers, Info, ArrowRight, Bell, CheckCircle2, AlertTriangle, Play, Pause, Check, Copy, Rocket, Grid2x2, List, ChevronDown, PlayCircle, Activity } from "lucide-react";
 import { api, useApi } from "@/lib/api";
-import { useRealtime } from "@/components/shell/context";
+import { useRealtime, usePageTitle } from "@/components/shell/context";
 import { Empty, Skeleton, cx, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
-import { GoldWaves } from "@/components/ui/GoldWaves";
 import { FleetComposer } from "@/components/agents/FleetReview";
 import { AgentFleetCard, AgentTile } from "@/components/agents/AgentCard";
 import { AreaChart, Ring, fmtPct, fmtSigned, toneOf } from "@/components/agents/common";
@@ -18,6 +17,7 @@ export default function CommandCenter() {
   const last = useRef(0);
   useRealtime((e) => { if (e.type === "agent" && Date.now() - last.current > 3000) { last.current = Date.now(); refresh(); } });
   const toast = useToast();
+  usePageTitle({ section: "Automate · Agents", title: "Agents Command Center", accent: "Command Center" });
   const [filter, setFilter] = useState<"all" | "running" | "paused" | "approval">("all");
   const [sort, setSort] = useState<"performance" | "newest" | "name">("performance");
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -65,22 +65,19 @@ export default function CommandCenter() {
 
   return (
     <div className="relative">
-      <GoldWaves className="-top-16 right-0 h-[280px] w-[70%] opacity-90" />
       <div className="relative z-10">
-        <div className="eyebrow mb-3">Merod Agents Command Center</div>
-        <h1 className="text-[2.4rem] font-semibold leading-tight tracking-tight sm:text-[3rem]">Agents <span className="serif-accent text-[1.12em]">Command Center</span></h1>
-        <p className="mt-2 max-w-3xl text-[1.1rem] text-muted">Create, direct, and monitor a fleet of prompted agents that research, trade, and manage your portfolio in parallel.</p>
-        <FleetComposer className="mt-6" />
+        <p className="max-w-3xl text-[13px] text-muted">Create, direct, and monitor a fleet of prompted agents that research, trade, and manage your portfolio in parallel.</p>
+        <FleetComposer className="mt-3" />
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Tile icon={Users} label="Active Agents" value={String(agents.length)} sub="In fleet" deco={<Layers className="size-14 text-line-2" strokeWidth={1} />} />
           <Tile icon={Zap} label="Running" value={`${running.length} / ${agents.length}`} sub={failed.length ? `${failed.length} need attention` : "All agents operational"} deco={<div className="flex h-12 items-end gap-1">{[3, 5, 8, 11].map((h, i) => <span key={i} className="w-1.5 rounded-sm bg-gradient-to-t from-[#6b5532] to-[#d6b37a]" style={{ height: h * 4 }} />)}</div>} />
           <Tile icon={BarChart3} label="Combined P&L" value={<span className={toneOf(pnl)}>{fmtSigned(pnl)}</span>} sub={<span className={toneOf(pnl24)}>{capital ? fmtPct((pnl24 / capital) * 100) : "—"} (24h)</span>} deco={<AreaChart data={combinedSpark} height={44} className="w-28" up={pnl >= 0} />} />
           <Tile icon={Target} label="Fleet Win Rate" value={winRate == null ? "—" : `${winRate.toFixed(1)}%`} sub={`${closes.length} agent${closes.length === 1 ? "" : "s"} with closed trades`} deco={<Ring pct={winRate ?? 0} size={52} stroke={5} />} />
         </div>
 
-        <div className="mt-7 flex flex-wrap items-center gap-3">
-          <h2 className="flex items-center gap-2 text-[1.2rem] font-semibold"><Layers className="size-5" /> Agent Fleet ({agents.length})</h2>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold"><Layers className="size-4 text-accent-2" /> Agent Fleet ({agents.length})</h2>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <div className="flex gap-1 rounded-xl border border-line bg-panel/60 p-1 text-[12px]">
               {([["all", `All (${agents.length})`], ["running", `Running (${running.length})`], ["paused", `Paused (${paused.length})`], ["approval", `Needs Approval (${needsApproval.length})`]] as const).map(([k, l]) => (
@@ -143,11 +140,11 @@ export default function CommandCenter() {
         <div className="surface mt-5 flex flex-wrap items-center gap-3 rounded-2xl p-3">
           <div className="flex items-center gap-3 pr-4 sm:border-r sm:border-line"><PlayCircle className="size-6 text-muted" /><div><div className="text-[15px] font-semibold">Fleet Controls</div><div className="text-[11px] text-muted">Run actions across your agent fleet</div></div></div>
           <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-5">
-            <button onClick={() => fleetControl("run")} className="flex h-11 items-center justify-center gap-2 rounded-xl bg-grad text-sm font-semibold"><Play className="size-4" /> Run</button>
-            <button onClick={() => fleetControl("pause")} className="flex h-11 items-center justify-center gap-2 rounded-xl border border-line-2 text-sm hover:border-accent/40"><Pause className="size-4" /> Pause</button>
-            <button onClick={() => fleetControl("approve")} className="flex h-11 items-center justify-center gap-2 rounded-xl border border-line-2 text-sm hover:border-accent/40"><Check className="size-4" /> Approve</button>
-            <button onClick={() => fleetControl("clone")} className="flex h-11 items-center justify-center gap-2 rounded-xl border border-line-2 text-sm hover:border-accent/40"><Copy className="size-4" /> Clone</button>
-            <button onClick={() => fleetControl("deploy")} className="flex h-11 items-center justify-center gap-2 rounded-xl border border-line-2 text-sm hover:border-accent/40"><Rocket className="size-4" /> Deploy</button>
+            <button onClick={() => fleetControl("run")} className="flex h-9 items-center justify-center gap-2 rounded-lg bg-grad text-[13px] font-semibold text-bg"><Play className="size-4" /> Run</button>
+            <button onClick={() => fleetControl("pause")} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-line-2 text-[13px] hover:border-accent/40"><Pause className="size-4" /> Pause</button>
+            <button onClick={() => fleetControl("approve")} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-line-2 text-[13px] hover:border-accent/40"><Check className="size-4" /> Approve</button>
+            <button onClick={() => fleetControl("clone")} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-line-2 text-[13px] hover:border-accent/40"><Copy className="size-4" /> Clone</button>
+            <button onClick={() => fleetControl("deploy")} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-line-2 text-[13px] hover:border-accent/40"><Rocket className="size-4" /> Deploy</button>
           </div>
         </div>
       </div>
@@ -157,10 +154,10 @@ export default function CommandCenter() {
 
 function Tile({ icon: Icon, label, value, sub, deco }: { icon: any; label: string; value: React.ReactNode; sub: React.ReactNode; deco?: React.ReactNode }) {
   return (
-    <div className="surface flex items-center justify-between gap-3 rounded-2xl p-4">
+    <div className="surface flex items-center justify-between gap-3 rounded-xl p-3.5">
       <div className="flex gap-3">
         <Icon className="mt-0.5 size-5 text-muted" strokeWidth={1.6} />
-        <div><div className="text-[13px] text-text/90">{label}</div><div className="num mt-1 text-[1.55rem] font-semibold leading-none">{value}</div><div className="mt-1.5 text-[11.5px] text-muted">{sub}</div></div>
+        <div><div className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-faint">{label}</div><div className="num mt-1 text-[1.35rem] font-semibold leading-none">{value}</div><div className="mt-1.5 text-[11.5px] text-muted">{sub}</div></div>
       </div>
       {deco}
     </div>

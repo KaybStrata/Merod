@@ -5,7 +5,7 @@ import { ArrowLeft, Lock, BarChart3, Bot, FileText } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { pct, usd, ago } from "@/lib/format";
 import { Badge, Button, Card, Empty, Pills, Skeleton, Stat, cx, useToast, PaperBadge } from "@/components/ui";
-import { useShell } from "@/components/shell/context";
+import { usePageTitle, useShell } from "@/components/shell/context";
 import { Avatar, PostCard } from "@/components/social/PostCard";
 import { CopyTradeButton } from "@/components/CopyBots";
 
@@ -14,6 +14,7 @@ type Tab = "posts" | "performance" | "strategies";
 export default function ProfilePage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = use(params);
   const { user } = useShell();
+  usePageTitle({ section: "Insight · The Floor", title: "Trader profile", accent: "profile" });
   const toast = useToast();
   const { data, error, loading, refresh } = useApi<any>(`/api/social/profiles/${encodeURIComponent(handle)}`);
   const [tab, setTab] = useState<Tab>("posts");

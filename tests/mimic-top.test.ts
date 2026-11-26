@@ -26,7 +26,7 @@ test("prompt parser: counts, markets, window, real money and $ per trade", () =>
   assert.equal(r.count, 10); assert.equal(r.live, true); assert.equal(r.perTradeUsd, 20); assert.equal(r.period, "today"); assert.equal(r.stocks, false);
   assert.equal(parseMimicTop("mimic the top ROI earner for Solana meme coins this week"), null, "single-trader requests keep the existing flow");
   assert.equal(parseMimicTop("buy 50 SOL"), null);
-  assert.equal(parseMimicTop("mimic the top 500 traders")!.count, 500, "any amount up to the 500 safety ceiling");
+  assert.equal(parseMimicTop("mimic the top 500 traders")!.count, 500, "any amount");
 });
 
 test("mimicTop: paper stock mimics are created with a stocks-only scope; real money without a broker fails softly", async () => {
@@ -36,7 +36,7 @@ test("mimicTop: paper stock mimics are created with a stocks-only scope; real mo
   const acct = (await one<any>("SELECT id FROM trading_accounts WHERE user_id=$1 AND kind='paper'", [leader]))!;
   await q(`INSERT INTO orders (user_id, account_id, asset_id, provider_id, idempotency_key, source, side, order_type, quantity, is_paper, status, filled_quantity, avg_fill_price, realized_pnl)
            VALUES ($1,$2,$3,'paper',gen_random_uuid()::text,'manual','sell','market',1,true,'filled',1,100,25)`, [leader, acct.id, stock.id]);
-  const r = await mimicTop(me, { count: 5, crypto: false, stocks: true, period: "7d", perTradeUsd: 15 });
+  const r = await mimicTop(me, { count: 100_000, crypto: false, stocks: true, period: "7d", perTradeUsd: 15 });
   assert.ok(r.stocks.done >= 1, JSON.stringify(r));
   const f = await one<any>("SELECT * FROM copy_follows WHERE follower_id=$1 AND leader_user_id=$2", [me, leader]);
   assert.equal(f.sizing, "fixed"); assert.equal(Number(f.fixed_usd), 15);

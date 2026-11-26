@@ -25,9 +25,9 @@ function LoginForm() {
   }
 
   return (
-    <div className="fade-up w-full max-w-sm rounded-xl border border-line bg-panel/90 p-7">
-      <h1 className="text-xl font-semibold">Sign in</h1>
-      <p className="mt-1 text-sm text-muted">Welcome back to Merod.</p>
+    <div className="fade-up surface w-full max-w-sm rounded-2xl p-7">
+      <h1 className="text-[26px] font-semibold tracking-tight">Welcome <span className="serif-accent text-[30px] text-accent-2">back</span></h1>
+      <p className="mt-1 text-sm text-muted">Sign in to Merod.</p>
       <form onSubmit={submit} className="mt-6 space-y-4">
         <Input label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input label="Password" type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />

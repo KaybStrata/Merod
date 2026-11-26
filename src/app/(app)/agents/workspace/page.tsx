@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Users, Swords, Brain, BarChart3, FileText, Grid2x2, List, Plus, UserPlus, GitBranch, CalendarClock, MoreHorizontal, Zap, Shield, Database, Save } from "lucide-react";
 import { api, useApi } from "@/lib/api";
-import { useRealtime } from "@/components/shell/context";
+import { useRealtime, usePageTitle } from "@/components/shell/context";
 import { Empty, Modal, Skeleton, cx, useToast } from "@/components/ui";
 import { ActivityFeed } from "@/components/agents/ActivityFeed";
 import { AgentTile } from "@/components/agents/AgentCard";
@@ -22,6 +22,7 @@ export default function Workspace() {
   const training = useApi<any>("/api/agents/training");
   const layouts = useApi<any>("/api/agents/layouts");
   const toast = useToast();
+  usePageTitle({ section: "Automate · Agents", title: "Agent Workspace", accent: "Workspace" });
   const last = useRef(0);
   useRealtime((e) => { if (e.type === "agent" && Date.now() - last.current > 3000) { last.current = Date.now(); refresh(); } });
   const [tab, setTab] = useState<Tab>("agents");
@@ -65,8 +66,7 @@ export default function Workspace() {
       <div className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-[2.1rem] font-semibold tracking-tight">Agent Workspace</h1>
-            <p className="text-[1.02rem] text-muted">Create, deploy, and run multiple AI trading agents in parallel.</p>
+            <p className="text-[13px] text-muted">Create, deploy, and run multiple AI trading agents in parallel.</p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Stat label="Total P&L (24h)" value={<span className={toneOf(pnl24)}>{fmtSigned(pnl24)}</span>} chip={capital ? <span className={cx("text-[11px]", toneOf(pnl24))}>{fmtPct((pnl24 / capital) * 100)}</span> : null} />

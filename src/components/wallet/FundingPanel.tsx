@@ -11,6 +11,8 @@ export function FundingPanel({ onChanged }: { onChanged?: () => void }) {
   const toast = useToast();
   const { data, refresh } = useApi<any>("/api/wallet/funding");
   const [tab, setTab] = useState<Tab>("deposit");
+  // The Wallet header buttons (Deposit / Withdraw / Transfer) switch tabs: window.dispatchEvent(new CustomEvent("merod-funding-tab", { detail: "withdraw" })).
+  useEffect(() => { const h = (e: Event) => { const t = (e as CustomEvent).detail; if (["deposit", "withdraw", "send", "addresses", "requests"].includes(t)) setTab(t); }; window.addEventListener("merod-funding-tab", h); return () => window.removeEventListener("merod-funding-tab", h); }, []);
   const [busy, setBusy] = useState<string | null>(null);
   const done = () => { refresh(); onChanged?.(); };
   async function run(key: string, body: any, okMsg: string) {
@@ -26,7 +28,7 @@ export function FundingPanel({ onChanged }: { onChanged?: () => void }) {
   const brokers = accounts.filter((a) => a.kind === "brokerage");
 
   return (
-    <Card title="Deposit, withdraw & transfer" icon={<Landmark className="size-4 text-accent-2" />}
+    <div id="funding"><Card title="Deposit, withdraw & transfer" icon={<Landmark className="size-4 text-accent-2" />}
       action={<Pills size="sm" value={tab} onChange={setTab} options={[
         { value: "deposit", label: <span className="flex items-center gap-1"><ArrowDownToLine className="size-3.5" />Deposit</span> },
         { value: "withdraw", label: <span className="flex items-center gap-1"><ArrowUpFromLine className="size-3.5" />Withdraw cash</span> },
@@ -45,7 +47,7 @@ export function FundingPanel({ onChanged }: { onChanged?: () => void }) {
       {tab === "send" && <SendTab data={data} wallets={wallets} run={run} busy={busy} goAddresses={() => setTab("addresses")} />}
       {tab === "addresses" && <AddressesTab data={data} run={run} busy={busy} />}
       {tab === "requests" && <RequestsTab data={data} run={run} busy={busy} />}
-    </Card>
+    </Card></div>
   );
 }
 

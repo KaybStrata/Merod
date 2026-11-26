@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Brain, Target, CheckCircle2, AlertTriangle, Gauge, Bot, Sparkles, Cpu, Repeat, ArrowLeftRight, Landmark, Pause, Play, Search, BarChart3 } from "lucide-react";
 import { api } from "@/lib/api";
-import { useRealtime } from "@/components/shell/context";
+import { usePageTitle, useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 
 type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string };
@@ -17,6 +17,7 @@ const KINDS: [string, string, any, string][] = [
   ["state", "Status", Gauge, "text-muted bg-panel-2"],
 ];
 const SRC_ICON: Record<string, any> = Object.fromEntries(SOURCES.map(([k, , I]) => [k, I]));
+const BAR: Record<string, string> = { thought: "bg-[#c9b6ff]", analysis: "bg-up/70", decision: "bg-[#8fbcff]", execution: "bg-up", warning: "bg-warn", state: "bg-faint" };
 const SINGULAR: Record<string, string> = { thought: "Thought", analysis: "Analysis", decision: "Decision", execution: "Execution", warning: "Warning", state: "Status" };
 const time = (t: string) => {
   const d = new Date(t), today = d.toDateString() === new Date().toDateString();
@@ -26,6 +27,7 @@ const time = (t: string) => {
 
 /** Activity: purely real-time live data of Merod, bots and agents — thought process, decisions and executions. */
 export default function LiveActivity() {
+  usePageTitle({ section: "Insight · Activity", title: "Live Activity", accent: "Activity" });
   const [items, setItems] = useState<Item[]>([]);
   const [src, setSrc] = useState("all");
   const [kinds, setKinds] = useState<Set<string>>(new Set(KINDS.map(([k]) => k)));
@@ -55,63 +57,107 @@ export default function LiveActivity() {
   const shown = useMemo(() => items.filter((i) => (src === "all" || i.source === src) && kinds.has(i.kind) && (!q || `${i.actor} ${i.title} ${i.body ?? ""}`.toLowerCase().includes(q.toLowerCase()))), [items, src, kinds, q]);
   const minute = items.filter((i) => Date.now() - new Date(i.at).getTime() < 60_000).length;
   const counts = (k: string) => items.filter((i) => i.source === k).length;
+  // Events per minute over the last 30 minutes (histogram) and the mix of kinds in the last hour.
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 5000); return () => clearInterval(t); }, []);
+  const buckets = useMemo(() => {
+    const now = Date.now(), b = Array(30).fill(0);
+    for (const i of items) { const m = Math.floor((now - new Date(i.at).getTime()) / 60_000); if (m >= 0 && m < 30) b[29 - m]++; }
+    return b;
+  }, [items, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const peak = Math.max(1, ...buckets);
+  const hour = items.filter((i) => Date.now() - new Date(i.at).getTime() < 3_600_000);
+  const mix = KINDS.map(([k, l, , cls]) => ({ k, l, cls, n: hour.filter((i) => i.kind === k).length }));
+  const mixMax = Math.max(1, ...mix.map((m) => m.n));
+  const lastExec = items.find((i) => i.kind === "execution");
+  const lastDecision = items.find((i) => i.kind === "decision");
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="page-title"><Activity className="text-accent-2" /> Activity</h1>
-          <p>Everything thinking, deciding and trading for you, as it happens: agents, bots, auto trading, Modo, your orders, mimic trades and Merod itself.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={cx("flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] font-semibold", paused ? "border-warn/40 text-warn" : ok === false ? "border-down/40 text-down" : "border-up/40 text-up")}>
-            <span className={cx("size-2 rounded-full", paused ? "bg-warn" : ok === false ? "bg-down" : "bg-up pulse-dot")} />{paused ? "PAUSED" : ok === false ? "RECONNECTING" : "LIVE"}
-          </span>
-          <span className="rounded-full border border-line-2 px-3 py-1.5 text-[12px] text-muted"><b className="num text-text">{minute}</b> events / last minute</span>
-          <button onClick={() => { setPaused(!paused); if (paused) pull(); }} className="flex h-9 items-center gap-1.5 rounded-xl border border-line-2 px-3 text-sm hover:border-accent/50">{paused ? <><Play className="size-4" /> Resume</> : <><Pause className="size-4" /> Pause</>}</button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1 rounded-2xl border border-line bg-panel/60 p-1">
-        {SOURCES.map(([k, l, I]) => (
-          <button key={k} onClick={() => setSrc(k)} className={cx("flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[13px]", src === k ? "nav-active" : "text-muted hover:text-text")}>
-            <I className="size-4" />{l}{k !== "all" && <span className="num text-[11px] text-faint">{counts(k)}</span>}
-          </button>
-        ))}
-      </div>
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-1 rounded-xl border border-line bg-panel/60 p-1">
+          {SOURCES.map(([k, l, I]) => (
+            <button key={k} onClick={() => setSrc(k)} className={cx("flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px]", src === k ? "nav-active" : "text-muted hover:text-text")}>
+              <I className="size-3.5" />{l}<span className="num text-[10.5px] text-faint">{k === "all" ? items.length : counts(k)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="relative"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-faint" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search thoughts, tickers, agents…" className="h-8 w-60 rounded-lg border border-line bg-panel-2/60 pl-8 pr-3 text-[12.5px] outline-none placeholder:text-faint focus:border-accent/60" /></div>
+          <span className={cx("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold", paused ? "border-warn/40 text-warn" : ok === false ? "border-down/40 text-down" : "border-up/40 text-up")}>
+            <span className={cx("size-1.5 rounded-full", paused ? "bg-warn" : ok === false ? "bg-down" : "bg-up pulse-dot")} />{paused ? "PAUSED" : ok === false ? "RECONNECTING" : "LIVE"}
+          </span>
+          <button onClick={() => { setPaused(!paused); if (paused) pull(); }} className="flex h-8 items-center gap-1.5 rounded-lg border border-line-2 px-3 text-[12.5px] hover:border-accent/50">{paused ? <><Play className="size-3.5" /> Resume stream</> : <><Pause className="size-3.5" /> Pause stream</>}</button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
         {KINDS.map(([k, l, I, cls]) => (
           <button key={k} onClick={() => setKinds((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; })}
-            className={cx("flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-opacity", cls, !kinds.has(k) && "opacity-35")}><I className="size-3.5" />{l}</button>
+            className={cx("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-opacity", cls, !kinds.has(k) && "opacity-35")}><I className="size-3.5" />{l}</button>
         ))}
-        <div className="relative ml-auto"><Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by name, coin, word…" className="h-9 w-64 rounded-xl border border-line bg-panel-2/60 pl-8 pr-3 text-sm outline-none focus:border-accent/60" /></div>
       </div>
 
-      <section className="surface rounded-2xl">
-        {!shown.length && <p className="p-10 text-center text-sm text-muted">{items.length ? "Nothing matches these filters." : "Waiting for activity… Start an agent, a bot or auto trading, or place a trade, and it streams here instantly."}</p>}
-        <ol>
-          {shown.map((i) => {
-            const k = KINDS.find(([kk]) => kk === i.kind) ?? KINDS[5];
-            const SI = SRC_ICON[i.source] ?? Activity;
-            const KI = k[2];
-            const row = (
-              <div className={cx("flex items-start gap-3 border-b border-line/60 px-4 py-3 transition-colors last:border-0 hover:bg-panel-2/50", fresh.has(i.id) && "fade-up bg-accent-soft/40")}>
-                <span className="num w-[70px] shrink-0 pt-0.5 text-[11.5px] text-faint">{time(i.at)}</span>
-                <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full border border-line-2 bg-panel-2 text-accent-2"><SI className="size-4" /></span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[13px] font-semibold">{i.actor}</span>
-                    <span className={cx("flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium", k[3])}><KI className="size-3" />{SINGULAR[i.kind] ?? k[1]}</span>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <section className="surface overflow-hidden rounded-2xl">
+          {!shown.length && <p className="p-10 text-center text-sm text-muted">{items.length ? "Nothing matches these filters." : "Waiting for activity… Start an agent, a bot or auto trading, or place a trade, and it streams here instantly."}</p>}
+          <ol>
+            {shown.map((i) => {
+              const k = KINDS.find(([kk]) => kk === i.kind) ?? KINDS[5];
+              const SI = SRC_ICON[i.source] ?? Activity;
+              const KI = k[2];
+              const row = (
+                <div className={cx("flex items-start gap-3 border-b border-line/60 px-4 py-2.5 transition-colors last:border-0 hover:bg-panel-2/50", fresh.has(i.id) && "fade-up bg-accent-soft/40")}>
+                  <span className="num w-[64px] shrink-0 pt-0.5 text-[11px] text-faint">{time(i.at)}</span>
+                  <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-line-2 bg-panel-2 text-accent-2"><SI className="size-3.5" /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[12.5px] font-semibold">{i.actor}</span>
+                      <span className={cx("flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide", k[3])}><KI className="size-3" />{SINGULAR[i.kind] ?? k[1]}</span>
+                    </div>
+                    <div className="mt-0.5 text-[13px] leading-snug">{i.title}</div>
+                    {i.body && <div className="mt-1 line-clamp-2 rounded-lg border border-line/60 bg-bg-2/50 px-2.5 py-1.5 text-[11.5px] text-muted">{i.body}</div>}
                   </div>
-                  <div className="mt-0.5 text-[13.5px] leading-snug">{i.title}</div>
-                  {i.body && <div className="mt-0.5 line-clamp-2 text-[12px] text-muted">{i.body}</div>}
                 </div>
-              </div>
-            );
-            return <li key={i.id}>{i.link ? <Link href={i.link}>{row}</Link> : row}</li>;
-          })}
-        </ol>
-      </section>
-      <p className="text-[11px] text-faint">Updates every 3 seconds and instantly on live events. Decision summaries and rule checks only, never private model chain-of-thought. Platform trades from other Merod traders are anonymous.</p>
+              );
+              return <li key={i.id}>{i.link ? <Link href={i.link}>{row}</Link> : row}</li>;
+            })}
+          </ol>
+        </section>
+
+        <aside className="space-y-3">
+          <section className="surface rounded-2xl p-4">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">Throughput</div>
+            <div className="mt-1 flex items-baseline gap-1.5"><span className="num text-[34px] font-semibold leading-none">{minute}</span><span className="text-[12px] text-muted">events / min</span></div>
+            <div className="mt-3 flex h-16 items-end gap-[3px]" aria-label="Events per minute, last 30 minutes">
+              {buckets.map((n, idx) => <span key={idx} title={`${n} events`} className={cx("flex-1 rounded-sm", idx === 29 ? "bg-accent-2" : "bg-accent/35")} style={{ height: `${Math.max(4, (n / peak) * 100)}%` }} />)}
+            </div>
+            <div className="mt-1 flex justify-between text-[10px] text-faint"><span>30m ago</span><span>now</span></div>
+            <div className="mt-4 space-y-2">
+              {mix.map((m) => (
+                <div key={m.k} className="flex items-center gap-2 text-[11.5px]">
+                  <span className="w-20 text-muted">{m.l}</span>
+                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-panel-2"><span className={cx("block h-full rounded-full", BAR[m.k])} style={{ width: `${(m.n / mixMax) * 100}%` }} /></span>
+                  <span className="num w-8 text-right">{m.n}</span>
+                </div>
+              ))}
+              <div className="text-[10px] text-faint">Last hour</div>
+            </div>
+          </section>
+          {[{ label: "Now executing", item: lastExec, tone: "text-up" }, { label: "Latest decision", item: lastDecision, tone: "text-[#8fbcff]" }].map(({ label, item, tone }) => (
+            <section key={label} className="surface rounded-2xl p-4">
+              <div className="flex items-center justify-between"><span className={cx("text-[10px] font-semibold uppercase tracking-[0.14em]", tone)}>{label}</span>{item && <span className="text-[10.5px] text-faint">{time(item.at)}</span>}</div>
+              {item ? (
+                <div className="mt-2">
+                  <div className="text-[12px] font-semibold">{item.actor}</div>
+                  <div className="mt-0.5 text-[13px] leading-snug">{item.title}</div>
+                  {item.body && <div className="mt-1 line-clamp-3 text-[11.5px] text-muted">{item.body}</div>}
+                  {item.link && <Link href={item.link} className="mt-2 inline-block text-[11.5px] text-accent-2 hover:underline">Open →</Link>}
+                </div>
+              ) : <p className="mt-2 text-[12px] text-faint">Nothing yet.</p>}
+            </section>
+          ))}
+          <p className="px-1 text-[10.5px] leading-relaxed text-faint">Updates every 3 seconds and instantly on live events. Decision summaries and rule checks only, never private model chain-of-thought. Platform trades from other Merod traders are anonymous.</p>
+        </aside>
+      </div>
     </div>
   );
 }

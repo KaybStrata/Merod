@@ -17,9 +17,9 @@ function MfaForm() {
     catch (e: any) { setError(e.message); } finally { setLoading(false); }
   }
   return (
-    <div className="fade-up w-full max-w-sm rounded-xl border border-line bg-panel/90 p-7">
+    <div className="fade-up surface w-full max-w-sm rounded-2xl p-7">
       <ShieldCheck className="size-8 text-accent-2" />
-      <h1 className="mt-3 text-xl font-semibold">Two-factor verification</h1>
+      <h1 className="mt-3 text-[24px] font-semibold tracking-tight">Two-factor <span className="serif-accent text-[28px] text-accent-2">verification</span></h1>
       <p className="mt-1 text-sm text-muted">Enter the 6-digit code from your authenticator app.</p>
       <form onSubmit={submit} className="mt-6 space-y-4">
         <Input label="Code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} required value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />

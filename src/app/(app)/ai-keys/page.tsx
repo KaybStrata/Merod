@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Sparkles, CheckCircle2, Circle, ExternalLink, KeyRound, Cpu } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { UserApiKeys } from "@/components/UserApiKeys";
+import { usePageTitle } from "@/components/shell/context";
 import { Badge, Card, cx, useToast } from "@/components/ui";
 
 const BRANDS = {
@@ -28,6 +29,7 @@ export default function AIKeysPage() {
   const models = useApi<any>("/api/ai/models");
   const [saving, setSaving] = useState<string | null>(null);
   const toast = useToast();
+  usePageTitle({ section: "Account · Keys", title: "AI keys", accent: "keys" });
   const pref = models.data?.preference;
 
   async function choose(provider: string, model: string) {
@@ -41,7 +43,6 @@ export default function AIKeysPage() {
     <div className="space-y-4">
       <SectionTabs tabs={[{ href: "/broker-keys", label: "Broker keys", icon: KeyRound }, { href: "/ai-keys", label: "AI keys", icon: Cpu }]} />
       <div>
-        <h1 className="page-title"><Sparkles className="size-6 text-accent-2" /> AI Keys</h1>
         <p className="mt-1 text-sm text-muted">Paste your own Claude or ChatGPT API key, then choose which model reads your prompts. Your key is encrypted and used only for your own prompts.</p>
       </div>
 

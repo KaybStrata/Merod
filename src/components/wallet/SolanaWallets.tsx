@@ -188,6 +188,12 @@ export function BuyFromMerod({ id = "buy" }: { id?: string }) {
   const [q, setQ] = useState(""); const [results, setResults] = useState<any[]>([]); const [asset, setAsset] = useState<any>(null);
   const [side, setSide] = useState<"buy" | "sell">("buy"); const [usd, setUsd] = useState("25"); const [acct, setAcct] = useState(""); const [mode, setMode] = useState<TradeMode>("paper"); const [busy, setBusy] = useState(false);
   useEffect(() => { if (q.trim().length < 1) { setResults([]); return; } const t = setTimeout(() => api(`/api/assets?q=${encodeURIComponent(q)}&limit=8`).then((r: any) => setResults(r.assets)).catch(() => {}), 150); return () => clearTimeout(t); }, [q]);
+  // Other panels (tokenized stocks, card on-ramp) hand an asset over: window.dispatchEvent(new CustomEvent("merod-buy", { detail: asset })).
+  useEffect(() => {
+    const h = (e: Event) => { const a = (e as CustomEvent).detail; if (a?.id) { setAsset(a); setSide("buy"); setResults([]); document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" }); } };
+    window.addEventListener("merod-buy", h);
+    return () => window.removeEventListener("merod-buy", h);
+  }, [id]);
   // Sell amount: a % of the position, a dollar amount, or an exact quantity.
   const [sellUnit, setSellUnit] = useState<"pct" | "usd" | "qty">("pct");
   const [sellAmt, setSellAmt] = useState("100");

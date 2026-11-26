@@ -1,11 +1,11 @@
 "use client";
-import { SectionTabs } from "@/components/SectionTabs";
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Copy, Trash2, Pencil, FolderPlus, Folder, Wand2, X, History, Zap, Bot } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { Badge, Button, Card, Empty, Input, Modal, Select, Toggle, StatusPill, cx, useToast } from "@/components/ui";
 import { ShortcutIcon, SHORTCUT_ICONS } from "@/components/ShortcutBar";
 import { ago } from "@/lib/format";
+import { usePageTitle } from "@/components/shell/context";
 
 const ACTIONS: { type: string; label: string; amount?: "usd" | "qty" | "pct"; order?: boolean }[] = [
   { type: "buy_usd", label: "Buy $ amount", amount: "usd", order: true },
@@ -50,6 +50,7 @@ function toDraft(s: any): Draft {
 }
 
 export default function ShortcutsPage() {
+  usePageTitle({ section: "Automate · Shortcuts", title: "One-tap shortcuts", accent: "shortcuts" });
   const { data, refresh } = useApi<any>("/api/shortcuts");
   const bots = useApi<any>("/api/bots");
   const toast = useToast();
@@ -95,113 +96,122 @@ export default function ShortcutsPage() {
     setNewFolder(""); refresh();
   }
 
+  const history: any[] = data?.history ?? [];
+  const totalRuns = shortcuts.reduce((s, x) => s + Number(x.executions ?? 0), 0);
   return (
-    <div className="space-y-5">
-      <SectionTabs tabs={[{ href: "/bots", label: "Bots", icon: Bot }, { href: "/shortcuts", label: "Shortcut buttons", icon: Zap }]} />
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="page-title">Shortcut buttons</h1>
-          <p className="text-sm text-muted">One-click trading buttons. Every click is previewed and validated by the trading engine before anything executes.</p>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-1 rounded-xl border border-line bg-panel/60 p-1">
+          {[{ id: "all", name: "All" }, { id: "none", name: "Unfiled" }, ...folders].map((f: any) => (
+            <span key={f.id} className={cx("group flex items-center rounded-lg text-[12.5px]", folder === f.id ? "nav-active" : "text-muted hover:text-text")}>
+              <button className="px-3 py-1.5" onClick={() => setFolder(f.id)}>{f.name}<span className="num ml-1.5 text-[10.5px] text-faint">{f.id === "all" ? shortcuts.length : f.id === "none" ? shortcuts.filter((s) => !s.folder_id).length : shortcuts.filter((s) => s.folder_id === f.id).length}</span></button>
+              {f.user_id && <button className="pr-2 opacity-0 group-hover:opacity-100" title="Delete folder" onClick={async () => { await api("/api/shortcuts/folders", { method: "DELETE", json: { id: f.id } }); if (folder === f.id) setFolder("all"); refresh(); }}><X className="size-3" /></button>}
+            </span>
+          ))}
+          <span className="flex items-center gap-1 pl-1">
+            <input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addFolder()} placeholder="New folder" className="h-7 w-24 rounded-md border border-line bg-bg-2 px-2 text-[11.5px] outline-none focus:border-accent" />
+            <button onClick={addFolder} className="rounded-md p-1.5 text-faint hover:text-text" title="Add folder"><FolderPlus className="size-3.5" /></button>
+          </span>
         </div>
-        <Button variant="primary" onClick={() => setDraft(blank())}><Plus className="size-4" /> New shortcut</Button>
+        <span className="text-[12px] text-muted"><b className="num text-text">{shortcuts.length}</b> shortcuts · <b className="num text-text">{totalRuns}</b> runs</span>
+        <Button variant="primary" size="sm" className="ml-auto" onClick={() => setDraft(blank())}><Plus className="size-4" /> New shortcut</Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[240px_1fr]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <div className="space-y-4">
-          <Card title="Folders" icon={<Folder className="size-4 text-accent-2" />}>
-            <div className="space-y-1">
-              {[{ id: "all", name: "All shortcuts" }, { id: "none", name: "Unfiled" }, ...folders].map((f: any) => (
-                <div key={f.id} className={cx("group flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm", folder === f.id ? "bg-accent-soft text-text" : "text-muted hover:bg-panel-2")}>
-                  <button className="flex-1 text-left" onClick={() => setFolder(f.id)}>{f.name}</button>
-                  {f.user_id && <button className="opacity-0 group-hover:opacity-100" title="Delete folder" onClick={async () => { await api("/api/shortcuts/folders", { method: "DELETE", json: { id: f.id } }); if (folder === f.id) setFolder("all"); refresh(); }}><X className="size-3.5" /></button>}
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-1.5">
-              <input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addFolder()} placeholder="New folder" className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-bg-2 px-2 text-xs outline-none focus:border-accent" />
-              <Button size="sm" onClick={addFolder}><FolderPlus className="size-3.5" /></Button>
-            </div>
-          </Card>
-          <Card title="Create from prompt" icon={<Wand2 className="size-4 text-accent-2" />}>
-            <textarea value={promptText} onChange={(e) => setPromptText(e.target.value)} rows={3} placeholder="e.g. Buy $50 with a 10% take profit" className="w-full rounded-lg border border-line bg-bg-2 p-2 text-sm outline-none focus:border-accent" />
-            <Button className="mt-2 w-full" size="sm" loading={busy} onClick={fromPrompt}>Build shortcut</Button>
-          </Card>
-          <Card title="Quick presets">
-            <div className="flex flex-wrap gap-1.5">
-              {PRESETS.map((p) => (
-                <button key={p.name} onClick={() => setDraft({ ...blank(), name: p.name, icon: p.icon, color: p.color, actions: p.actions })} className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-xs text-muted hover:border-accent/50 hover:text-text">
-                  <ShortcutIcon name={p.icon} className="size-3" />{p.name}
-                </button>
-              ))}
-            </div>
-          </Card>
-        </div>
-
-        <div className="space-y-5">
-          {shown.length === 0 ? (
-            <Empty icon={<Zap className="size-6" />} title="No shortcuts yet" action={<Button size="sm" variant="primary" onClick={() => setDraft(blank())}>Create your first shortcut</Button>}>
-              Shortcuts appear on the trading terminal and dashboard. Leave the asset empty to apply a shortcut to whatever asset you're viewing.
-            </Empty>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {shown.map((s) => (
-                <div key={s.id} className="rounded-xl border border-line bg-panel/80 p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <span className="flex size-9 items-center justify-center rounded-xl" style={{ background: `${s.color || "#38bdf8"}22`, color: s.color || "#7dd3fc" }}><ShortcutIcon name={s.icon} className="size-4" /></span>
-                      <div>
-                        <div className="font-semibold">{s.name}</div>
-                        <div className="text-xs text-muted">{s.asset_symbol ? s.asset_symbol : "Current asset"}{s.asset_category ? ` · ${s.asset_category}` : ""}</div>
-                      </div>
-                    </div>
-                    <div className="flex gap-0.5">
-                      <IconBtn title="Edit" onClick={() => setDraft(toDraft(s))}><Pencil className="size-3.5" /></IconBtn>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-4">
+            {shown.map((s) => {
+              const sel = draft?.id === s.id;
+              const tone = s.color || "#d6b37a";
+              return (
+                <div key={s.id} role="button" tabIndex={0} onClick={() => setDraft(toDraft(s))} onKeyDown={(e) => e.key === "Enter" && setDraft(toDraft(s))}
+                  className={cx("surface surface-hover group relative cursor-pointer rounded-2xl p-3.5 transition-colors", sel && "gold-ring")}>
+                  <div className="flex items-start justify-between">
+                    <span className="flex size-9 items-center justify-center rounded-xl" style={{ background: `${tone}22`, color: tone }}><ShortcutIcon name={s.icon} className="size-4" /></span>
+                    <div className="flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
                       <IconBtn title="Duplicate" onClick={async () => { await api(`/api/shortcuts/${s.id}`, { method: "POST" }); refresh(); }}><Copy className="size-3.5" /></IconBtn>
-                      <IconBtn title="Delete" onClick={async () => { if (confirm(`Delete “${s.name}”?`)) { await api(`/api/shortcuts/${s.id}`, { method: "DELETE" }); refresh(); } }}><Trash2 className="size-3.5" /></IconBtn>
+                      <IconBtn title="Delete" onClick={async () => { if (confirm(`Delete “${s.name}”?`)) { await api(`/api/shortcuts/${s.id}`, { method: "DELETE" }); if (sel) setDraft(null); refresh(); } }}><Trash2 className="size-3.5" /></IconBtn>
                     </div>
                   </div>
-                  <ul className="mt-3 space-y-1 text-xs text-muted">
-                    {s.actions.map((a: any, i: number) => <li key={i}>• {ACTIONS.find((x) => x.type === a.type)?.label}{a.amount != null ? `: ${a.type.includes("usd") || a.type === "start_recurring_buy" ? "$" : ""}${a.amount}${a.type.includes("pct") ? "%" : ""}` : ""}{a.orderType === "limit" ? ` (limit ${a.limitOffsetPct ?? 0}%)` : ""}</li>)}
-                  </ul>
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    {s.placement.map((p: string) => <Badge key={p}>{p}</Badge>)}
-                    {s.require_confirmation ? <Badge tone="accent">confirm</Badge> : <Badge tone="warn">no confirm</Badge>}
-                    {s.max_spend_usd && <Badge>max ${s.max_spend_usd}</Badge>}
-                    {s.conditions?.length > 0 && <Badge>{s.conditions.length} condition(s)</Badge>}
-                    {s.expires_at && <Badge tone={new Date(s.expires_at) < new Date() ? "down" : "neutral"}>expires {new Date(s.expires_at).toLocaleDateString()}</Badge>}
-                    <Badge>{s.executions} runs</Badge>
+                  <div className="mt-3 truncate text-[13.5px] font-semibold">{s.name}</div>
+                  <div className="mt-0.5 line-clamp-2 min-h-[30px] text-[11.5px] text-muted">
+                    {s.actions.map((a: any) => `${ACTIONS.find((x) => x.type === a.type)?.label ?? a.type}${a.amount != null ? ` ${a.type.includes("usd") || a.type === "start_recurring_buy" ? "$" : ""}${a.amount}${a.type.includes("pct") ? "%" : ""}` : ""}`).join(" → ")}
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-between text-[10.5px] text-faint">
+                    <span>{s.asset_symbol ?? "Current asset"}{s.require_confirmation ? " · confirm" : " · 1-tap"}</span>
+                    <span className="num">{s.executions} runs</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            })}
+            <button onClick={() => setDraft(blank())} className="flex min-h-[132px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line-2 text-[12.5px] text-muted hover:border-accent/50 hover:text-text">
+              <Plus className="size-5" />New shortcut<span className="text-[10.5px] text-faint">or describe one on the right</span>
+            </button>
+          </div>
+          {shortcuts.length === 0 && <p className="text-[12px] text-faint">Shortcuts appear on the trading terminal and Home. Leave the asset empty to apply one to whatever you're viewing.</p>}
 
-          <Card title="Execution history" icon={<History className="size-4 text-accent-2" />}>
-            {(data?.history ?? []).length === 0 ? <p className="text-sm text-muted">No shortcut executions yet.</p> : (
+          <section className="surface rounded-2xl">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <div className="flex items-center gap-2 text-[14px] font-semibold"><History className="size-4 text-accent-2" /> Recent runs</div>
+              <span className="text-[11px] text-muted">{history.length}</span>
+            </div>
+            {history.length === 0 ? <p className="p-4 text-[12.5px] text-muted">No shortcut runs yet.</p> : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-left text-xs text-faint"><tr><th className="py-2 pr-3 font-medium">When</th><th className="pr-3 font-medium">Shortcut</th><th className="pr-3 font-medium">Asset</th><th className="pr-3 font-medium">Status</th><th className="font-medium">Result</th></tr></thead>
+                <table className="w-full text-[12.5px]">
+                  <thead className="text-left text-[10px] uppercase tracking-[0.12em] text-faint"><tr><th className="px-4 py-2 font-semibold">When</th><th className="pr-3 font-semibold">Shortcut</th><th className="pr-3 font-semibold">Asset</th><th className="pr-3 font-semibold">Status</th><th className="pr-4 font-semibold">Result</th></tr></thead>
                   <tbody>
-                    {data.history.map((h: any) => (
-                      <tr key={h.id} className="border-t border-line">
-                        <td className="py-2 pr-3 text-muted">{ago(h.created_at)}</td>
-                        <td className="pr-3">{h.shortcut_name}</td>
+                    {history.map((h: any) => (
+                      <tr key={h.id} className="border-t border-line/70">
+                        <td className="whitespace-nowrap px-4 py-2 text-muted">{ago(h.created_at)}</td>
+                        <td className="pr-3 font-medium">{h.shortcut_name}</td>
                         <td className="pr-3">{h.symbol ?? "—"}</td>
                         <td className="pr-3"><StatusPill status={h.status === "executed" ? "filled" : h.status} /></td>
-                        <td className="text-xs text-muted">{(h.detail?.results ?? []).map((r: any) => `${r.description}: ${r.message}`).join(" · ") || "—"}</td>
+                        <td className="pr-4 text-[11.5px] text-muted">{(h.detail?.results ?? []).map((r: any) => `${r.description}: ${r.message}`).join(" · ") || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </Card>
+          </section>
         </div>
-      </div>
 
-      <Modal open={!!draft} onClose={() => setDraft(null)} title={draft?.id ? "Edit shortcut" : "New shortcut"} wide>
-        {draft && <Builder draft={draft} setDraft={setDraft} folders={folders} accounts={data?.accounts ?? []} bots={bots.data?.bots ?? []} onSave={save} busy={busy} />}
-      </Modal>
+        <aside className="space-y-4">
+          {draft ? (
+            <section className="surface rounded-2xl p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">{draft.id ? "Edit shortcut" : "New shortcut"}</div>
+                  <div className="text-[15px] font-semibold">{draft.name || "Untitled"}</div>
+                </div>
+                <button onClick={() => setDraft(null)} className="rounded-lg p-1.5 text-faint hover:bg-panel-2 hover:text-text" aria-label="Close editor"><X className="size-4" /></button>
+              </div>
+              <Builder narrow draft={draft} setDraft={setDraft} folders={folders} accounts={data?.accounts ?? []} bots={bots.data?.bots ?? []} onSave={save} busy={busy} />
+            </section>
+          ) : (
+            <>
+              <section className="surface rounded-2xl p-4">
+                <div className="flex items-center gap-2 text-[14px] font-semibold"><Wand2 className="size-4 text-accent-2" /> Create from a sentence</div>
+                <div className="gold-ring mt-3 rounded-xl border border-line-2 bg-bg-2/70 p-2">
+                  <textarea value={promptText} onChange={(e) => setPromptText(e.target.value)} rows={2} placeholder="e.g. Buy $50 with a 10% take profit" className="w-full resize-none bg-transparent px-1 text-[13px] outline-none placeholder:text-faint" />
+                  <div className="flex justify-end"><Button size="sm" variant="primary" loading={busy} disabled={!promptText.trim()} onClick={fromPrompt}>Build shortcut</Button></div>
+                </div>
+              </section>
+              <section className="surface rounded-2xl p-4">
+                <div className="text-[14px] font-semibold">Quick presets</div>
+                <div className="mt-3 grid grid-cols-2 gap-1.5">
+                  {PRESETS.map((p) => (
+                    <button key={p.name} onClick={() => setDraft({ ...blank(), name: p.name, icon: p.icon, color: p.color, actions: p.actions })} className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-left text-[12px] text-muted hover:border-accent/50 hover:text-text">
+                      <ShortcutIcon name={p.icon} className="size-3.5" />{p.name}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 text-[11px] text-faint">Pick a tile to edit it here. Every run is previewed and checked by the trading engine before anything executes.</p>
+              </section>
+            </>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }
@@ -210,7 +220,8 @@ function IconBtn({ children, ...p }: React.ButtonHTMLAttributes<HTMLButtonElemen
   return <button {...p} className="rounded-lg p-1.5 text-faint hover:bg-panel-2 hover:text-text">{children}</button>;
 }
 
-function Builder({ draft, setDraft, folders, accounts, bots, onSave, busy }: { draft: Draft; setDraft: (d: Draft) => void; folders: any[]; accounts: any[]; bots: any[]; onSave: () => void; busy: boolean }) {
+function Builder({ draft, setDraft, folders, accounts, bots, onSave, busy, narrow = false }: { draft: Draft; setDraft: (d: Draft) => void; folders: any[]; accounts: any[]; bots: any[]; onSave: () => void; busy: boolean; narrow?: boolean }) {
+  const g = (wide: string, slim = "grid-cols-1") => (narrow ? slim : wide);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft({ ...draft, [k]: v });
   const [assetQ, setAssetQ] = useState("");
   const [assetResults, setAssetResults] = useState<any[]>([]);
@@ -224,7 +235,7 @@ function Builder({ draft, setDraft, folders, accounts, bots, onSave, busy }: { d
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+      <div className={cx("grid gap-3", g("sm:grid-cols-[1fr_auto]"))}>
         <Input label="Name" value={draft.name} maxLength={40} onChange={(e) => set("name", e.target.value)} placeholder="e.g. Buy $100" />
         <div>
           <span className="mb-1 block text-xs font-medium text-muted">Icon & color</span>
@@ -239,7 +250,7 @@ function Builder({ draft, setDraft, folders, accounts, bots, onSave, busy }: { d
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={cx("grid gap-3", g("sm:grid-cols-3"))}>
         <div className="relative">
           <span className="mb-1 block text-xs font-medium text-muted">Asset</span>
           {draft.assetId ? (
@@ -271,7 +282,7 @@ function Builder({ draft, setDraft, folders, accounts, bots, onSave, busy }: { d
           {draft.actions.map((a, i) => {
             const def = ACTIONS.find((x) => x.type === a.type)!;
             return (
-              <div key={i} className="grid items-end gap-2 rounded-xl border border-line bg-bg-2/50 p-2.5 sm:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr_auto]">
+              <div key={i} className={cx("grid items-end gap-2 rounded-xl border border-line bg-bg-2/50 p-2.5", g("sm:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr_auto]", "grid-cols-2"))}>
                 <Select label={`Action ${i + 1}`} value={a.type} onChange={(e) => setAction(i, { type: e.target.value, amount: ACTIONS.find((x) => x.type === e.target.value)?.amount ? a.amount ?? 50 : null })}>
                   {ACTIONS.map((x) => <option key={x.type} value={x.type}>{x.label}</option>)}
                 </Select>
@@ -287,7 +298,7 @@ function Builder({ draft, setDraft, folders, accounts, bots, onSave, busy }: { d
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={cx("grid gap-3", g("sm:grid-cols-3"))}>
         <Input label="Max spend per run ($)" type="number" min="0" value={draft.maxSpendUsd} onChange={(e) => set("maxSpendUsd", e.target.value)} hint="Blocks buys above this total" />
         <Input label="Max slippage (bps)" type="number" min="1" value={draft.maxSlippageBps} onChange={(e) => set("maxSlippageBps", e.target.value)} hint="100 bps = 1%" />
         <Input label="Expires" type="datetime-local" value={draft.expiresAt} onChange={(e) => set("expiresAt", e.target.value)} />
