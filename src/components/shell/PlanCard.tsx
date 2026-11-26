@@ -131,9 +131,10 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
         <div className="mt-1 text-xs text-muted">{card.strategyName} · {card.assetLabel}</div>
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
           {Object.entries(c.params ?? {}).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => <Field key={k} k={k.replace(/_/g, " ")} v={String(v)} />)}
-          <Field k="Budget" v={usd(c.budgetUsd)} />
-          <Field k="Max daily spend" v={usd(c.maxDailySpendUsd)} />
-          <Field k="Max daily loss" v={usd(c.maxDailyLossUsd)} />
+          <Field k="Budget" v={Number(c.budgetUsd) > 0 ? usd(c.budgetUsd) : "No limit"} />
+          <Field k="Per coin buy" v={Number(c.maxPositionUsd) > 0 ? usd(c.maxPositionUsd) : "No limit"} />
+          <Field k="Max daily spend" v={Number(c.maxDailySpendUsd) > 0 ? usd(c.maxDailySpendUsd) : "No limit"} />
+          <Field k="Max daily loss" v={Number(c.maxDailyLossUsd) > 0 ? usd(c.maxDailyLossUsd) : "No limit"} />
           <Field k="Checks every" v={c.schedule.replace("every_", "")} />
           <Field k="Approval per trade" v={c.approvalRequired ? "Yes" : "No"} />
         </div>

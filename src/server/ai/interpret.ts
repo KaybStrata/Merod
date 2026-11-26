@@ -53,6 +53,9 @@ async function interpret(userId: string, input: PromptInput, screenSymbol: strin
   const { provider, model } = await userAI(userId, input);
   let usedProvider: string = "merod", usedModel = "deterministic", fallbackReason: string | null = null;
   let instruction: Instruction;
+  // Multi-coin loops ("top 20 gainers … $10 each … sell at 2% … repeat") are parsed exactly by the rule parser.
+  const det = parsePrompt(input.text);
+  if (det.kind === "swing_loop" && det.swing?.scope) return { instruction: det, usedProvider, usedModel, fallbackReason };
   if (provider !== "merod" && (await aiAvailable(provider, userId))) {
     try {
       const holdings = (await q<{ symbol: string }>("SELECT DISTINCT a.symbol FROM positions p JOIN assets a ON a.id=p.asset_id WHERE p.user_id=$1 AND p.quantity>0", [userId])).map((r) => r.symbol);
@@ -103,8 +106,16 @@ function legToIntent(leg: TradeLeg, assetId: string, price: number | null): Orde
 const AMOUNT_CHIPS = ["$25", "$50", "$100", "$250"];
 
 export async function handlePrompt(userId: string, input: PromptInput) {
-  const text = input.text.trim().slice(0, 2000);
+  let text = input.text.trim().slice(0, 2000);
   if (!text) throw new HttpError(400, "Empty prompt");
+  // "try now" / "try again" / "retry": run the previous request in this conversation again (e.g. after a limit was removed).
+  if (input.conversationId && /^(please\s+)?(try(\s+it)?\s+(again|now)|retry|redo|run it again|do it again|again)[\s.!]*$/i.test(text)) {
+    const prev = await one<{ content: string }>(
+      `SELECT p.content FROM trading_prompts p JOIN ai_conversations c ON c.id=p.conversation_id
+        WHERE p.conversation_id=$1 AND c.user_id=$2 AND p.role='user' AND p.content !~* '^(please\\s+)?(try|retry|redo|run it again|do it again|again)'
+        ORDER BY p.created_at DESC LIMIT 1`, [input.conversationId, userId]);
+    if (prev?.content) text = prev.content;
+  }
   const perms = await one<any>("SELECT * FROM trading_permissions WHERE user_id=$1", [userId]);
 
   let convId = input.conversationId;
@@ -234,26 +245,33 @@ export async function handlePrompt(userId: string, input: PromptInput) {
         return reply(qn, { type: "clarify", question: qn, suggestions: AMOUNT_CHIPS }, "clarify");
       }
       if (ins.kind === "conditional_trade" && !leg.amount) return reply(`How much should I ${leg.side}?`, { type: "clarify", question: `How much should I ${leg.side}?`, suggestions: leg.side === "sell" ? ["25%", "50%", "100%"] : AMOUNT_CHIPS }, "clarify");
-      // A bot over many coins ("every Solana meme coin"): the most-traded matching coins with live prices (bots watch up to 20).
+      // A bot over many coins ("every Solana meme coin", "the top 20 gainers"): matching coins with live prices, one buy → sell → repeat cycle per coin.
       if (ins.kind === "swing_loop" && ins.swing?.scope) {
         const sc = ins.swing.scope;
+        const gainers = sc.rank === "gainers";
+        const limit = Math.min(1000, Math.max(1, sc.top ?? (gainers ? 20 : 50)));
         const coins = await q<any>(
-          `SELECT id, symbol FROM assets WHERE asset_class='crypto' AND NOT ('demo_data'=ANY(risk_flags)) AND tradability IN ('paper_tradable','live_tradable')
-             AND last_price IS NOT NULL AND price_source IS NOT NULL AND price_source <> 'simulated'
+          `SELECT id, symbol, change_24h FROM assets WHERE asset_class='crypto' AND NOT ('demo_data'=ANY(risk_flags)) AND tradability IN ('paper_tradable','live_tradable')
+             AND last_price IS NOT NULL AND price_source IS NOT NULL AND price_source <> 'simulated' AND price_updated_at > now() - interval '30 minutes'
              AND ($1::text IS NULL OR venue=$1) AND (NOT $2 OR EXISTS (SELECT 1 FROM unnest(categories) c WHERE c ILIKE '%meme%'))
-           ORDER BY volume_24h DESC NULLS LAST LIMIT 20`, [sc.venue ?? null, !!sc.meme]);
+             AND upper(symbol) NOT IN ('USDC','USDT','DAI','PYUSD','USDE','USDS','FDUSD','TUSD','USDP','EURC')
+             AND (NOT $3 OR change_24h > 0)
+           ORDER BY ${gainers ? "change_24h DESC NULLS LAST" : "volume_24h DESC NULLS LAST"} LIMIT $4`, [sc.venue ?? null, !!sc.meme, gainers, limit]);
         const label = `${sc.venue ? sc.venue[0].toUpperCase() + sc.venue.slice(1) + " " : ""}${sc.meme ? "meme coins" : "coins"}`;
-        if (!coins.length) return reply(`I couldn't find any ${label} with live prices right now, so there's nothing for the bot to watch yet.`, null, "info");
+        if (!coins.length) return reply(`I couldn't find any ${gainers ? "rising " : ""}${label} with live prices right now, so there's nothing for the bot to trade yet.`, null, "info");
         const amountUsd = leg.amount_type === "usd" ? leg.amount! : null;
         const user = await one<any>("SELECT trading_mode FROM users WHERE id=$1", [userId]);
+        const sw = ins.swing;
+        const entry = sw.dip_pct > 0 ? `dip ${sw.dip_pct}%` : "buy now";
+        // No budget / daily spend / loss caps (0 = no limit); each coin's buy is the amount asked for.
         const config = { description: ins.summary, assetIds: coins.map((c) => c.id), markets: [], isPaper: user?.trading_mode !== "live", createdFromPrompt: originText, start: true,
-          budgetUsd: Math.max((amountUsd ?? 100) * 10, 200), maxPositionUsd: Math.max(amountUsd ?? 100, 1), maxDailySpendUsd: Math.max((amountUsd ?? 100) * 10, 200),
-          maxDailyLossUsd: Math.max((amountUsd ?? 100) * 3, 100), maxTradesPerDay: null, minLiquidityUsd: 0, maxSlippageBps: 150, maxPriceDeviationPct: 5,
+          budgetUsd: 0, maxPositionUsd: amountUsd ?? 0, maxDailySpendUsd: 0, maxDailyLossUsd: 0, maxTradesPerDay: null, minLiquidityUsd: 0, maxSlippageBps: 300, maxPriceDeviationPct: 5,
           schedule: "every_15s" as const, approvalRequired: perms?.mode === "manual", notify: { trades: true, errors: true },
-          name: `${label} dip ${ins.swing.dip_pct}% → +${ins.swing.take_profit_pct}% loop`, strategyId: "dip_rebound_loop",
-          params: { amount_usd: amountUsd, dip_pct: ins.swing.dip_pct, take_profit_pct: ins.swing.take_profit_pct, stop_loss_pct: ins.swing.stop_loss_pct, repeat: true, max_cycles: ins.swing.max_cycles } } as BotConfig;
-        return reply(`${ins.summary}. The bot will watch ${coins.length} ${label} (${coins.slice(0, 6).map((c) => c.symbol).join(", ")}${coins.length > 6 ? ", …" : ""}). Review its limits and activate it.`,
-          { type: "bot", config, strategyName: "Dip-buy / take-profit loop", assetLabel: `${coins.length} ${label}` }, "needs_approval");
+          name: `${gainers ? `Top ${coins.length} ${label}` : label} ${entry} → +${sw.take_profit_pct}%${sw.repeat ? " loop" : ""}`.slice(0, 80), strategyId: "dip_rebound_loop",
+          params: { amount_usd: amountUsd, dip_pct: sw.dip_pct, take_profit_pct: sw.take_profit_pct, stop_loss_pct: sw.stop_loss_pct, repeat: sw.repeat, max_cycles: sw.max_cycles } } as BotConfig;
+        const list = coins.slice(0, 8).map((c) => gainers && c.change_24h != null ? `${c.symbol} +${Number(c.change_24h).toFixed(0)}%` : c.symbol).join(", ");
+        return reply(`${ins.summary}. One bot trades all ${coins.length} ${label} at once${gainers ? ", ranked by 24h gain" : ""}: ${list}${coins.length > 8 ? ", …" : ""}. Each coin runs its own cycle${sw.repeat ? " and repeats" : ""}. No spending cap. Review and activate it.`,
+          { type: "bot", config, strategyName: sw.dip_pct > 0 ? "Dip-buy / take-profit loop" : "Buy now / take-profit loop", assetLabel: `${coins.length} ${label}` }, "needs_approval");
       }
       const r = await legAsset(leg, input.screenAssetId);
       if (!r.asset) return reply(r.error!, { type: "clarify", question: r.error!, suggestions: [] }, "clarify");

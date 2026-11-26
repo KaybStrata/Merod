@@ -71,7 +71,12 @@ async function tickBot(b: any) {
 
   // Sync swing-loop state with actual order outcomes before deciding (reconciliation).
   let state = b.state ?? {};
-  if (b.strategy_id === "dip_rebound_loop" && (state.phase === "buy_pending" || state.phase === "sell_pending")) state = await reconcileSwing(b, state);
+  const multi = (b.asset_ids as string[]).length > 1;
+  const swing = b.strategy_id === "dip_rebound_loop";
+  const pending = (s: any) => s?.phase === "buy_pending" || s?.phase === "sell_pending";
+  // Each coin in a multi-coin loop runs its own buy → sell → repeat cycle.
+  if (swing && !multi && pending(state)) state = await reconcileSwing(b, state, false);
+  if (swing && multi) for (const id of b.asset_ids as string[]) if (pending(state[id])) state = { ...state, [id]: await reconcileSwing(b, state[id], true) };
 
   for (const assetId of (b.asset_ids as string[]).slice(0, 1000)) {
     const a = await one<any>("SELECT * FROM assets WHERE id=$1", [assetId]);
@@ -84,15 +89,22 @@ async function tickBot(b: any) {
       ? (await q<any>("SELECT close, extract(epoch from ts)*1000 AS ts FROM price_bars WHERE asset_id=$1 AND timeframe='1h' ORDER BY ts DESC LIMIT 200", [assetId])).reverse()
       : undefined;
     const obs: Observation = { price: Number(a.last_price), ts: Date.now(), avgCost: pos?.avg_cost ? Number(pos.avg_cost) : undefined, positionQty: Number(pos?.quantity ?? 0), bars, source: a.price_source };
-    const assetState = b.asset_ids.length > 1 ? state[assetId] ?? {} : state;
+    const assetState = multi ? state[assetId] ?? {} : state;
+    if (swing && assetState.phase === "done") continue;
     const { decision, state: next } = strat.decide(obs, assetState, b.params);
-    if (b.asset_ids.length > 1) state = { ...state, [assetId]: next }; else state = next;
+    const put = (s: any) => { state = multi ? { ...state, [assetId]: s } : s; };
+    put(next);
     await log(b.id, "observation", `${a.symbol} @ ${obs.price.toPrecision(6)} (${a.price_source})${decision.action === "none" && decision.note ? ` — ${decision.note}` : ""}`);
     if (decision.action === "none") continue;
     if (decision.action === "complete") { await q("UPDATE trading_bots SET status='stopped' WHERE id=$1", [b.id]); await log(b.id, "control", `Completed: ${decision.reason}`); break; }
     if (decision.action === "alert") { await notify(b.user_id, "bot", `${b.name}: ${a.symbol}`, decision.message, `/bots/${b.id}`); continue; }
-    const res = await executeDecision(b, a, decision);
-    if (b.strategy_id === "dip_rebound_loop" && !res.ok) state = { ...state, phase: decision.action === "buy" ? "waiting_dip" : "holding" };
+    // A retry after a rejected order gets a fresh idempotency key (otherwise the old rejection is replayed forever).
+    const res = await executeDecision(b, a, swing ? { ...decision, tag: `${decision.tag}:${next.fails ?? 0}` } : decision);
+    if (swing) {
+      if (res.ok && res.order) put({ ...next, pendingOrderId: res.order.id });
+      else put({ ...next, phase: decision.action === "buy" ? "waiting_dip" : "holding", pendingOrderId: null, fails: (next.fails ?? 0) + 1 });
+      await q("UPDATE trading_bots SET state=$2 WHERE id=$1", [b.id, JSON.stringify(state)]); // persist right away so a crash can't lose the pending order
+    }
   }
   await q("UPDATE trading_bots SET state=$2, updated_at=now() WHERE id=$1", [b.id, JSON.stringify(state)]);
 }
@@ -125,11 +137,6 @@ async function executeDecision(b: any, a: any, d: Exclude<Decision, { action: "n
     });
     await q("UPDATE trading_bots SET trades_today=trades_today+1 WHERE id=$1", [b.id]);
     await log(b.id, order.status === "filled" ? "result" : "order", `Order ${order.status}${order.status_reason ? `: ${order.status_reason}` : ""}`, { orderId: order.id, qty: order.filled_quantity, price: order.avg_fill_price });
-    if (b.strategy_id === "dip_rebound_loop") {
-      const st = b.state ?? {};
-      await q("UPDATE trading_bots SET state = state || $2::jsonb WHERE id=$1", [b.id, JSON.stringify({ ...st, pendingOrderId: order.id })]);
-      b.state = { ...st, pendingOrderId: order.id };
-    }
     return { ok: !["rejected", "failed"].includes(order.status), order };
   } catch (e: any) {
     await log(b.id, "error", `Engine rejected instruction: ${e.message}`);
@@ -137,7 +144,7 @@ async function executeDecision(b: any, a: any, d: Exclude<Decision, { action: "n
   }
 }
 
-async function reconcileSwing(b: any, state: any) {
+async function reconcileSwing(b: any, state: any, multi: boolean) {
   const id = state.pendingOrderId;
   if (!id) return { ...state, phase: state.phase === "buy_pending" ? "waiting_dip" : "holding" };
   const o = await one<any>("SELECT status, filled_quantity, avg_fill_price, side FROM orders WHERE id=$1", [id]);
@@ -151,8 +158,9 @@ async function reconcileSwing(b: any, state: any) {
     const p = b.params;
     await log(b.id, "result", `Exit filled @ ${Number(o.avg_fill_price).toPrecision(6)} — cycle ${cycles} complete`);
     if (!p.repeat || (p.max_cycles && cycles >= p.max_cycles)) {
-      await q("UPDATE trading_bots SET status='stopped' WHERE id=$1", [b.id]);
       await log(b.id, "control", p.repeat ? `Reached max cycles (${p.max_cycles})` : "Single cycle complete");
+      if (multi) return { phase: "done", cycles, pendingOrderId: null }; // only this coin is finished
+      await q("UPDATE trading_bots SET status='stopped' WHERE id=$1", [b.id]);
     }
     return { phase: "waiting_dip", ref: Number(o.avg_fill_price), cycles, pendingOrderId: null };
   }

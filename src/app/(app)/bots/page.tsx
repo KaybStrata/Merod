@@ -148,7 +148,7 @@ function BotForm({ strategies, initialStrategy, onCreated }: { strategies: any[]
   const [assets, setAssets] = useState<any[]>([]);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<any[]>([]);
-  const [f, setF] = useState({ name: "", description: "", budgetUsd: 1000, maxPositionUsd: 250, maxDailySpendUsd: 500, maxDailyLossUsd: 100, minLiquidityUsd: 50000,
+  const [f, setF] = useState({ name: "", description: "", budgetUsd: 0, maxPositionUsd: 0, maxDailySpendUsd: 0, maxDailyLossUsd: 0, minLiquidityUsd: 50000,
     maxSlippageBps: 100, maxPriceDeviationPct: 5, profitTargetPct: "", stopLossPct: "", schedule: "every_1m", approvalRequired: false, start: true, markets: "" });
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (strat) setParams(Object.fromEntries(strat.params.map((p: any) => [p.key, p.default ?? ""]))); }, [strategyId]); // eslint-disable-line
@@ -223,7 +223,7 @@ function BotForm({ strategies, initialStrategy, onCreated }: { strategies: any[]
       <div>
         <div className="mb-2 text-sm font-medium">Risk limits</div>
         <div className="grid gap-3 sm:grid-cols-4">
-          {num("budgetUsd", "Starting budget ($)")}{num("maxPositionUsd", "Max position ($)")}{num("maxDailySpendUsd", "Max daily spend ($)")}{num("maxDailyLossUsd", "Max daily loss ($)")}
+          {num("budgetUsd", "Starting budget ($)", "0 = no limit")}{num("maxPositionUsd", "Max position ($)", "0 = no limit")}{num("maxDailySpendUsd", "Max daily spend ($)", "0 = no limit")}{num("maxDailyLossUsd", "Max daily loss ($)", "0 = no limit")}
           {num("minLiquidityUsd", "Min liquidity ($)")}{num("maxSlippageBps", "Max slippage (bps)")}{num("maxPriceDeviationPct", "Max price deviation (%)")}
           {num("profitTargetPct", "Profit target (%)", "optional")}{num("stopLossPct", "Stop-loss (%)", "optional")}
           <Select label="Check every" value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })}>{SCHEDULES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>

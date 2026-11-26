@@ -193,7 +193,7 @@ function ConfigEditor({ bot, strategy, onSaved }: { bot: any; strategy: any; onS
           </div>
         )}
         <div className="grid gap-3 sm:grid-cols-4">
-          {n("budgetUsd", "Budget ($)")}{n("maxPositionUsd", "Max position ($)")}{n("maxDailySpendUsd", "Max daily spend ($)")}{n("maxDailyLossUsd", "Max daily loss ($)")}
+          {n("budgetUsd", "Budget ($) · 0 = no limit")}{n("maxPositionUsd", "Max position ($) · 0 = no limit")}{n("maxDailySpendUsd", "Max daily spend ($) · 0 = no limit")}{n("maxDailyLossUsd", "Max daily loss ($) · 0 = no limit")}
           {n("minLiquidityUsd", "Min liquidity ($)")}{n("maxSlippageBps", "Max slippage (bps)")}
           <Select label="Check every" disabled={locked} value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })}>{["every_15s", "every_1m", "every_5m", "every_15m", "every_1h"].map((s) => <option key={s} value={s}>{s.replace("every_", "")}</option>)}</Select>
         </div>
