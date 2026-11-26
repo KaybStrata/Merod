@@ -7,12 +7,14 @@ import { useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 import { PortfolioSpark } from "./PortfolioSpark";
 
-type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell" };
+type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number };
 const KIND: Record<string, [any, string]> = {
   thought: [Brain, "text-[#c9b6ff]"], analysis: [BarChart3, "text-up"], decision: [Target, "text-[#8fbcff]"],
   execution: [CheckCircle2, "text-up"], warning: [AlertTriangle, "text-warn"], state: [Gauge, "text-muted"],
 };
-const SOURCES: [string, string][] = [["all", "All"], ["order", "Trades"], ["bot", "Bots"], ["agent", "Agents"], ["auto", "Auto"], ["modo", "Modo"], ["copy", "Mimic"], ["buy", "Buys"], ["sell", "Sells"]];
+const SOURCES: [string, string][] = [["all", "All"], ["order", "Trades"], ["bot", "Bots"], ["agent", "Agents"], ["auto", "Auto"], ["modo", "Modo"], ["copy", "Mimic"], ["buy", "Buys"], ["sell", "Sells"], ["profit", "Profit"], ["loss", "Loss"]];
+/** Profit / Loss: closed trades by realized P&L in $ (or % for theoretical Auto/Modo trades with no order). */
+const pnlOf = (i: Item) => i.pnl ?? i.pnlPct;
 /** Buys / Sells filter by trade side across every source (orders, fills, Mimic, Auto, Modo). */
 const SIDE = new Set(["buy", "sell"]);
 const hms = (t: string) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -39,7 +41,10 @@ export function TalkActivity() {
   }
   useEffect(() => { pull(true); const t = setInterval(() => pull(), 4000); return () => clearInterval(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade"].includes(e.type)) pull(); });
-  const shown = items.filter((i) => src === "all" || (SIDE.has(src) ? i.side === src : i.source === src));
+  const shown = items.filter((i) => src === "all" || (SIDE.has(src) ? i.side === src
+    : src === "profit" ? (pnlOf(i) ?? 0) > 0 : src === "loss" ? (pnlOf(i) ?? 0) < 0 : i.source === src));
+  const closed = shown.filter((i) => i.pnl !== undefined);
+  const net = closed.reduce((s, i) => s + (i.pnl ?? 0), 0);
 
   return (
     <>
@@ -64,6 +69,12 @@ export function TalkActivity() {
                 <button key={k} onClick={() => setSrc(k)} className={cx("rounded-md px-2 py-0.5 text-[11.5px]", src === k ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>{l}</button>
               ))}
             </div>
+            {(src === "profit" || src === "loss" || src === "sell") && closed.length > 0 && (
+              <div className="flex items-center justify-between border-b border-line px-4 py-1.5 text-[11.5px]">
+                <span className="text-muted">{closed.length} closed trade{closed.length === 1 ? "" : "s"} shown</span>
+                <span className={cx("num font-semibold", net >= 0 ? "text-up" : "text-down")}>Net {net >= 0 ? "+" : "−"}${Math.abs(net).toFixed(2)}</span>
+              </div>
+            )}
             <ol className="flex-1 overflow-y-auto">
               {!shown.length && <li className="p-8 text-center text-[12px] text-faint">Waiting for activity… Bots, agents, auto trading, Modo and your orders stream here the moment they think, decide or trade.</li>}
               {shown.map((i) => {
@@ -73,7 +84,13 @@ export function TalkActivity() {
                     <I className={cx("mt-0.5 size-4 shrink-0", cls)} />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2 text-[11px]"><span className="truncate font-semibold text-text">{i.actor}</span><span className="num shrink-0 text-faint">{hms(i.at)}</span></div>
-                      <div className="text-[12.5px] leading-snug">{i.title}</div>
+                      <div className="text-[12.5px] leading-snug">{i.title}
+                        {pnlOf(i) !== undefined && (
+                          <span className={cx("num ml-1.5 whitespace-nowrap rounded px-1 text-[10.5px] font-semibold", pnlOf(i)! >= 0 ? "bg-up/15 text-up" : "bg-down/15 text-down")}>
+                            {i.pnl !== undefined ? `${i.pnl >= 0 ? "+" : "−"}$${Math.abs(i.pnl).toFixed(2)}` : ""}{i.pnl !== undefined && i.pnlPct !== undefined ? " · " : ""}{i.pnlPct !== undefined ? `${i.pnlPct >= 0 ? "+" : ""}${i.pnlPct.toFixed(2)}%` : ""}
+                          </span>
+                        )}
+                      </div>
                       {i.body && <div className="line-clamp-2 text-[11px] text-muted">{i.body}</div>}
                     </div>
                   </div>

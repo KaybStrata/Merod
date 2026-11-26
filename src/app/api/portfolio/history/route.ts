@@ -36,9 +36,16 @@ export const GET = route(async (req) => {
   const before = await q<any>("SELECT total_value AS value FROM portfolio_snapshots WHERE user_id=$1 AND is_paper AND ts < to_timestamp($2) ORDER BY ts DESC LIMIT 1", [u.id, start]);
   // Windows up to 6h use 1-minute price bars (snapshots are only every 5 minutes, too coarse for 1m–6h views).
   const resolution = secs <= 21_600 ? 60 : secs <= 2 * 86_400 ? 300 : secs <= 60 * 86_400 ? 3600 : 86_400;
+  // Paper fills in the window, for the trade dots and hover readout on the chart.
+  const trades = (await q<any>(
+    `SELECT x.id, extract(epoch from x.executed_at)::bigint AS time, o.side, o.source, x.quantity, x.price, x.fee_usd, o.realized_pnl, a.symbol
+       FROM executions x JOIN orders o ON o.id=x.order_id JOIN assets a ON a.id=o.asset_id
+      WHERE o.user_id=$1 AND o.is_paper AND x.executed_at >= to_timestamp($2) ORDER BY x.executed_at DESC LIMIT 500`, [u.id, start]))
+    .reverse().map((t) => ({ id: t.id, time: Number(t.time), side: t.side, source: t.source, symbol: t.symbol, quantity: Number(t.quantity), price: Number(t.price),
+      usd: Number(t.quantity) * Number(t.price), feeUsd: Number(t.fee_usd), realizedPnl: t.side === "sell" ? Number(t.realized_pnl) : null }));
   if (resolution > 60 && before.length && snaps.length >= 2) {
     const points = [{ time: start, value: Number(before[0].value) }, ...snaps.map((s) => ({ time: Number(s.time), value: Number(s.value) })), { time: now, value: liveValue }];
-    return ok({ range, seconds: secs, points: dedupe(points), estimated: false, resolutionSec: 300 });
+    return ok({ range, seconds: secs, points: dedupe(points), trades, estimated: false, resolutionSec: 300 });
   }
 
   // 2) Estimate from price bars × current holdings (+ cash).
@@ -58,7 +65,7 @@ export const GET = route(async (req) => {
   let points = [...series.entries()].sort((a, b) => a[0] - b[0]).map(([time, v]) => ({ time, value: v + cash }));
   if (!points.length || points[0].time > start) points.unshift({ time: start, value: points[0]?.value ?? liveValue });
   points.push({ time: now, value: liveValue });
-  return ok({ range, seconds: secs, points: dedupe(points), estimated: holdings.length > 0, resolutionSec: resolution,
+  return ok({ range, seconds: secs, points: dedupe(points), trades, estimated: holdings.length > 0, resolutionSec: resolution,
     note: holdings.length ? "Estimated from current holdings × historical prices; not a record of past balances." : undefined });
 });
 

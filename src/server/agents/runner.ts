@@ -246,7 +246,7 @@ async function tradeTick(a: any) {
     const age = staleSec(asset), limit = asset.asset_class === "crypto" ? STALE_SEC.crypto : STALE_SEC.stock;
     const pos = positions.find((p) => p.assetId === asset.id);
     if (!asset.last_price || age > limit || asset.price_source === "simulated") {
-      await note(a, `stale:${asset.id}`, "warning", `${asset.symbol}: data stale, new orders paused`, asset.asset_class === "crypto" ? `Last real price ${Math.round(age)}s old.` : "Market closed or quotes delayed; waiting for fresh prices.");
+      await note(a, `stale:${asset.id}`, "warning", `${asset.symbol}: data stale, new orders paused`, asset.asset_class === "crypto" ? (!asset.last_price || !Number.isFinite(age) ? "No live price received yet: waiting for the price feed." : `Last real price ${age < 120 ? `${Math.round(age)}s` : age < 7200 ? `${Math.round(age / 60)} min` : `${Math.round(age / 3600)}h`} old.`) :"Market closed or quotes delayed; waiting for fresh prices.");
       continue;
     }
     const b = await bars(asset.id, strat.timeframe ?? "1h");
