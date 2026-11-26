@@ -228,7 +228,9 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
     const fc = await getFeeConfig();
     const need = notional + (quote?.feeUsd ?? 0) + (fc.mode === "commission" ? computeFee(fc, { side: "buy", notional, realizedGross: 0 }) : 0);
     const known = simulated || account.metadata?.balance_synced;
-    add("funds", !known || account.cash_balance >= need, known ? `Need $${need.toFixed(2)}, available $${Number(account.cash_balance).toFixed(2)}` : "Balance verified by provider at execution");
+    const held = known ? await reservedCash(account.id) : 0;
+    const avail = Number(account.cash_balance) - held;
+    add("funds", !known || avail >= need, known ? `Need $${need.toFixed(2)}, available $${avail.toFixed(2)}${held > 0 ? ` (after $${held.toFixed(2)} reserved by open orders)` : ""}` : "Balance verified by provider at execution");
   } else {
     add("position", (pos?.quantity ?? 0) + 1e-12 >= quantity, `Holding ${fmtQty(pos?.quantity ?? 0)}, selling ${fmtQty(quantity)}`);
   }
@@ -298,6 +300,40 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
   };
 }
 
+/* ───────────────────────── Buying-power reservations ───────────────────────── */
+const OPEN_STATUSES = "('validated','submitted','partially_filled','pending_approval','unknown')";
+/** Cash held by this account's open buy orders (remaining unfilled part of each reservation). */
+export async function reservedCash(accountId: string, excludeOrderId?: string, c?: PoolClient) {
+  const sql = `SELECT COALESCE(SUM(r.amount * CASE WHEN COALESCE(o.quantity,0) > 0 THEN GREATEST(0, 1 - COALESCE(o.filled_quantity,0) / o.quantity) ELSE 1 END),0) AS r
+                 FROM cash_reservations r JOIN orders o ON o.id=r.order_id
+                WHERE r.account_id=$1 AND o.status IN ${OPEN_STATUSES} AND ($2::uuid IS NULL OR o.id <> $2::uuid)`;
+  const row = c ? (await c.query(sql, [accountId, excludeOrderId ?? null])).rows[0] : await one<{ r: string }>(sql, [accountId, excludeOrderId ?? null]);
+  return Number(row?.r ?? 0);
+}
+/**
+ * Atomically reserve buying power for an opening order. A per-account advisory lock serialises concurrent sessions,
+ * so two strategies can never both spend the same cash. If it doesn't fit, the order is rejected with a reason code.
+ */
+async function reserveFor(order: any, need: number): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (!(need > 0)) return { ok: true };
+  return tx(async (c) => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext($1))", [order.account_id]);
+    const acct = (await c.query("SELECT cash_balance, kind, metadata FROM trading_accounts WHERE id=$1", [order.account_id])).rows[0];
+    const known = acct?.kind === "paper" || acct?.metadata?.balance_synced;
+    if (!known) return { ok: true as const };
+    const reserved = await reservedCash(order.account_id, order.id, c);
+    const available = Number(acct.cash_balance) - reserved;
+    if (available + 1e-9 < need) {
+      const reason = `INSUFFICIENT_BUYING_POWER: need $${need.toFixed(2)}, available $${Math.max(0, available).toFixed(2)} ($${reserved.toFixed(2)} reserved by other open orders/sessions)`;
+      await c.query("UPDATE orders SET status='rejected', status_reason=$2, updated_at=now() WHERE id=$1", [order.id, reason]);
+      return { ok: false as const, reason };
+    }
+    await c.query("INSERT INTO cash_reservations (order_id, account_id, amount) VALUES ($1,$2,$3) ON CONFLICT (order_id) DO UPDATE SET amount=EXCLUDED.amount", [order.id, order.account_id, need]);
+    return { ok: true as const };
+  });
+}
+const buyNeed = (plan: any) => Number(plan.notionalUsd || 0) + Number(plan.quote?.feeUsd ?? 0);
+
 /* ───────────────────────── Place (persist + route) ───────────────────────── */
 export async function place(intent: OrderIntent, ctx: EngineContext) {
   // Idempotency: replay returns the original order without re-executing.
@@ -326,7 +362,17 @@ export async function place(intent: OrderIntent, ctx: EngineContext) {
     data: { source: ctx.source, asset: plan.asset.symbol, venue: plan.asset.venue, side: intent.side, qty: plan.quantity, notional: plan.notionalUsd, provider: plan.providerId, paper: plan.isPaper, reason: plan.decisionReason }, ip: ctx.ip });
   await publish(`user:${ctx.userId}`, "order", { id: order.id, status });
   if (status === "pending_approval") await notify(ctx.userId, "approval", `Approval needed: ${intent.side} ${plan.asset.symbol}`, plan.decisionReason, `/portfolio?order=${order.id}`);
-  if (status === "validated") return { order: await route(order.id), plan, replayed: false };
+  if (status === "validated") {
+    if (intent.side === "buy") {
+      const res = await reserveFor(order, buyNeed(plan));
+      if (!res.ok) {
+        await audit({ actorType: "system", userId: ctx.userId, action: "order.rejected", target: order.id, data: { code: "INSUFFICIENT_BUYING_POWER", reason: res.reason } });
+        await publish(`user:${ctx.userId}`, "order", { id: order.id, status: "rejected" });
+        return { order: await one<any>("SELECT * FROM orders WHERE id=$1", [order.id]), plan, replayed: false };
+      }
+    }
+    return { order: await route(order.id), plan, replayed: false };
+  }
   return { order, plan, replayed: false };
 }
 
@@ -350,6 +396,10 @@ export async function approve(orderId: string, userId: string, ip?: string) {
     [orderId, JSON.stringify(plan.quote), plan.quantity, plan.notionalUsd, plan.providerId, JSON.stringify(plan.checks),
      JSON.stringify({ mode: "user_confirmed", by: { type: "user", id: userId }, at: new Date().toISOString() })]);
   await audit({ actorType: "user", actorId: userId, userId, action: "order.approved", target: orderId, ip });
+  if (o.side === "buy") {
+    const res = await reserveFor({ ...o, status: "validated" }, buyNeed(plan));
+    if (!res.ok) throw new HttpError(422, res.reason);
+  }
   return route(orderId);
 }
 
@@ -563,7 +613,8 @@ export async function processPaperTriggers() {
     const fee = qty * fillPx * (o.quote?.feeUsd && o.quote?.notionalUsd ? o.quote.feeUsd / o.quote.notionalUsd : 0);
     if (o.side === "buy") {
       const acct = await one<any>("SELECT cash_balance FROM trading_accounts WHERE id=$1", [o.account_id]);
-      if (Number(acct.cash_balance) < qty * fillPx + fee) { await q("UPDATE orders SET status='rejected', status_reason='Insufficient paper cash at trigger' WHERE id=$1", [o.id]); continue; }
+      // This order's own reservation is excluded; other open orders keep theirs.
+      if (Number(acct.cash_balance) - (await reservedCash(o.account_id, o.id)) < qty * fillPx + fee) { await q("UPDATE orders SET status='rejected', status_reason='INSUFFICIENT_BUYING_POWER at trigger (cash reserved by other open orders)' WHERE id=$1", [o.id]); continue; }
     }
     await applyFill(o.id, { quantity: qty, price: fillPx, feeUsd: fee, fillId: `paper-trigger-${o.id}` });
     const fresh = await one<any>("SELECT * FROM orders WHERE id=$1", [o.id]);
