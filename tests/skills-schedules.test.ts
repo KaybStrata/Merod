@@ -69,3 +69,21 @@ test("skills: rules are extracted and enforced; the AI gets the text", async () 
   assert.match(off.message.content, /Turned off “Safe”/);
   assert.equal(await skillNotes(u), null);
 });
+
+test("points: specific instructions that can expire; listed apart from skills; reach the AI while live", async () => {
+  const { parseExpiry, skillNotes } = await import("@/server/skills");
+  const now = new Date("2026-11-26T20:00:00Z"); // 12:00 in Los Angeles
+  assert.equal(parseExpiry("focus on SOL for 2 hours", "UTC", now)!.toISOString(), "2026-11-26T22:00:00.000Z");
+  assert.equal(parseExpiry("only memes today", "America/Los_Angeles", now)!.toISOString(), "2026-11-27T08:00:00.000Z", "end of the day in Los Angeles");
+  assert.equal(parseExpiry("always be careful"), null);
+
+  const u = await newUser();
+  const { handlePrompt } = await import("@/server/ai/interpret");
+  const r: any = await handlePrompt(u, { text: "create a point: focus on Solana meme coins with rising volume for 3 hours", provider: "merod" } as any);
+  assert.match(r.message.content, /Point set: “focus on Solana meme coins with rising volume for 3 hours”\. Applies until/, r.message.content);
+  assert.match((await skillNotes(u))!, /user_points[\s\S]*focus on Solana meme coins/);
+  const list: any = await handlePrompt(u, { text: "show my points", provider: "merod" } as any);
+  assert.match(list.message.content, /Your points:\n1\. focus on Solana/);
+  await q("UPDATE skills SET expires_at = now() - interval '1 minute' WHERE user_id=$1", [u]);
+  assert.equal(await skillNotes(u), null, "expired points no longer apply");
+});

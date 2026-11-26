@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Wand2, Trash2, CalendarClock, Plus } from "lucide-react";
+import { Wand2, Trash2, CalendarClock, Plus, Crosshair } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { cx, useToast } from "@/components/ui";
 
@@ -12,18 +12,19 @@ import { cx, useToast } from "@/components/ui";
 export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) => void; compact?: boolean }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"skills" | "schedules">("skills");
+  const [tab, setTab] = useState<"skills" | "points" | "schedules">("skills");
   const [name, setName] = useState(""), [text, setText] = useState(""), [busy, setBusy] = useState(false);
   const data = useApi<any>(open ? "/api/skills" : null);
-  const skills: any[] = data.data?.skills ?? [], schedules: any[] = data.data?.schedules ?? [];
-  const activeCount = skills.filter((s) => s.active).length;
+  const all: any[] = data.data?.skills ?? [], schedules: any[] = data.data?.schedules ?? [];
+  const skills = all.filter((s) => (s.kind ?? "skill") === (tab === "points" ? "point" : "skill"));
+  const activeCount = all.filter((s) => s.active && !s.expired).length;
 
   async function save() {
     if (text.trim().length < 3) return toast("Describe the skill first", "down");
     setBusy(true);
     try {
-      const r: any = await api("/api/skills", { method: "POST", json: { name: name || undefined, instructions: text } });
-      toast(`Skill “${r.skill.name}” is on${r.enforced?.length ? `. Merod enforces: ${r.enforced.join("; ")}` : ""}`, "up");
+      const r: any = await api("/api/skills", { method: "POST", json: { name: name || undefined, instructions: text, kind: tab === "points" ? "point" : "skill", tz: Intl.DateTimeFormat().resolvedOptions().timeZone } });
+      toast(`${tab === "points" ? "Point" : "Skill"} “${r.skill.name}” is on${r.enforced?.length ? `. Merod enforces: ${r.enforced.join("; ")}` : ""}`, "up");
       setName(""); setText(""); data.refresh();
     } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
   }
@@ -42,32 +43,32 @@ export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) =>
       {open && (
         <div className="absolute bottom-10 left-0 z-40 w-[360px] max-w-[90vw] rounded-xl border border-line bg-panel p-2 shadow-2xl">
           <div className="mb-2 flex gap-1 text-[12px]">
-            {(["skills", "schedules"] as const).map((t) => (
+            {(["skills", "points", "schedules"] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} className={cx("flex items-center gap-1 rounded-md px-2 py-1 capitalize", tab === t ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>
-                {t === "skills" ? <Wand2 className="size-3" /> : <CalendarClock className="size-3" />}{t}{t === "schedules" && schedules.length ? ` ${schedules.length}` : ""}
+                {t === "skills" ? <Wand2 className="size-3" /> : t === "points" ? <Crosshair className="size-3" /> : <CalendarClock className="size-3" />}{t}{t === "schedules" && schedules.length ? ` ${schedules.length}` : ""}
               </button>
             ))}
             <button onClick={() => setOpen(false)} className="ml-auto px-1 text-faint hover:text-text" aria-label="Close">✕</button>
           </div>
-          {tab === "skills" ? (
+          {tab !== "schedules" ? (
             <>
-              <p className="mb-2 text-[11px] text-muted">Skills shape how Modo, OpenAI and Claude think and plan, and Merod enforces stop-loss, take-profit, $ per trade, never-buy / only-trade lists, max per trade and sell-in-profit on every bot, agent and buy. You can also type “create a skill: …”.</p>
+              <p className="mb-2 text-[11px] text-muted">{tab === "points" ? "Points are specific instructions for right now, e.g. “focus on Solana coins with rising volume today” or “no new buys until Friday”. Add “for 2 hours”, “today” or “until Friday” to make one expire. Type “point: …” in the prompt box, or switch Send as → Point." : "Skills shape overall decision making: how Modo, OpenAI and Claude think and plan. Merod enforces their stop-loss, take-profit, $ per trade, never-buy / only-trade lists, max per trade and sell-in-profit on every bot, agent and buy. Type “create a skill: …”, or switch Send as → Skill."}</p>
               <div className="max-h-44 space-y-1 overflow-y-auto">
                 {!data.data && <p className="text-[12px] text-faint">Loading…</p>}
-                {data.data && !skills.length && <p className="text-[12px] text-faint">No skills yet.</p>}
+                {data.data && !skills.length && <p className="text-[12px] text-faint">No {tab} yet.</p>}
                 {skills.map((s) => (
                   <div key={s.id} className="flex items-start gap-2 rounded-lg border border-line/60 px-2 py-1.5">
                     <Switch on={s.active} onClick={() => toggle("skill", s.id, !s.active)} />
-                    <div className="min-w-0 flex-1"><div className="truncate text-[12.5px] font-medium">{s.name}</div><div className="line-clamp-2 text-[11px] text-muted">{s.instructions}</div></div>
+                    <div className="min-w-0 flex-1"><div className="truncate text-[12.5px] font-medium">{s.name}{s.expired ? <span className="ml-1 text-[10px] text-faint">(expired)</span> : s.expires_at ? <span className="ml-1 text-[10px] text-faint">until {new Date(s.expires_at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</span> : null}</div><div className="line-clamp-2 text-[11px] text-muted">{s.instructions}</div></div>
                     <button onClick={() => remove("skill", s.id)} className="text-faint hover:text-down" aria-label="Delete skill"><Trash2 className="size-3.5" /></button>
                   </div>
                 ))}
               </div>
               <div className="mt-2 space-y-1.5 border-t border-line pt-2">
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional), e.g. Safe meme trading" className="w-full rounded-md border border-line bg-bg-2 px-2 py-1 text-[12px] outline-none focus:border-accent/60" />
-                <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder="e.g. Always use a 5% stop loss, only sell in profit, never buy BONK, max $25 per trade, prefer coins with rising volume"
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tab === "points" ? "Name (optional), e.g. Today's focus" : "Name (optional), e.g. Safe meme trading"} className="w-full rounded-md border border-line bg-bg-2 px-2 py-1 text-[12px] outline-none focus:border-accent/60" />
+                <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder={tab === "points" ? "e.g. Focus on Solana meme coins with rising volume today, and take profits early" : "e.g. Always use a 5% stop loss, only sell in profit, never buy BONK, max $25 per trade, prefer coins with rising volume"}
                   className="w-full resize-none rounded-md border border-line bg-bg-2 px-2 py-1 text-[12px] outline-none focus:border-accent/60" />
-                <button onClick={save} disabled={busy} className="flex w-full items-center justify-center gap-1 rounded-md bg-grad py-1.5 text-[12px] font-semibold text-bg disabled:opacity-50"><Plus className="size-3.5" />{busy ? "Saving…" : "Add skill"}</button>
+                <button onClick={save} disabled={busy} className="flex w-full items-center justify-center gap-1 rounded-md bg-grad py-1.5 text-[12px] font-semibold text-bg disabled:opacity-50"><Plus className="size-3.5" />{busy ? "Saving…" : tab === "points" ? "Add point" : "Add skill"}</button>
               </div>
             </>
           ) : (

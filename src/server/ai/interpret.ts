@@ -182,7 +182,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
     return { conversationId: convId!, message: row, userMessageId: um!.id, fallbackReason: null, provider: "merod", model: "deterministic" };
   };
   // Skills: "create a skill: always use a 5% stop-loss…", "show my skills", "turn off skill Safe".
-  const sk = input.part ? null : await skillCommand(userId, text).catch((e: any) => `Couldn't save that skill: ${e.message}`);
+  const sk = input.part ? null : await skillCommand(userId, text, input.tz || "UTC").catch((e: any) => `Couldn't save that skill: ${e.message}`);
   if (sk) return early(sk, { type: "executed", detail: "Skills updated" }, "executed", null);
   // Schedules: "show my schedules", "cancel schedule 2"; and "every morning at 2am LA time, buy … " creates one.
   const sc = input.part ? null : await scheduleCommand(userId, text);

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, AtSign, Mic, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb } from "lucide-react";
+import { ArrowUp, AtSign, Mic, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb, MessageSquare, Wand2, Crosshair } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { useApi } from "@/lib/api";
 import { cx } from "@/components/ui";
@@ -24,12 +24,14 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
   useEffect(() => { const el = ta.current; if (el) { el.style.height = "auto"; el.style.height = `${Math.min(180, el.scrollHeight)}px`; } }, [text]);
 
   const att = useAttachments();
+  // Send as: a normal prompt, a Skill (overall decision making, permanent) or a Point (a specific instruction, can expire).
+  const [sendAs, setSendAs] = useState<"prompt" | "skill" | "point">("prompt");
   const ahead = useTypeAhead(text, (t) => { setText(t); requestAnimationFrame(() => { const el = ta.current; if (el) { el.focus(); el.setSelectionRange(t.length, t.length); } }); });
   // Files can be sent on their own (Merod summarizes them) or with a prompt; it waits while any are still uploading.
   const send = (t = text) => {
     const v = t.trim();
     if ((!v && !att.ids.length) || busy || att.uploading) return;
-    onSend(v, att.ids.length ? att.ids : undefined); setText(""); att.clear();
+    onSend(sendAs === "prompt" || !v ? v : `create a ${sendAs}: ${v}`, att.ids.length ? att.ids : undefined); setText(""); att.clear(); setSendAs("prompt");
   };
   function toggleVoice() { // browser speech → text only; nothing is sent until you press send
     if (listening) { rec.current?.stop(); return; }
@@ -76,6 +78,12 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
             <Seg on={ai === "merod"} onClick={() => onAi?.("merod")} icon={Sparkles} title="Merod's built-in rules: trades, bots, settings, mimic and market data. No key needed.">Modo</Seg>
             <Seg on={ai === "openai"} onClick={() => onAi?.("openai")} icon={Bot} title="Answers and plans from OpenAI, using your own OpenAI key (Broker & AI keys).">OpenAI</Seg>
             <Seg on={ai === "anthropic"} onClick={() => onAi?.("anthropic")} icon={Brain} title="Answers and plans from Claude, using your own Claude key (Broker & AI keys).">Claude</Seg>
+          </ControlGroup>
+          {/* Send as: what this message becomes */}
+          <ControlGroup label="Send as">
+            <Seg on={sendAs === "prompt"} onClick={() => setSendAs("prompt")} icon={MessageSquare} title="A normal prompt: Merod does it now">Prompt</Seg>
+            <Seg on={sendAs === "skill"} onClick={() => setSendAs("skill")} icon={Wand2} title="Save as a Skill: a lasting rule for overall decision making (Modo, OpenAI, Claude, bots, agents)">Skill</Seg>
+            <Seg on={sendAs === "point"} onClick={() => setSendAs("point")} icon={Crosshair} title="Save as a Point: a specific instruction to follow now; add 'today', 'for 2 hours' or 'until Friday' to make it expire">Point</Seg>
           </ControlGroup>
           {ai !== "merod" && <a href={ai === "openai" ? "https://platform.openai.com/settings/organization/billing/" : "https://console.anthropic.com/settings/billing"} target="_blank" rel="noreferrer noopener" className="text-[11px] text-accent-2 underline underline-offset-2 hover:text-text">{ai === "openai" ? "OpenAI" : "Claude"} credits →</a>}
           <span className="hidden h-6 w-px bg-line sm:block" aria-hidden />

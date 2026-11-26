@@ -15,8 +15,8 @@ export const GET = route(async () => {
 /** Create a skill: { name?, instructions }. */
 export const POST = route(async (req) => {
   const u = await requireUser();
-  const b = await parse(req, z.object({ name: z.string().max(60).optional(), instructions: z.string().min(3).max(2000) }));
-  try { return ok(await createSkill(u.id, b.name ?? "", b.instructions)); }
+  const b = await parse(req, z.object({ name: z.string().max(60).optional(), instructions: z.string().min(3).max(2000), kind: z.enum(["skill", "point"]).optional(), tz: z.string().max(60).optional() }));
+  try { return ok(await createSkill(u.id, b.name ?? "", b.instructions, b.kind ?? "skill", b.tz ?? "UTC")); }
   catch (e: any) { throw new HttpError(400, e.message); }
 });
 

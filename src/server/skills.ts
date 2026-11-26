@@ -51,15 +51,37 @@ const describeRules = (r: SkillRules) => [
   r.maxTradeUsd ? `max $${r.maxTradeUsd} per buy` : null,
 ].filter(Boolean) as string[];
 
-export const listSkills = (userId: string) => q<any>("SELECT * FROM skills WHERE user_id=$1 ORDER BY active DESC, created_at DESC", [userId]);
+export type Kind = "skill" | "point";
+const LIVE = "(expires_at IS NULL OR expires_at > now())";
+export const listSkills = (userId: string) => q<any>(`SELECT *, (expires_at IS NOT NULL AND expires_at <= now()) AS expired FROM skills WHERE user_id=$1 ORDER BY kind, active DESC, created_at DESC`, [userId]);
 
-/** Create a skill, apply what Merod can enforce right away, and say what changed. */
-export async function createSkill(userId: string, name: string, instructions: string) {
+/** "for 2 hours", "for today", "for 3 days", "this week", "until friday" → when a Point stops applying (null = until you remove it). */
+export function parseExpiry(text: string, tz = "UTC", now = new Date()): Date | null {
+  const t = text.toLowerCase();
+  const n = t.match(/\bfor (?:the next )?(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?|days?|weeks?)\b/);
+  if (n) { const v = Number(n[1]); const mult = /^m/.test(n[2]) ? 60_000 : /^h/.test(n[2]) ? 3_600_000 : /^d/.test(n[2]) ? 86_400_000 : 604_800_000; return new Date(now.getTime() + v * mult); }
+  const endOfLocalDay = (addDays: number) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).formatToParts(now).map((x) => [x.type, x.value]));
+    const minsLeft = (24 - Number(p.hour)) * 60 - Number(p.minute) + addDays * 1440;
+    return new Date(now.getTime() + minsLeft * 60_000);
+  };
+  if (/\b(for )?today\b|\buntil (the )?(end of (the )?day|tonight|close)\b/.test(t)) return endOfLocalDay(0);
+  if (/\b(for )?tomorrow\b|\buntil tomorrow\b/.test(t)) return endOfLocalDay(1);
+  if (/\b(for )?this week\b|\buntil (the )?(end of (the )?week|weekend)\b/.test(t)) return endOfLocalDay(6 - new Date(now.toLocaleString("en-US", { timeZone: tz })).getDay());
+  const days = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  const until = t.match(/\buntil (sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if (until) { const today = new Date(now.toLocaleString("en-US", { timeZone: tz })).getDay(); const d = (days.indexOf(until[1]) - today + 7) % 7 || 7; return endOfLocalDay(d - 1); }
+  return null;
+}
+
+/** Create a skill or point, apply what Merod can enforce right away, and say what changed. */
+export async function createSkill(userId: string, name: string, instructions: string, kind: Kind = "skill", tz = "UTC") {
   const text = instructions.trim().slice(0, 2000);
-  if (text.length < 3) throw new Error("Describe the skill, e.g. “always use a 5% stop-loss and never buy coins under $100k liquidity”.");
+  if (text.length < 3) throw new Error(kind === "point" ? "Write the instruction, e.g. “focus on Solana meme coins with rising volume today”." : "Describe the skill, e.g. “always use a 5% stop-loss and never buy coins under $100k liquidity”.");
   const rules = extractRules(text);
-  const row = await one<any>("INSERT INTO skills (user_id, name, instructions, rules) VALUES ($1,$2,$3,$4) RETURNING *",
-    [userId, (name || text.split(/[.,;\n]/)[0]).trim().slice(0, 60), text, JSON.stringify(rules)]);
+  const expires = kind === "point" ? parseExpiry(text, tz) : null;
+  const row = await one<any>("INSERT INTO skills (user_id, name, instructions, rules, kind, expires_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
+    [userId, (name || text.split(/[.,;\n]/)[0]).trim().slice(0, 60), text, JSON.stringify(rules), kind, expires]);
   const applied = await applyRules(userId, rules);
   return { skill: row, enforced: describeRules(rules), applied };
 }
@@ -82,16 +104,20 @@ export async function setSkillActive(userId: string, id: string, active: boolean
 }
 export const deleteSkill = (userId: string, id: string) => q("DELETE FROM skills WHERE id=$1 AND user_id=$2", [id, userId]);
 
-/** The user's active skills as instructions for any AI answering or planning for them. */
+/** Active skills and points as instructions for any AI answering or planning for the user. */
 export async function skillNotes(userId: string): Promise<string | null> {
-  const rows = await q<any>("SELECT name, instructions FROM skills WHERE user_id=$1 AND active ORDER BY created_at LIMIT 30", [userId]).catch(() => []);
+  const rows = await q<any>(`SELECT kind, name, instructions, expires_at FROM skills WHERE user_id=$1 AND active AND ${LIVE} ORDER BY kind DESC, created_at LIMIT 40`, [userId]).catch(() => []);
   if (!rows.length) return null;
-  return `user_skills (the user's own standing instructions: follow them in how you interpret, reason, decide and plan):\n${rows.map((r: any) => `- ${r.name}: ${String(r.instructions).replace(/\s+/g, " ").slice(0, 400)}`).join("\n")}`;
+  const sk = rows.filter((r: any) => r.kind !== "point"), pt = rows.filter((r: any) => r.kind === "point");
+  const out: string[] = [];
+  if (sk.length) out.push(`user_skills (the user's own standing instructions: follow them in how you interpret, reason, decide and plan):\n${sk.map((r: any) => `- ${r.name}: ${String(r.instructions).replace(/\s+/g, " ").slice(0, 400)}`).join("\n")}`);
+  if (pt.length) out.push(`user_points (specific instructions from the user that apply right now; they take priority over general habits):\n${pt.map((r: any) => `- ${String(r.instructions).replace(/\s+/g, " ").slice(0, 400)}${r.expires_at ? ` (until ${new Date(r.expires_at).toISOString()})` : ""}`).join("\n")}`);
+  return out.join("\n\n");
 }
 
-/** Merged enforceable rules of all active skills (used by the trading engine on every buy, and for new bots/agents). */
+/** Merged enforceable rules of all active skills and live points (checked by the trading engine on every buy, and for new bots/agents). */
 export async function activeRules(userId: string): Promise<SkillRules> {
-  const rows = await q<any>("SELECT rules FROM skills WHERE user_id=$1 AND active", [userId]).catch(() => []);
+  const rows = await q<any>(`SELECT rules FROM skills WHERE user_id=$1 AND active AND ${LIVE}`, [userId]).catch(() => []);
   const out: SkillRules = {};
   for (const { rules: r } of rows) {
     if (r?.edits) out.edits = { ...(out.edits ?? {}), ...r.edits };
@@ -109,28 +135,35 @@ export async function applySkillsToNew(userId: string, kind: "bot" | "agent", id
   if (r.edits) await applyEdits(userId, [{ kind, id, name }], r.edits).catch(() => {});
 }
 
-/** Prompt box: "create a skill: …", "add skill called Safe: …", "show my skills", "turn off skill Safe", "delete skill 2". */
-export async function skillCommand(userId: string, raw: string): Promise<string | null> {
+/**
+ * Prompt box: "create a skill: …", "create a point: …" (or "point: …"), "show my skills / points",
+ * "turn off skill Safe", "delete point 2".
+ */
+export async function skillCommand(userId: string, raw: string, tz = "UTC"): Promise<string | null> {
   const t = raw.trim();
-  let make: { name: string; text: string } | null = null;
-  const m1 = t.match(/^(?:please\s+)?(?:create|add|make|new|save|teach)\s+(?:me\s+)?(?:a\s+|the\s+)?(?:new\s+)?skill(?:\s+(?:called|named)\s+["“]?([^:"”]{1,60})["”]?)?\s*(?::|-|—|that|to|which|so)?\s*([\s\S]+)$/i);
-  if (m1) make = { name: m1[1] ?? "", text: m1[2] };
-  const m2 = !make && t.match(/^skill\s*:\s*([\s\S]+)$/i);
-  if (m2) make = { name: "", text: m2[1] };
+  let make: { name: string; text: string; kind: Kind } | null = null;
+  const m1 = t.match(/^(?:please\s+)?(?:create|add|make|new|save|teach|set)\s+(?:me\s+)?(?:a\s+|the\s+)?(?:new\s+)?(skill|point)(?:\s+(?:called|named)\s+["“]?([^:"”]{1,60})["”]?)?\s*(?::|-|—|that|to|which|so)?\s*([\s\S]+)$/i);
+  if (m1) make = { kind: m1[1].toLowerCase() as Kind, name: m1[2] ?? "", text: m1[3] };
+  const m2 = !make && t.match(/^(skill|point)\s*:\s*([\s\S]+)$/i);
+  if (m2) make = { kind: m2[1].toLowerCase() as Kind, name: "", text: m2[2] };
   if (make && make.text.trim().length >= 3) {
-    const { skill, enforced, applied } = await createSkill(userId, make.name, make.text);
-    return `Skill “${skill.name}” is on. Modo, OpenAI and Claude now follow it in every answer and plan.${enforced.length ? `\nMerod also enforces: ${enforced.join("; ")}.` : ""}${applied.length ? `\n${applied.join("\n")}` : ""}\nManage skills with the Skills button.`;
+    const { skill, enforced, applied } = await createSkill(userId, make.name, make.text, make.kind, tz);
+    const head = make.kind === "point"
+      ? `Point set: “${skill.instructions}”.${skill.expires_at ? ` Applies until ${new Date(skill.expires_at).toLocaleString("en-US", { timeZone: tz, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.` : " Applies until you remove it."} Modo, OpenAI, Claude, bots and agents follow it in every decision.`
+      : `Skill “${skill.name}” is on. Modo, OpenAI and Claude now follow it in every answer and plan.`;
+    return `${head}${enforced.length ? `\nMerod also enforces: ${enforced.join("; ")}.` : ""}${applied.length ? `\n${applied.join("\n")}` : ""}\nManage ${make.kind}s with the Skills button.`;
   }
-  if (!/\bskills?\b/i.test(t)) return null;
-  const rows = await listSkills(userId);
-  const line = (r: any, i: number) => `${i + 1}. ${r.name}${r.active ? "" : " (off)"}: ${String(r.instructions).slice(0, 140)}`;
-  if (/\b(show|list|what|my|see|view)\b/i.test(t) && !/\b(delete|remove|turn|disable|enable|pause|off|on)\b/i.test(t))
-    return rows.length ? `Your skills:\n${rows.map(line).join("\n")}` : "No skills yet. Try “create a skill: always use a 5% stop-loss and only sell in profit”.";
-  const act = /\b(delete|remove)\b/i.test(t) ? "delete" : /\b(turn off|disable|pause|off)\b/i.test(t) ? "off" : /\b(turn on|enable|on|resume)\b/i.test(t) ? "on" : null;
+  const kindWord = /\bpoints?\b/i.test(t) ? "point" : /\bskills?\b/i.test(t) ? "skill" : null;
+  if (!kindWord) return null;
+  const rows = (await listSkills(userId)).filter((r) => r.kind === kindWord);
+  const line = (r: any, i: number) => `${i + 1}. ${r.kind === "point" ? "" : `${r.name}: `}${String(r.instructions).slice(0, 140)}${!r.active ? " (off)" : r.expired ? " (expired)" : r.expires_at ? ` (until ${new Date(r.expires_at).toLocaleString("en-US", { timeZone: tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })})` : ""}`;
+  if (/\b(show|list|what|my|see|view)\b/i.test(t) && !/\b(delete|remove|turn|disable|enable|pause|off|on|clear)\b/i.test(t))
+    return rows.length ? `Your ${kindWord}s:\n${rows.map(line).join("\n")}` : kindWord === "point" ? "No points yet. Try “create a point: focus on Solana meme coins with rising volume today”." : "No skills yet. Try “create a skill: always use a 5% stop-loss and only sell in profit”.";
+  const act = /\b(delete|remove|clear)\b/i.test(t) ? "delete" : /\b(turn off|disable|pause|off)\b/i.test(t) ? "off" : /\b(turn on|enable|on|resume)\b/i.test(t) ? "on" : null;
   if (!act) return null;
-  const n = t.match(/\bskills?\s*#?(\d+)/i)?.[1];
+  const n = t.match(/\b(?:skills?|points?)\s*#?(\d+)/i)?.[1];
   const pick = /\ball\b/i.test(t) ? rows : n ? rows.filter((_, i) => i === Number(n) - 1) : rows.filter((r) => t.toLowerCase().includes(String(r.name).toLowerCase()));
-  if (!pick.length) return rows.length ? `Which skill?\n${rows.map(line).join("\n")}` : "You have no skills.";
+  if (!pick.length) return rows.length ? `Which ${kindWord}?\n${rows.map(line).join("\n")}` : `You have no ${kindWord}s.`;
   for (const r of pick) act === "delete" ? await deleteSkill(userId, r.id) : await setSkillActive(userId, r.id, act === "on");
-  return `${act === "delete" ? "Deleted" : act === "on" ? "Turned on" : "Turned off"} ${pick.map((r) => `“${r.name}”`).join(", ")}.${act !== "on" ? " Settings it already changed on bots and agents stay as they are." : ""}`;
+  return `${act === "delete" ? "Deleted" : act === "on" ? "Turned on" : "Turned off"} ${pick.map((r) => `“${r.kind === "point" ? String(r.instructions).slice(0, 60) : r.name}”`).join(", ")}.${act !== "on" ? " Settings it already changed on bots and agents stay as they are." : ""}`;
 }
