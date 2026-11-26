@@ -198,10 +198,10 @@ export function parsePrompt(raw: string): Instruction {
     // Many coins at once: "every/all (Solana) meme coin(s)" or "the top 20 gainers".
     const many = (ranked && coinWords) || /\b(every|all|each|any)\b[^.]*\b(meme|memes|memecoins?|coins|tokens)\b/.test(t);
     const scope = many ? { meme: /\bmeme/.test(t), venue: /\bsol(ana|ona)?\b/.test(t) ? "solana" : /\b(eth|ethereum)\b/.test(t) ? "ethereum" : /\bbase\b/.test(t) ? "base" : null,
-      ...(ranked ? { rank: "gainers" as const, top: topN ? Math.max(1, num(topN[1])) : 20 } : {}) } : null;
+      rank: ranked ? ("gainers" as const) : null, top: ranked ? (topN ? Math.max(1, num(topN[1])) : 20) : null } : null;
     const sl = t.match(/stop[- ]?loss (of |at )?(\d+(?:\.\d+)?)\s*%/);
     const cycles = t.match(/(\d+)\s*(times|cycles)/);
-    const top = scope && "top" in scope ? scope.top : null;
+    const top = scope?.top ?? null;
     const scopeLabel = scope ? `${top ? `top ${top} ` : ""}${scope.venue ? scope.venue[0].toUpperCase() + scope.venue.slice(1) + " " : ""}${scope.meme ? "meme coins" : "coins"}${top ? " (biggest gainers)" : ""}` : null;
     const each = scope && amt.type === "usd" ? ` $${amt.value} each,` : "";
     return base("swing_loop", `Buy ${scopeLabel ?? asset.symbol ?? "this asset"}${dipPct > 0 ? ` after a ${dipPct}% dip` : " now"},${each} sell at +${tpPct}%${repeat ? ", and repeat" : ""}`, {

@@ -42,7 +42,7 @@ export const InstructionSchema = z.object({
     stop_loss_pct: z.number().nullable(),
     repeat: z.boolean().describe("true for 'rinse and repeat'"),
     max_cycles: z.number().nullable(),
-    scope: z.object({ meme: z.boolean(), venue: z.string().nullable(), rank: z.enum(["gainers"]).optional(), top: z.number().int().min(1).max(1000).optional() }).nullable().optional()
+    scope: z.object({ meme: z.boolean(), venue: z.string().nullable(), rank: z.enum(["gainers"]).nullable(), top: z.number().int().nullable() }).nullable().optional()
       .describe("Set when the bot should watch many coins, e.g. 'every Solana meme coin' → {meme:true, venue:'solana'}; 'top 20 gainers / most profitable Solana meme coins' → {meme:true, venue:'solana', rank:'gainers', top:20}. With no dip mentioned (buy now), dip_pct=0."),
   }).nullable(),
   bot: z.object({

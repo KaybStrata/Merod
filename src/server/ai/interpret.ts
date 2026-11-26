@@ -15,6 +15,7 @@ import { parseMimicRequest, parseMimicTop, topRoiLeaders } from "../copy/leaders
 import { gatherFacts, factsPacket, factsAnswer, isMarketQuestion, sourcesLine } from "./market-answers";
 import { createFollow, type MimicScope } from "../copy/service";
 import { splitInstructions, isAgentRequest, isStrategyRequest } from "./multi";
+import { parseAppAction, type ActionStep } from "./actions";
 import { attachWidgets, type WidgetHint } from "../talk/attach";
 
 /**
@@ -32,6 +33,7 @@ export type PlanCard =
   | { type: "executed"; detail: string; orderId?: string; status?: string }
   | { type: "research"; text: string }
   | { type: "clarify"; question: string; suggestions: string[] }
+  | { type: "app_action"; title: string; steps: ActionStep[]; link?: { href: string; label: string } }
   | { type: "mimic"; handle: string; displayName: string; roi: number; pnl: number; invested: number; trades: number; scope: MimicScope; windowLabel: string;
       settings: { percent: number; maxDailyUsd: number }; alternatives: { handle: string; roi: number; trades: number }[] };
 
@@ -165,6 +167,13 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       if (orig) originText = `${orig.content} → ${text}`;
     }
   }
+  // App actions: settings, on/off switches, opening pages. Proposed as a card; your browser applies it when you press Approve.
+  if (!instruction) {
+    const act = parseAppAction(text);
+    if (act && "navigateOnly" in act) return reply(`Opening ${act.link.label}.`, { type: "app_action", title: act.title, steps: [], link: act.link }, "info", null);
+    if (act) return reply(`${act.steps.length === 1 ? "Here's the change" : `Here are the ${act.steps.length} changes`}. Press Approve to apply ${act.steps.length === 1 ? "it" : "them"}:\n${act.steps.map((s) => `• ${s.label}`).join("\n")}`,
+      { type: "app_action", title: act.title, steps: act.steps }, "needs_approval", null);
+  }
   // "Create 5 agents that trade Solana meme coins" → a fleet of paper agents, waiting for your approval in Agents.
   if (!instruction && isAgentRequest(text)) {
     try {
@@ -241,7 +250,12 @@ export async function handlePrompt(userId: string, input: PromptInput) {
     return { conversationId: convId!, message: row, userMessageId: userMsg!.id, fallbackReason, provider: usedProvider, model: usedModel };
   }
 
-  const ins = instruction;
+  // Anything the rules don't recognise goes to the connected AI (Claude or OpenAI) as an open question instead of "I couldn't tell".
+  let ins = instruction;
+  if (ins.kind === "clarify" && /couldn.t tell/i.test(ins.clarification_question ?? "")) {
+    const ai = await userAI(userId, input);
+    if (ai.provider !== "merod" && (await aiAvailable(ai.provider, userId))) ins = { ...ins, kind: "research", summary: "Question", clarification_question: null, research_query: text };
+  }
   const leg = ins.trades[0];
   switch (ins.kind) {
     case "clarify":
@@ -250,8 +264,9 @@ export async function handlePrompt(userId: string, input: PromptInput) {
         const sym = ins.trades[0]?.symbol;
         const suggestions = /how much/i.test(q0) ? AMOUNT_CHIPS
           : /^What would you like to do with/.test(q0) && sym ? [`Buy $100 of ${sym}`, `Sell 25% of ${sym}`, `Alert me when ${sym} drops 5%`, `Analyze ${sym}`]
-          : /couldn't tell/.test(q0) ? ["Buy $100 of BTC", "Sell 25% of NVDA", "Buy at a 3% dip and sell at +5%, repeat"] : [];
-        return reply(q0 || "Could you clarify?", { type: "clarify", question: q0, suggestions }, "clarify");
+          : /couldn't tell/.test(q0) ? ["Buy $100 of BTC", "Turn off risk flags for my bots", "Open purchase history", "Create 3 agents that trade Solana meme coins", "Mimic the top 20 crypto traders this week"] : [];
+        const help = /couldn't tell/.test(q0) ? "I couldn't match that to something I can do on my own. I can trade, change settings (\"turn off risk flags\", \"max slippage 3%\", \"turn Modo on\"), open pages (\"open purchase history\"), create bots, agents and strategies, mimic traders, set alerts, and answer market questions. For open-ended requests, connect Claude or OpenAI under Broker & AI keys." : q0;
+        return reply(help || "Could you clarify?", { type: "clarify", question: help, suggestions }, "clarify");
       }
 
     case "trade": {
@@ -427,13 +442,16 @@ export async function approvePlan(userId: string, messageId: string, overrides?:
   } else if (card.type === "mimic") {
     if ((await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role !== "super_admin") throw new HttpError(403, "Mimic trading is only available on the platform owner's account");
     const pct = Math.min(1000, Math.max(0.1, Number(overrides?.mimic?.percent ?? card.settings.percent) || 100));
-    const daily = Math.min(1_000_000, Math.max(1, Number(overrides?.mimic?.maxDailyUsd ?? card.settings.maxDailyUsd) || 1000));
+    const daily = Math.max(0, Number(overrides?.mimic?.maxDailyUsd ?? card.settings.maxDailyUsd) || 0); // 0 = no limit
     const followId = await createFollow(userId, { kind: "user", handle: card.handle },
       { accountId: null, sizing: "percent", fixedUsd: 50, percent: pct, maxTradeUsd: 0, maxDailyUsd: daily, copySells: true, includeExternal: true, includePaper: true },
       "copy", card.scope.label === "all markets" ? null : card.scope);
     result = { followId, handle: card.handle };
   } else if (card.type === "confirm_action") {
     result = card.action === "cancel_all_orders" ? { cancelled: (await cancelAll(userId)).length } : { resumed: await resumeAllBots(userId) };
+  } else if (card.type === "app_action") {
+    // Settings changes are applied by the user's own browser through the settings endpoints; this only records the approval.
+    result = { applied: card.steps.map((s) => s.label) };
   } else throw new HttpError(400, "Nothing to approve");
   await q("UPDATE trading_prompts SET status='approved', plan = plan || jsonb_build_object('result',$2::jsonb) WHERE id=$1", [m.id, JSON.stringify(result)]);
   await audit({ actorType: "user", actorId: userId, userId, action: "ai.plan_approved", target: m.id, data: result });

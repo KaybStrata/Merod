@@ -71,6 +71,32 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
   }
   const actionable = status === "needs_approval";
 
+  if (card.type === "app_action") {
+    if (card.link && !card.steps?.length)
+      return <Link href={card.link.href} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-grad px-3 py-1.5 text-xs font-semibold text-bg">Open {card.link.label} →</Link>;
+    const applyAll = async () => {
+      setBusy("approve");
+      try {
+        await applyActions(card.steps);
+        await api(`/api/ai/plans/${message.id}`, { method: "POST" }).catch(() => {});
+        setStatus("approved"); toast("Changes applied", "up"); onDone?.();
+      } catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }
+    };
+    return (
+      <div className="mt-2 rounded-xl border border-line bg-panel-2/60 p-3">
+        <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-accent-2"><ShieldCheck className="size-3.5" /> Settings change · needs you</div>
+        <ul className="space-y-1 text-xs">{card.steps.map((s: any, i: number) => <li key={i} className="flex gap-1.5"><span className="text-accent-2">•</span>{s.label}</li>)}</ul>
+        <p className="mt-2 text-[10.5px] text-faint">Applied by you, through your own settings. Merod&apos;s AI can propose changes but never makes them on its own.</p>
+        {actionable ? (
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" variant="primary" loading={busy === "approve"} onClick={applyAll}>Approve</Button>
+            <Button size="sm" variant="ghost" loading={busy === "dismiss"} onClick={dismiss}>Dismiss</Button>
+          </div>
+        ) : <div className="mt-2 text-xs text-muted">{status === "approved" ? "✓ Applied" : status === "dismissed" ? "Dismissed" : status}</div>}
+      </div>
+    );
+  }
+
   if (card.type === "clarify")
     return card.suggestions?.length ? <ClarifyChips suggestions={card.suggestions} onChip={onChip} /> : null;
 
@@ -233,4 +259,32 @@ function ClarifyChips({ suggestions, onChip }: { suggestions: string[]; onChip?:
       ) : <button onClick={() => setOpen(true)} className={chip}>Custom…</button>)}
     </div>
   );
+}
+
+/**
+ * Apply an approved app-action card from the browser, through the same authenticated endpoints the Settings, Auto trading
+ * and Bot screens use (settings sections are merged with your current values, so nothing else changes).
+ */
+async function applyActions(steps: any[]) {
+  let current: any = null;
+  for (const s of steps) {
+    if (s.op === "settings") {
+      current ??= await api("/api/settings");
+      const base = s.section === "risk" ? current.risk : s.section === "automation" ? current.permissions : { theme: current.profile?.theme };
+      const pick = (o: any, keys: string[]) => Object.fromEntries(keys.map((k) => [k, o?.[k]]));
+      const keys = s.section === "risk" ? ["max_order_usd", "max_daily_spend_usd", "max_daily_loss_usd", "max_slippage_bps", "min_liquidity_usd", "max_price_age_sec", "block_risky_tokens", "trading_halted"]
+        : s.section === "automation" ? ["mode", "auto_max_order_usd", "auto_daily_cap_usd", "allow_ai_prompts", "allow_bots", "allow_shortcuts", "allowed_asset_classes"] : ["theme"];
+      const values: any = { ...pick(base, keys), ...s.values };
+      for (const k of Object.keys(values)) if (typeof values[k] === "string" && values[k] !== "" && !isNaN(Number(values[k])) && !["mode", "theme"].includes(k)) values[k] = Number(values[k]);
+      await api("/api/settings", { method: "PATCH", json: { section: s.section, values } });
+      if (s.section === "risk") current.risk = { ...current.risk, ...values };
+      if (s.section === "automation") current.permissions = { ...current.permissions, ...values };
+      if (s.section === "theme") { document.documentElement.dataset.theme = values.theme; try { localStorage.setItem("merod-theme", values.theme); } catch { /* ignore */ } }
+    } else if (s.op === "auto") {
+      await api("/api/auto", { method: "PATCH", json: s.body });
+    } else if (s.op === "bots_allow_risky") {
+      const r: any = await api("/api/bots");
+      for (const b of r.bots ?? []) if (!!b.allow_risky !== s.value) await api(`/api/bots/${b.id}`, { method: "PATCH", json: { allowRisky: s.value } });
+    }
+  }
 }

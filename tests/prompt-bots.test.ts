@@ -12,7 +12,7 @@ test("'make a bot … buys at a 6% dip … 3% profit' is a bot, not a one-off or
   assert.equal(i.swing!.dip_pct, 6);
   assert.equal(i.swing!.take_profit_pct, 3);
   assert.equal(i.swing!.repeat, true);
-  assert.deepEqual(i.swing!.scope, { meme: true, venue: "solana" });
+  assert.deepEqual(i.swing!.scope, { meme: true, venue: "solana", rank: null, top: null });
   assert.equal(i.trades[0].symbol, null, "doesn't mistake 'solona' for buying SOL");
   // Without the word "sell", but it's a bot with a profit target.
   const j = parsePrompt("make a bot for ETH that buys a 4% dip and takes 2% profit");
