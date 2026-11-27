@@ -198,7 +198,13 @@ async function walletTrades(f: Follow, since: Date): Promise<LeaderTrade[]> {
 /* ───────────────────────── Mirroring ───────────────────────── */
 async function resolveAssetFor(t: LeaderTrade) {
   if (t.assetId) return one<any>("SELECT id, symbol, last_price, asset_class FROM assets WHERE id=$1", [t.assetId]);
-  if (t.mint) return one<any>("SELECT id, symbol, last_price, asset_class FROM assets WHERE identifier=$1 AND venue='solana' LIMIT 1", [t.mint]);
+  if (t.mint) {
+    const known = await one<any>("SELECT id, symbol, last_price, asset_class FROM assets WHERE identifier=$1 AND venue='solana' LIMIT 1", [t.mint]);
+    if (known) return known;
+    // A coin Merod hasn't listed yet (typical for top-gainer meme wallets): add it from DEX Screener so it can be copied.
+    const { importDexToken } = await import("../market/prices");
+    return importDexToken("solana", t.mint).catch(() => null);
+  }
   if (t.symbol) return one<any>(
     `SELECT id, symbol, last_price, asset_class FROM assets WHERE upper(symbol)=upper($1) AND NOT ('demo_data' = ANY(risk_flags))
       ORDER BY (asset_class IN ('stock','etf')) = $2 DESC, market_cap DESC NULLS LAST LIMIT 1`, [t.symbol, t.venue.startsWith("Alpaca")]);
@@ -219,7 +225,7 @@ async function mirror(f: Follow, t: LeaderTrade) {
     await notify(f.follower_id, "copy", `${f.label} ${t.side === "buy" ? "bought" : "sold"} ${asset?.symbol ?? t.symbol ?? "a token"}`, `${t.qty ? `${+t.qty.toPrecision(6)} ` : ""}on ${t.venue}`, "/copy").catch(() => {});
     return;
   }
-  if (!asset) return record(f, t, "skipped", `${t.symbol ?? t.mint?.slice(0, 8) ?? "This asset"} isn't in Merod's catalog`);
+  if (!asset) return record(f, t, "skipped", `${t.symbol ?? t.mint?.slice(0, 8) ?? "This token"} has no trading pair on DEX Screener (can't be priced or bought)`);
   const account = f.account_id
     ? await one<any>("SELECT id, kind FROM trading_accounts WHERE id=$1 AND user_id=$2 AND status='active'", [f.account_id, f.follower_id])
     : await one<any>("SELECT id, kind FROM trading_accounts WHERE user_id=$1 AND kind='paper' ORDER BY created_at LIMIT 1", [f.follower_id]);
@@ -232,7 +238,18 @@ async function mirror(f: Follow, t: LeaderTrade) {
     const leaderNotional = t.qty * px;
     notional = f.sizing === "fixed" ? Number(f.fixed_usd) : leaderNotional * Number(f.percent) / 100;
     if (Number(f.max_trade_usd) > 0) notional = Math.min(notional, Number(f.max_trade_usd)); // 0 = no limit
-    if (!(notional >= 1)) return record(f, t, "skipped", "Copy size is under $1", { assetId: asset.id, symbol: asset.symbol });
+    // "Same size as the wallet" can be far more than you hold (top wallets trade $10k–$1M). Rather than failing, a copy that
+    // doesn't fit is scaled to 10% of the cash available in the account, and the event says so.
+    let scaledNote: string | null = null;
+    if (f.sizing !== "fixed") {
+      const cash = Number((await one<any>("SELECT cash_balance FROM trading_accounts WHERE id=$1", [account.id]))?.cash_balance ?? 0);
+      if (notional > cash * 0.98) { const was = notional; notional = Math.max(0, cash * 0.1); scaledNote = `Scaled down: the wallet traded $${was.toFixed(0)}; copied $${notional.toFixed(2)} (10% of your $${cash.toFixed(0)} cash)`; }
+    }
+    // Also fit your own max-order limit (0 = no limit) instead of being refused by it.
+    const lim = Number((await one<any>("SELECT max_order_usd FROM risk_settings WHERE user_id=$1", [f.follower_id]))?.max_order_usd ?? 0);
+    if (lim > 0 && notional > lim) { scaledNote = `${scaledNote ? `${scaledNote}; ` : ""}capped at your $${lim} max order`; notional = lim; }
+    (t as any).scaledNote = scaledNote;
+    if (!(notional >= 1)) return record(f, t, "skipped", scaledNote ? "Not enough cash left to copy this trade" : "Copy size is under $1", { assetId: asset.id, symbol: asset.symbol });
     const spent = await one<{ s: string }>("SELECT COALESCE(sum(copy_notional),0) AS s FROM copy_trade_events WHERE follow_id=$1 AND status IN ('copied','pending_approval') AND created_at > now() - interval '24 hours'", [f.id]);
     if (Number(f.max_daily_usd) > 0 && Number(spent?.s ?? 0) + notional > Number(f.max_daily_usd)) return record(f, t, "skipped", `Daily copy limit of $${Number(f.max_daily_usd)} reached`, { assetId: asset.id, symbol: asset.symbol });
     intent = { asset: { assetId: asset.id }, side: "buy", orderType: "market", notionalUsd: +notional.toFixed(2), timeInForce: "gtc" };
@@ -254,7 +271,7 @@ async function mirror(f: Follow, t: LeaderTrade) {
     } as any);
     const status = order.status === "filled" || order.status === "submitted" || order.status === "partially_filled" ? "copied"
       : order.status === "pending_approval" ? "pending_approval" : "failed";
-    await record(f, t, status, status === "copied" ? null : order.status_reason ?? order.status, { assetId: asset.id, symbol: asset.symbol, orderId: order.id, notional: notional ?? Number(order.notional_usd ?? 0) });
+    await record(f, t, status, status === "copied" ? ((t as any).scaledNote ?? null) : order.status_reason ?? order.status, { assetId: asset.id, symbol: asset.symbol, orderId: order.id, notional: notional ?? Number(order.notional_usd ?? 0) });
     await publish(`user:${f.follower_id}`, "copy", { followId: f.id, symbol: asset.symbol, side: t.side, status });
     if (status !== "failed") await notify(f.follower_id, "copy", `Copied ${f.label}: ${t.side === "buy" ? "bought" : "sold"} ${asset.symbol}`, status === "pending_approval" ? "Waiting for your approval in Portfolio → Orders." : `From their ${t.venue} trade.`, "/copy").catch(() => {});
   } catch (e: any) {

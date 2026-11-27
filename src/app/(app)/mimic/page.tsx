@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Repeat, ShieldCheck, ExternalLink, FlaskConical, Zap, Check, Pause, Play, Info, Wallet, Users } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, useApi } from "@/lib/api";
 import { usePageTitle, useShell } from "@/components/shell/context";
 import { CopyBotsPanel } from "@/components/CopyBots";
 import { cx, Empty, useToast } from "@/components/ui";
@@ -14,6 +14,29 @@ const short = (w: string) => (w?.length > 12 ? `${w.slice(0, 4)}…${w.slice(-4)
 const money = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2 })}`);
 const signed = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : `${n >= 0 ? "+" : "-"}${money(Math.abs(n))}`);
 const tone = (n: number | null | undefined) => (n == null || n === 0 ? "text-text" : n > 0 ? "text-up" : "text-down");
+
+/** Live mimic status: engine running, keys, copies in the last 24h by outcome, top reasons, problems to fix. */
+function MimicHealth() {
+  const { data } = useApi<any>("/api/copy/health", { refreshMs: 20_000 });
+  if (!data) return null;
+  const l = data.last24h, f = data.follows;
+  const stat = (k: string, v: any, cls = "") => <div><div className={cx("num text-[1.05rem] font-semibold", cls)}>{v}</div><div className="text-[10.5px] text-muted">{k}</div></div>;
+  return (
+    <section className={cx("surface rounded-2xl p-3", data.healthy ? "" : "border-warn/40")}>
+      <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
+        <span className={cx("size-2 rounded-full", data.healthy ? "bg-up" : "bg-warn")} />Mimic status
+        <span className="font-normal text-muted">· {f.active} active ({f.wallets} wallets, {f.traders} Merod traders{f.watching ? `, ${f.watching} watch-only` : ""}){f.paused ? ` · ${f.paused} paused` : ""}</span>
+        <span className="ml-auto text-[11px] font-normal text-faint">{data.engine.running ? `Copy engine running · checked ${Math.max(0, Math.round(Date.now() / 1000 - data.engine.lastChecked))}s ago` : "Copy engine not checking"} · Helius {data.keys.helius ? "✓" : "✗"} · Birdeye {data.keys.birdeye ? "✓" : "✗"}</span>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-3 sm:grid-cols-6">
+        {stat("copied (24h)", l.copied.n, "text-up")}{stat("copied $ (24h)", `$${l.copied.usd.toFixed(0)}`)}{stat("waiting approval", l.pending.n)}{stat("watched", l.watched.n)}{stat("skipped", l.skipped.n, l.skipped.n ? "text-warn" : "")}{stat("failed", l.failed.n, l.failed.n ? "text-down" : "")}
+      </div>
+      {data.problems.length > 0 && <ul className="mt-2 space-y-1 text-[12px] text-warn">{data.problems.map((p: string) => <li key={p}>⚠ {p}</li>)}</ul>}
+      {data.topReasons.length > 0 && <div className="mt-2 text-[11.5px] text-muted"><span className="text-faint">Why trades weren't copied (24h): </span>{data.topReasons.map((r: any) => `${r.reason} (${r.n})`).join(" · ")}</div>}
+      {data.lastEvent && <div className="mt-1 text-[11px] text-faint">Last: {data.lastEvent.label} {data.lastEvent.side} {data.lastEvent.symbol ?? "a token"} → {String(data.lastEvent.status).replace("_", " ")} · {ago(data.lastEvent.created_at)}</div>}
+    </section>
+  );
+}
 
 /** Paste any number of wallet addresses (any separator) → mimic, watch, stop or get stats for all of them at once. */
 function BulkWallets({ live, perTrade, onDone }: { live: boolean; perTrade: string; onDone: () => void }) {
@@ -86,6 +109,7 @@ export default function MimicTradingPage() {
 
   return (
     <div className="space-y-4">
+      <MimicHealth />
       <BulkWallets live={live} perTrade={perTrade} onDone={() => setNonce((n) => n + 1)} />
       <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-4">

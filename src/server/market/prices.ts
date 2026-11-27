@@ -264,6 +264,35 @@ export async function discoverLaunches(): Promise<number> {
   return n;
 }
 
+/**
+ * Add one token to the catalog by its contract/mint address (DEX Screener), so it can be priced and traded right away.
+ * Used by Mimic when a copied wallet buys a coin Merod hasn't listed yet. Returns the asset row, or null if DEX Screener
+ * has no trading pair for it.
+ */
+export async function importDexToken(chain: string, address: string): Promise<{ id: string; symbol: string; last_price: string; asset_class: string } | null> {
+  const known = await one<any>("SELECT id, symbol, last_price, asset_class FROM assets WHERE venue=$1 AND identifier=$2", [chain, address]);
+  if (known) return known;
+  const { providerFetch } = await import("../providers/http");
+  const rows = await readJson(await providerFetch("dexscreener", "production", `https://api.dexscreener.com/tokens/v1/${DEX_CHAIN[chain] ?? chain}/${address}`, { timeoutMs: 10_000 }), "dexscreener");
+  const best = (rows as any[] ?? []).filter((p) => String(p.baseToken?.address ?? "") === address).sort((x, y) => (y.liquidity?.usd ?? 0) - (x.liquidity?.usd ?? 0))[0];
+  if (!best?.baseToken || !(Number(best.priceUsd) > 0)) return null;
+  const flags = ["unverified", ...((best.liquidity?.usd ?? 0) < 50_000 ? ["low_liquidity"] : []), ...(best.pairCreatedAt && Date.now() - best.pairCreatedAt < 7 * 86_400_000 ? ["new_listing"] : [])];
+  const row = await one<any>(
+    `INSERT INTO assets (asset_class, symbol, name, venue, identifier, tradability, lifecycle, categories, risk_flags, last_price, change_24h,
+       volume_24h, liquidity_usd, market_cap, price_source, price_updated_at, launched_at, logo_url)
+     VALUES ('crypto',$1,$2,$3,$4,'paper_tradable',$5,'{meme}',$6,$7,$8,$9,$10,$11,'dexscreener',now(),to_timestamp($12/1000.0),$13)
+     ON CONFLICT (venue, identifier) DO UPDATE SET last_price=EXCLUDED.last_price, liquidity_usd=EXCLUDED.liquidity_usd, volume_24h=EXCLUDED.volume_24h, price_updated_at=now()
+     RETURNING id, symbol, last_price, asset_class`,
+    [String(best.baseToken.symbol ?? "").slice(0, 20), String(best.baseToken.name ?? "").slice(0, 80), chain, address,
+     best.dexId === "pumpfun" ? "bonding_curve" : best.dexId === "pumpswap" ? "graduated" : null, flags, Number(best.priceUsd), best.priceChange?.h24 ?? 0,
+     best.volume?.h24 ?? null, best.liquidity?.usd ?? null, best.marketCap ?? best.fdv ?? null, best.pairCreatedAt ?? Date.now(), best.info?.imageUrl ?? null]);
+  if (row) {
+    for (const pid of chain === "solana" ? ["jupiter", ...(best.dexId?.startsWith("pump") ? ["pumpfun"] : [])] : ["zerox"]) await q("INSERT INTO asset_providers (asset_id, provider_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [row.id, pid]);
+    await q("INSERT INTO asset_identifiers (asset_id, scheme, value) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING", [row.id, chain === "solana" ? "mint" : "contract", `${chain}:${address}`]);
+  }
+  return row;
+}
+
 /** Sync the US equity catalog from Alpaca's asset endpoint (thousands of assets, no manual entry). */
 export async function syncBrokerCatalog(): Promise<number> {
   const env = (await providerUsable("alpaca_trading", "production")) ? "production" : (await providerUsable("alpaca_trading", "sandbox")) ? "sandbox" : null;
