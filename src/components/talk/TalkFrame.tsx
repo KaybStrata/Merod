@@ -8,6 +8,7 @@ import { Logo } from "@/components/shell/Logo";
 import { ModeSwitch } from "./ModeSwitch";
 import { TalkActivity } from "./TalkActivity";
 import { MapLink } from "@/components/shell/MapLink";
+import { AdvisorPanel } from "@/components/shell/AdvisorPanel";
 import { api, useApi } from "@/lib/api";
 import { Button, Modal, cx, useToast } from "@/components/ui";
 
@@ -95,6 +96,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
         ))}
       </div>
       <div className="shrink-0 border-t border-line px-3 pb-3 pt-2.5">
+        <AdvisorPanel className="mb-2.5" />
         <div className="flex items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">Classic pages <ArrowUpRight className="size-3" /></div>
         <div className="mt-1.5 grid grid-cols-2 gap-1">
           {[["/trade", "Trade", CandlestickChart], ["/analytics", "Portfolio", PieChart], ["/agents", "Agents", Bot], ["/settings", "Settings", Settings]].map(([href, label, I]: any) => (

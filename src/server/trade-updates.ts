@@ -132,7 +132,7 @@ export async function applyDecision(userId: string, updateId: number, index: num
   return { line, already: false };
 }
 
-async function runAction(userId: string, a: Action, isOwner: boolean): Promise<string> {
+export async function runAction(userId: string, a: Action, isOwner: boolean): Promise<string> {
   if (a.type === "pause") {
     const { runControl } = await import("./ai/control");
     const row = a.kind === "bot" ? await one<any>("SELECT status FROM trading_bots WHERE id=$1 AND user_id=$2", [a.id, userId]) : await one<any>("SELECT status FROM agents WHERE id=$1 AND user_id=$2", [a.id, userId]);

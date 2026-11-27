@@ -7,7 +7,7 @@ import { Fragment, Suspense, useEffect, useRef, useState } from "react";
 import { ClipboardCheck,
   Home, Wallet, Activity, BarChart3, ArrowLeftRight, Zap, Layers, Search, Bot, Sparkles, Library, LineChart, Settings, Shield, Bell, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
   Radio, Percent, KeyRound, Plus, PieChart, Users, Brain, Copy, Repeat, Cpu, Bitcoin, Newspaper, Crown, ChevronDown, ArrowUpRight, Compass, GitBranch, MessagesSquare, Swords, TrendingUp, Radar,
-  Webhook,
+  Webhook, Lightbulb,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -15,6 +15,7 @@ import { PromptBar } from "./PromptBar";
 import { MobileNav } from "./MobileNav";
 import { ModeSwitch } from "@/components/talk/ModeSwitch";
 import { MapLink } from "./MapLink";
+import { AdvisorPanel } from "./AdvisorPanel";
 import { TalkFrame } from "@/components/talk/TalkFrame";
 import { Logo } from "./Logo";
 import { ToastProvider, useToast, cx, Modal, Button } from "@/components/ui";
@@ -42,6 +43,7 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
   { label: "Insight", items: [
     { href: "/live", label: "Activity", icon: Activity, also: ["/activity", "/world"] },
     { href: "/review", label: "Review", icon: ClipboardCheck },
+    { href: "/advisor", label: "Advisor", icon: Lightbulb },
     { href: "/analytics", label: "Analytics", icon: LineChart, also: ["/portfolio", "/progress"] },
     { href: "/research", label: "Research", icon: Search, also: ["/news"] },
     { href: "/learning", label: "AI Learning", icon: Brain, also: ["/training"] },
@@ -138,6 +140,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         ))}
       </div>
       <div className="shrink-0 border-t border-line p-2.5">
+        <AdvisorPanel className="mb-2" />
         <Link href="/settings" className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-panel-2">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-grad text-[13px] font-semibold text-bg">{user.displayName.slice(0, 1).toUpperCase()}</span>
           <span className="min-w-0 leading-tight">

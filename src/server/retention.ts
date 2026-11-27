@@ -19,6 +19,8 @@ const RULES: { name: string; sql: string }[] = [
   { name: "worker_heartbeats", sql: "DELETE FROM worker_heartbeats WHERE last_seen_at < now() - interval '1 day'" },
   { name: "bars_5m", sql: "DELETE FROM price_bars WHERE ctid IN (SELECT ctid FROM price_bars WHERE timeframe='5m' AND ts < now() - interval '30 days' LIMIT 20000)" },
   { name: "copy_skipped", sql: "DELETE FROM copy_trade_events WHERE id IN (SELECT id FROM copy_trade_events WHERE status IN ('skipped','watched') AND created_at < now() - interval '14 days' LIMIT 20000)" },
+  { name: "advisor_tips", sql: "DELETE FROM advisor_tips WHERE id IN (SELECT id FROM advisor_tips WHERE created_at < now() - interval '14 days' LIMIT 20000)" },
+  { name: "trade_updates", sql: "DELETE FROM trade_updates WHERE id IN (SELECT id FROM trade_updates WHERE created_at < now() - interval '60 days' LIMIT 20000)" },
   { name: "notifications", sql: "DELETE FROM notifications WHERE id IN (SELECT id FROM notifications WHERE created_at < now() - interval '60 days' LIMIT 20000)" },
 ];
 
