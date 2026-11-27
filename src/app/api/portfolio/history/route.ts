@@ -19,9 +19,14 @@ export const GET = route(async (req) => {
   const u = await requireUser();
   const sp = new URL(req.url).searchParams;
   const range = sp.get("range") ?? "1M";
-  const secs = sp.get("seconds") ? Math.floor(Number(sp.get("seconds"))) : PRESETS[range] ?? PRESETS["1M"];
+  const nowSec = Math.floor(Date.now() / 1000);
+  // Zoomed-in chart: ?from=&to= (epoch seconds) asks for exactly that window, at a resolution that fits its length.
+  const zFrom = Number(sp.get("from")), zTo = Number(sp.get("to"));
+  const zoomed = Number.isFinite(zFrom) && Number.isFinite(zTo) && zFrom > 0 && zTo > zFrom;
+  const end = zoomed ? Math.min(nowSec, Math.ceil(zTo)) : nowSec;
+  const secs = zoomed ? Math.max(60, end - Math.floor(zFrom)) : sp.get("seconds") ? Math.floor(Number(sp.get("seconds"))) : PRESETS[range] ?? PRESETS["1M"];
   if (!(secs >= 60 && secs <= 315_360_000)) throw new HttpError(400, "Pick a window between 1 minute and 10 years");
-  const now = Math.floor(Date.now() / 1000), start = now - secs;
+  const now = end, start = end - secs, live = end >= nowSec - 60;
 
   // Live value right now.
   const cash = Number((await q<any>("SELECT COALESCE(SUM(cash_balance),0) AS c FROM trading_accounts WHERE user_id=$1 AND kind='paper'", [u.id]))[0].c);
@@ -35,7 +40,7 @@ export const GET = route(async (req) => {
   // 1) Recorded snapshots, if they reach back to the start of the window.
   const snaps = await q<any>(
     `SELECT extract(epoch from ts)::bigint AS time, total_value AS value FROM portfolio_snapshots
-      WHERE user_id=$1 AND is_paper AND ts >= to_timestamp($2) ORDER BY ts`, [u.id, start]);
+      WHERE user_id=$1 AND is_paper AND ts >= to_timestamp($2) AND ts <= to_timestamp($3) ORDER BY ts`, [u.id, start, end]);
   const before = await q<any>("SELECT total_value AS value FROM portfolio_snapshots WHERE user_id=$1 AND is_paper AND ts < to_timestamp($2) ORDER BY ts DESC LIMIT 1", [u.id, start]);
   // Windows up to 6h use 1-minute price bars (snapshots are only every 5 minutes, too coarse for 1m–6h views).
   const resolution = secs <= 21_600 ? 60 : secs <= 2 * 86_400 ? 300 : secs <= 60 * 86_400 ? 3600 : 86_400;
@@ -43,11 +48,11 @@ export const GET = route(async (req) => {
   const trades = (await q<any>(
     `SELECT x.id, extract(epoch from x.executed_at)::bigint AS time, o.side, o.source, x.quantity, x.price, x.fee_usd, o.realized_pnl, a.symbol
        FROM executions x JOIN orders o ON o.id=x.order_id JOIN assets a ON a.id=o.asset_id
-      WHERE o.user_id=$1 AND o.is_paper AND x.executed_at >= to_timestamp($2) ORDER BY x.executed_at DESC LIMIT 500`, [u.id, start]))
+      WHERE o.user_id=$1 AND o.is_paper AND x.executed_at >= to_timestamp($2) AND x.executed_at <= to_timestamp($3) ORDER BY x.executed_at DESC LIMIT 500`, [u.id, start, end]))
     .reverse().map((t) => ({ id: t.id, time: Number(t.time), side: t.side, source: t.source, symbol: t.symbol, quantity: Number(t.quantity), price: Number(t.price),
       usd: Number(t.quantity) * Number(t.price), feeUsd: Number(t.fee_usd), realizedPnl: t.side === "sell" ? Number(t.realized_pnl) : null }));
   if (resolution > 60 && before.length && snaps.length >= 2) {
-    const points = [{ time: start, value: Number(before[0].value) }, ...snaps.map((s) => ({ time: Number(s.time), value: Number(s.value) })), { time: now, value: liveValue }];
+    const points = [{ time: start, value: Number(before[0].value) }, ...snaps.map((s) => ({ time: Number(s.time), value: Number(s.value) })), ...(live ? [{ time: now, value: liveValue }] : [])];
     return ok({ range, seconds: secs, points: dedupe(points), trades, breakEven, estimated: false, resolutionSec: 300 });
   }
 
@@ -56,8 +61,8 @@ export const GET = route(async (req) => {
   const series = new Map<number, number>();
   for (const h of holdings) {
     const bars = await q<any>(
-      `SELECT extract(epoch from ts)::bigint AS time, close FROM price_bars WHERE asset_id=$1 AND timeframe=$2 AND ts >= to_timestamp($3) - make_interval(secs => $4) ORDER BY ts`,
-      [h.asset_id, tf, start, resolution]);
+      `SELECT extract(epoch from ts)::bigint AS time, close FROM price_bars WHERE asset_id=$1 AND timeframe=$2 AND ts >= to_timestamp($3) - make_interval(secs => $4) AND ts <= to_timestamp($5) ORDER BY ts`,
+      [h.asset_id, tf, start, resolution, end]);
     let last: number | null = null;
     for (const b of bars) {
       const t = Math.max(Number(b.time), start);
@@ -67,7 +72,7 @@ export const GET = route(async (req) => {
   }
   let points = [...series.entries()].sort((a, b) => a[0] - b[0]).map(([time, v]) => ({ time, value: v + cash }));
   if (!points.length || points[0].time > start) points.unshift({ time: start, value: points[0]?.value ?? liveValue });
-  points.push({ time: now, value: liveValue });
+  if (live) points.push({ time: now, value: liveValue });
   return ok({ range, seconds: secs, points: dedupe(points), trades, breakEven, estimated: holdings.length > 0, resolutionSec: resolution,
     note: holdings.length ? "Estimated from current holdings × historical prices; not a record of past balances." : undefined });
 });

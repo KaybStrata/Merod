@@ -40,3 +40,12 @@ test("prompt box: 'update all my bots/agent by increasing their budget of 10$ to
   const r4: any = await handlePrompt(u, { text: "flibber the jabberwock gently", provider: "merod" } as any);
   assert.match(r4.message.content, /Modo|Update many bots/, r4.message.content);
 });
+
+test("one prompt, many bulk tasks: each instruction runs; settings attached to a trade stay with it", async () => {
+  const { splitInstructions } = await import("@/server/ai/multi");
+  assert.deepEqual(splitInstructions("set all bots to $35 per trade, add a 8% stop loss to all bots, turn off SOL Momentum and alert me if BTC drops below 50000"),
+    ["set all bots to $35 per trade", "add a 8% stop loss to all bots", "turn off SOL Momentum", "alert me if BTC drops below 50000"]);
+  assert.deepEqual(splitInstructions("turn off all bots and give all agents $300 capital, then what is BTC doing"), ["turn off all bots", "give all agents $300 capital", "what is BTC doing"]);
+  assert.deepEqual(splitInstructions("buy $50 of SOL and add a 5% stop loss"), ["buy $50 of SOL and add a 5% stop loss"]);
+  assert.deepEqual(splitInstructions("buy at a 3% dip and sell at 5%"), ["buy at a 3% dip and sell at 5%"]);
+});

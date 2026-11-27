@@ -4,7 +4,7 @@
  * Splits into separate instructions that each run on their own. Never splits a single instruction that
  * happens to contain "and" ("buy at a 3% dip and sell at +5%", "create 5 agents that buy … and sell …").
  */
-const VERBS = "buy|sell|short|mimic|copy|create|make|build|start|set|alert|notify|tell|deploy|launch|spin up|cancel|pause|resume|stop|research|analy[sz]e|show|trade|dca|rebalance|close|watch|send|swap|withdraw";
+const VERBS = "buy|sell|short|mimic|copy|create|make|build|start|set|alert|notify|tell|deploy|launch|spin up|cancel|pause|resume|stop|research|analy[sz]e|show|trade|dca|rebalance|close|watch|send|swap|withdraw|turn on|turn off|switch on|switch off|enable|disable|add|remove|delete|give|increase|decrease|raise|lower|reduce|update|change|double|halve|triple|move|schedule|every|give me|keep me|what|how|why|compare|explain|list";
 const verbStart = new RegExp(`^(please\\s+)?(${VERBS})\\b`, "i");
 
 export const isAgentRequest = (t: string) =>
@@ -41,7 +41,9 @@ export function splitInstructions(text: string): string[] {
     for (const piece of pieces) {
       const prev = out[out.length - 1];
       const refersBack = /^(please\s+)?(sell|take|exit)\b/i.test(piece) && /%/.test(piece) && (/\b(it|them|those|that|each)\b/i.test(piece) || !/\b[A-Z]{2,6}\b/.test(piece.replace(/^(please\s+)?sell/i, "")));
-      const continues = !verbStart.test(piece) || /\beach( one)?\b/i.test(piece) && !/\$\s?\d|\d\s?\$/.test(prev ?? "") || (prev != null && /^(please\s+)?(pick|choose|find|select|grab|get|take)\b/i.test(prev));
+      // "buy $50 of SOL and add a 5% stop loss": a setting with no bot/agent named belongs to the previous instruction.
+      const settingOnly = /^(please\s+)?(add|set|use|with|put|include)\b/i.test(piece) && /\b(stop.?loss|take.?profit|trailing|limit)\b/i.test(piece) && !/\b(bots?|agents?|all|every|each of)\b/i.test(piece) && prev != null && /^(please\s+)?(buy|sell|short|trade|dca)\b/i.test(prev);
+      const continues = settingOnly || !verbStart.test(piece) || /\beach( one)?\b/i.test(piece) && !/\$\s?\d|\d\s?\$/.test(prev ?? "") || (prev != null && /^(please\s+)?(pick|choose|find|select|grab|get|take)\b/i.test(prev));
       if (prev != null && (refersBack || continues)) out[out.length - 1] = `${prev} and ${piece}`;
       else out.push(piece);
     }
