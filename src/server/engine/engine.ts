@@ -179,7 +179,7 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
     add("not_demo", !asset.risk_flags.includes("demo_data"), "Demo assets cannot be traded with real money");
   }
   add("asset_class_permitted", perms.allowed_asset_classes.includes(asset.asset_class), `${asset.asset_class} trading permitted by your settings`);
-  const sourcePerm = ctx.source === "prompt" ? perms.allow_ai_prompts : ctx.source === "bot" || ctx.source === "copy" || ctx.source === "auto" || ctx.source === "agent" ? perms.allow_bots : ctx.source === "shortcut" ? perms.allow_shortcuts : true;
+  const sourcePerm = ctx.source === "prompt" ? perms.allow_ai_prompts : ctx.source === "bot" || ctx.source === "copy" || ctx.source === "auto" || ctx.source === "agent" || ctx.source === "signal" ? perms.allow_bots : ctx.source === "shortcut" ? perms.allow_shortcuts : true;
   add("source_permitted", sourcePerm, `${ctx.source} trading permitted`);
   add("tradable", simulated ? ["paper_tradable", "live_tradable"].includes(asset.tradability) : asset.tradability !== "restricted" && asset.tradability !== "unsupported" && asset.tradability !== "view_only",
     `Asset is ${asset.tradability.replace("_", " ")}`);

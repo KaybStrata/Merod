@@ -7,6 +7,7 @@ import { Fragment, Suspense, useEffect, useRef, useState } from "react";
 import { ClipboardCheck,
   Home, Wallet, Activity, BarChart3, ArrowLeftRight, Zap, Layers, Search, Bot, Sparkles, Library, LineChart, Settings, Shield, Bell, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
   Radio, Percent, KeyRound, Plus, PieChart, Users, Brain, Copy, Repeat, Cpu, Bitcoin, Newspaper, Crown, ChevronDown, ArrowUpRight, Compass, GitBranch, MessagesSquare, Swords, TrendingUp, Radar,
+  Webhook,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -34,7 +35,7 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
     { href: "/bots", label: "Bots", icon: Bot },
     { href: "/strategies", label: "Strategies", icon: Layers, also: ["/library"] },
     { href: "/auto", label: "Auto trading", icon: Cpu, also: ["/automations", "/sessions", "/modo"] },
-    { href: "/mimic", label: "Mimic", icon: Repeat, also: ["/copy"] },
+    { href: "/mimic", label: "Mimic", icon: Repeat, also: ["/copy", "/signals"] },
     { href: "/shortcuts", label: "Shortcuts", icon: Zap },
   ] },
   { label: "Insight", items: [
@@ -111,7 +112,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         </Link>
         {n.href === "/discover" && pathname.startsWith("/discover") && <Suspense fallback={null}><DiscoverSubLinks /></Suspense>}
         {n.href === "/auto" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} exact items={[{ href: "/auto", label: "Auto trading", icon: Cpu, extra: <AutoTradingSwitch />, below: <AutoActivityFeed /> }, { href: "/auto/activity", label: "Auto trade activity", icon: Activity }, { href: "/modo/activity", label: "Modo activity", icon: Sparkles }, { href: "/sessions", label: "Sessions", icon: Layers }]} />}
-        {n.href === "/mimic" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }]} />}
+        {n.href === "/mimic" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }, { href: "/signals", label: "Signal bots", icon: Webhook }]} />}
         {n.href === "/live" && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/live", label: "Live stream", icon: Activity }, { href: "/activity", label: "World activity", icon: Radio }]} />}
         {n.href === "/agents" && isActive(pathname, n) && <SubLinks pathname={pathname} exact items={[
           { href: "/agents", label: "Command Center", icon: Radar }, { href: "/agents/workspace", label: "Workspace", icon: Compass }, { href: "/agents/fleets", label: "Fleet Builder", icon: GitBranch },
