@@ -9,14 +9,14 @@ import { getSettings } from "@/server/auto/engine";
  * your orders and fills, copy/mimic trades, and Merod itself (platform trades, worker/system events for admins).
  * Newest first; `since` (ms) returns only newer items for live polling.
  */
-type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: Coin; /** agent decision with a Why card */ eventId?: number };
+type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod" | "update"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: Coin; /** agent decision with a Why card */ eventId?: number };
 /** The coin a bot line is about, with its live price and move (since the bot bought it, or 24h). */
 type Coin = { symbol: string; price?: number; move?: number | null; basis?: string };
 const BOT_KIND: Record<string, Item["kind"]> = { observation: "analysis", trigger: "decision", instruction: "decision", order: "execution", result: "execution", warning: "warning", error: "warning", control: "state" };
 const AGENT_KIND: Record<string, Item["kind"]> = { thought: "thought", analysis: "analysis", decision: "decision", execution: "execution", warning: "warning", approval: "decision", training: "analysis", state: "state", message: "analysis", system: "state" };
 
 /** trades = your orders + Mimic copies; automation = Auto + Modo. */
-type Filter = "all" | "order" | "bot" | "agent" | "auto" | "modo" | "copy" | "buy" | "sell" | "profit" | "loss" | "trades" | "automation";
+type Filter = "all" | "order" | "bot" | "agent" | "auto" | "modo" | "copy" | "update" | "buy" | "sell" | "profit" | "loss" | "trades" | "automation";
 const GROUP: Partial<Record<Filter, string[]>> = { trades: ["order", "copy"], automation: ["auto", "modo"] };
 const TRADE_FILTERS = new Set(["buy", "sell", "profit", "loss"]);
 /** Same predicate the panel uses: Buys/Sells by side across sources; Profit/Loss by realized $ (or % for theoretical trades). */
@@ -99,6 +99,32 @@ export const GET = route(async (req) => {
     for (const [i, th] of (s.modo_thoughts ?? []).slice(-80).entries()) {
       const at = new Date(th.at);
       if (at > since) items.push({ id: `mt${at.getTime()}${i}`, at: at.toISOString(), source: "modo", kind: th.kind === "idea" ? "decision" : "thought", actor: "Modo", title: th.text, link: "/auto" });
+    }
+  }
+  // Update / Recording (Talk) and the Advisor: what was analysed, what it suggested, what got applied.
+  if (want("update") && !TRADE_FILTERS.has(filter)) {
+    const [ups, tips] = await Promise.all([
+      q<any>("SELECT * FROM trade_updates WHERE user_id=$1 AND created_at > $2 ORDER BY id DESC LIMIT 60", [u.id, since]).catch(() => []),
+      q<any>("SELECT * FROM advisor_tips WHERE user_id=$1 AND (created_at > $2 OR applied_at > $2) ORDER BY id DESC LIMIT 60", [u.id, since]).catch(() => []),
+    ]);
+    const span = (h: number) => (h >= 48 ? `${Math.round(h / 24)} days` : `${h}h`);
+    for (const x of ups) {
+      const st = x.stats ?? {}, who = x.source === "record" ? "Recording" : "Update", decisions: any[] = x.decisions ?? [];
+      const quiet = !st.orders && !decisions.length;
+      if (quiet && filter !== "update") continue; // quiet recorder checks only show in the Updates tab
+      items.push({ id: `tu${x.id}`, at: x.created_at, source: "update", kind: "analysis", actor: who, link: "/talk?update=1",
+        title: quiet ? `Checked the last ${span(Number(x.hours))}: no new trades, nothing to change` : `Analyzed the last ${span(Number(x.hours))}: ${st.orders} orders, ${st.closed} closed${st.winRate != null ? ` (${st.winRate}% won)` : ""}, ${Number(st.net) >= 0 ? "+" : "-"}$${Math.abs(Number(st.net ?? 0)).toFixed(2)}`,
+        body: quiet ? undefined : [st.best ? `Best ${st.best.name} +$${st.best.net}` : null, st.worst ? `worst ${st.worst.name} -$${Math.abs(st.worst.net)}` : null, decisions.length ? `${decisions.length} suggestion${decisions.length === 1 ? "" : "s"}` : "nothing needs changing"].filter(Boolean).join(" · ") });
+      for (const [i, d] of decisions.entries()) {
+        const ap = x.applied?.[i];
+        items.push({ id: `td${x.id}-${i}`, at: new Date(new Date(x.created_at).getTime() + 1 + i).toISOString(), source: "update", kind: "decision", actor: who, link: "/talk?update=1",
+          title: `Suggests: ${d.title}`, body: `${d.why}${ap ? "" : d.safe ? " · Waiting for you (lowers risk)." : " · Waiting for you."}` });
+        if (ap) items.push({ id: `tx${x.id}-${i}`, at: typeof ap === "string" ? x.created_at : ap.at, source: "update", kind: "execution", actor: who, title: `Applied: ${d.title}`, body: typeof ap === "string" ? ap : ap.line, link: "/talk?update=1" });
+      }
+    }
+    for (const t of tips) {
+      if (new Date(t.created_at) > since) items.push({ id: `av${t.id}`, at: t.created_at, source: "update", kind: t.priority === 1 ? "decision" : "analysis", actor: `Advisor · ${t.topic}`, title: t.title, body: t.body, link: t.link ?? "/advisor" });
+      if (t.applied_at && new Date(t.applied_at) > since) items.push({ id: `ax${t.id}`, at: t.applied_at, source: "update", kind: "execution", actor: "Advisor", title: `Done: ${t.title}`, body: t.applied_note ?? undefined, link: "/advisor" });
     }
   }
   for (const it of items) it.at = new Date(it.at as any).toISOString();

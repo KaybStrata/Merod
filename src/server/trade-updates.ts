@@ -113,7 +113,15 @@ export async function createUpdate(userId: string, hours: number, source: "manua
   const a = await analyze(userId, hours);
   const row = await one<any>("INSERT INTO trade_updates (user_id, source, hours, stats, decisions) VALUES ($1,$2,$3,$4,$5) RETURNING *",
     [userId, source, a.stats.hours, JSON.stringify({ ...a.stats, summary: a.summary }), JSON.stringify(a.decisions)]);
+  await publishUpdate(userId);
   return row;
+}
+
+/** An applied suggestion is stored as { line, at } (older rows: just the line). */
+export const appliedLine = (v: any): string => (typeof v === "string" ? v : v?.line ?? "");
+async function publishUpdate(userId: string) {
+  const { publish } = await import("./realtime");
+  await publish(`user:${userId}`, "update", {}).catch(() => {});
 }
 
 export async function listUpdates(userId: string, limit = 10) {
@@ -126,9 +134,10 @@ export async function applyDecision(userId: string, updateId: number, index: num
   if (!u) throw new HttpError(404, "Update not found");
   const d: Decision | undefined = u.decisions?.[index];
   if (!d) throw new HttpError(404, "That suggestion doesn't exist");
-  if (u.applied?.[index]) return { line: u.applied[index], already: true };
+  if (u.applied?.[index]) return { line: appliedLine(u.applied[index]), already: true };
   const line = await runAction(userId, d.action, isOwner);
-  await q("UPDATE trade_updates SET applied = applied || jsonb_build_object($3::text, $4::text) WHERE id=$1 AND user_id=$2", [updateId, userId, String(index), line]);
+  await q("UPDATE trade_updates SET applied = applied || jsonb_build_object($3::text, jsonb_build_object('line', $4::text, 'at', now())) WHERE id=$1 AND user_id=$2", [updateId, userId, String(index), line]);
+  await publishUpdate(userId);
   return { line, already: false };
 }
 
@@ -170,7 +179,7 @@ export async function runDueRecordings() {
     try {
       const hours = Math.max(1, Math.ceil(Math.max(r.every_min / 60, 6)));
       const a = await analyze(r.user_id, hours);
-      if (!a.stats.orders && !a.decisions.length) continue;
+      const quiet = !a.stats.orders && !a.decisions.length;
       const row = await one<any>("INSERT INTO trade_updates (user_id, source, hours, stats, decisions) VALUES ($1,'record',$2,$3,$4) RETURNING id",
         [r.user_id, a.stats.hours, JSON.stringify({ ...a.stats, summary: a.summary }), JSON.stringify(a.decisions)]);
       const applied: string[] = [];
@@ -178,6 +187,8 @@ export async function runDueRecordings() {
         const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [r.user_id]))?.role;
         for (const [i, d] of a.decisions.entries()) if (d.safe) applied.push((await applyDecision(r.user_id, row!.id, i, role === "super_admin")).line);
       }
+      await publishUpdate(r.user_id);
+      if (quiet) continue;
       const waiting = a.decisions.length - applied.length;
       await notify(r.user_id, "update", `Recording: ${a.decisions.length ? `${a.decisions.length} suggestion${a.decisions.length === 1 ? "" : "s"}` : "trading update"}`,
         `${a.summary}${applied.length ? ` Auto-applied ${applied.length} safe change${applied.length === 1 ? "" : "s"}.` : ""}${waiting ? ` ${waiting} waiting for you in Talk → Update.` : ""}`, "/talk?update=1").catch(() => {});

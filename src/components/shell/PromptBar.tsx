@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { MicButton } from "./MicButton";
 import Link from "next/link";
 import { Sparkles, ArrowUp, ChevronDown, ChevronUp, Maximize2, Minimize2, Loader2, X, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
@@ -122,6 +123,7 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
               aria-label="Prompt" placeholder="What would you like to do today?"
               className="relative block max-h-[150px] min-h-[36px] w-full resize-none bg-transparent px-2.5 py-2 text-[14px] leading-5 outline-none placeholder:text-faint" />
           </div>
+          <MicButton value={text} onChange={(t) => { setText(t); setOpen?.(true); }} className="mb-0.5" />
           <button type="submit" disabled={busy || att.uploading || (!text.trim() && !att.ids.length)} className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-grad text-white disabled:opacity-40" aria-label="Send">
             {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
           </button>

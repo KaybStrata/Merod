@@ -1,5 +1,6 @@
 "use client";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { MicButton } from "@/components/shell/MicButton";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles, Plus, ArrowUp, Loader2, Bookmark, Trash2, ShieldCheck, Info, BookmarkPlus, Search, MessageSquare, Paperclip } from "lucide-react";
@@ -193,6 +194,7 @@ function AIPage() {
             <select value={model} onChange={(e) => savePreference(provider, e.target.value)} className="mb-1 hidden h-8 max-w-40 rounded-lg border border-line bg-panel px-2 text-[11.5px] text-muted md:block" aria-label="AI model">
               {(current?.models ?? []).map((m: any) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
+            <MicButton value={text} onChange={(t) => { setText(t); inputRef.current?.focus(); }} size="sm" className="mb-1" />
             <button type="button" title="Save prompt" disabled={!text.trim()} onClick={() => savePrompt(text)} className="mb-1 rounded-lg p-2 text-faint hover:text-text disabled:opacity-40"><Bookmark className="size-4" /></button>
             <button type="submit" disabled={!text.trim() || busy} className="mb-0.5 flex size-9 items-center justify-center rounded-lg bg-grad text-bg disabled:opacity-50" aria-label="Send">{busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}</button>
           </div>

@@ -8,6 +8,7 @@ import { AttachButton, AttachmentChips, filesFrom, useAttachments } from "@/comp
 import { GhostText, TypeAheadList, useTypeAhead } from "@/components/shell/TypeAhead";
 import { SkillsMenu } from "@/components/shell/SkillsMenu";
 import { UpdateRecord } from "./UpdateRecord";
+import { MicButton } from "@/components/shell/MicButton";
 
 /** Talk composer: text (and optional browser speech-to-text), Attach, Paper badge, @Agents, suggestion pills. Sends via the existing prompt API. */
 export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi, narrate = false, onNarrate }: { onSend: (t: string, attachmentIds?: string[]) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic"; onAi?: (a: "merod" | "openai" | "anthropic") => void; narrate?: boolean; onNarrate?: (on: boolean) => void }) {
@@ -131,10 +132,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
           </div>
           <div className="ml-auto flex items-center gap-2">
             {listening && <span className="flex h-6 items-end gap-0.5" aria-hidden>{[3, 6, 4, 8, 5, 7, 3].map((h, i) => <span key={i} className="w-0.5 animate-pulse rounded bg-accent-2" style={{ height: h * 2.5, animationDelay: `${i * 90}ms` }} />)}</span>}
-            {voice && speech && (
-              <button onClick={toggleVoice} aria-label={listening ? "Stop listening" : "Speak"} title="Speech to text (in your browser)"
-                className={cx("flex size-10 items-center justify-center rounded-full", listening ? "bg-grad text-bg" : "border border-line-2 text-muted hover:text-text")}><Mic className="size-4" /></button>
-            )}
+            <MicButton value={text} onChange={(t) => { setText(t); ta.current?.focus(); }} size="lg" className="rounded-full border border-line-2" />
             <button onClick={() => send()} disabled={busy || att.uploading || (!text.trim() && !att.ids.length)} aria-label="Send" className="flex size-10 items-center justify-center rounded-full border border-line-2 text-text hover:border-accent/60 disabled:opacity-40">
               {busy ? <Loader2 className="size-4 animate-spin" /> : <ArrowUp className="size-4" />}
             </button>

@@ -294,6 +294,15 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       return reply(body, { type: "research", text: body }, "info", { kind: "portfolio_question", summary: "Review" } as any, { portfolio: true });
     } catch { /* fall through to a normal answer */ }
   }
+  // Advice and live updates: "any suggestions?", "should I buy SOL?", "give me live updates on BTC", "stop live updates".
+  if (!instruction) {
+    const { adviceIntent, adviceReply } = await import("./advice");
+    const intent = adviceIntent(text);
+    if (intent) {
+      const t = await adviceReply(userId, text, intent);
+      return reply(t, { type: "research", text: t }, "info", { kind: "portfolio_question", summary: intent === "advice" ? "Advice" : "Live updates" } as any, { portfolio: true });
+    }
+  }
   if (!instruction && isStatusQuestion(text)) {
     const snap = await statusSnapshot(userId);
     const packet = statusPacket(snap);

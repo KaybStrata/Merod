@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Brain, Target, CheckCircle2, AlertTriangle, Gauge, Bot, Sparkles, Cpu, Repeat, ArrowLeftRight, Landmark, Pause, Play, Search, BarChart3, TrendingUp, ArrowUpRight, ShoppingCart } from "lucide-react";
+import { Activity, Brain, Target, CheckCircle2, AlertTriangle, Gauge, Bot, Sparkles, Cpu, Repeat, ArrowLeftRight, Landmark, Pause, Play, Search, BarChart3, TrendingUp, ArrowUpRight, ShoppingCart, RefreshCw } from "lucide-react";
 import { TradeHistory } from "@/components/activity/TradeHistory";
 import { api } from "@/lib/api";
 import { capFeed } from "@/lib/feed";
@@ -11,7 +11,7 @@ import { usePageTitle, useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 
 type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: string; pnl?: number; coin?: FeedCoin; eventId?: number };
-const SOURCES: [string, string, any][] = [["all", "Everything", Activity], ["agent", "Agents", Sparkles], ["bot", "Bots", Bot], ["auto", "Auto trading", Cpu], ["modo", "Modo", Brain], ["order", "Orders", ArrowLeftRight], ["copy", "Mimic & copy", Repeat], ["merod", "Merod", Landmark]];
+const SOURCES: [string, string, any][] = [["all", "Everything", Activity], ["agent", "Agents", Sparkles], ["bot", "Bots", Bot], ["auto", "Auto trading", Cpu], ["modo", "Modo", Brain], ["order", "Orders", ArrowLeftRight], ["copy", "Mimic & copy", Repeat], ["update", "Updates & Advisor", RefreshCw], ["merod", "Merod", Landmark]];
 const KINDS: [string, string, any, string][] = [
   ["thought", "Thoughts", Brain, "text-[#c9b6ff] bg-[rgba(185,163,240,.14)]"],
   ["analysis", "Analysis", BarChart3, "text-up bg-up-soft"],
@@ -59,7 +59,7 @@ export default function LiveActivity() {
   }
   useEffect(() => { pull(true); const t = setInterval(() => pull(), 3000); return () => clearInterval(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const kick = useRef(0);
-  useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade"].includes(e.type) && Date.now() - kick.current > 800) { kick.current = Date.now(); pull(); } });
+  useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade", "update", "advisor"].includes(e.type) && Date.now() - kick.current > 800) { kick.current = Date.now(); pull(); } });
   // A source tab other than All is fetched from the server (last 30 days) so chatty bots can't push it off the list.
   const [bySrc, setBySrc] = useState<{ key: string; items: Item[] } | null>(null);
   useEffect(() => {

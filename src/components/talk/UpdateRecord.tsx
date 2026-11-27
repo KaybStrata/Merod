@@ -83,7 +83,7 @@ export function UpdateRecord() {
                     {(latest.decisions ?? []).some((_: any, i: number) => !latest.applied?.[i]) && <button onClick={() => applyAll(latest)} disabled={!!busy} className="ml-auto rounded-md border border-accent/50 px-2 py-0.5 text-[11px] normal-case tracking-normal text-accent-2 hover:bg-accent/10">{busy === "all" ? "Applying…" : "Apply all"}</button>}
                   </div>
                   {latest.decisions.map((d: any, i: number) => {
-                    const done = latest.applied?.[i];
+                    const raw = latest.applied?.[i], done = raw ? (typeof raw === "string" ? raw : raw.line) : null;
                     return (
                       <div key={i} className="rounded-lg border border-line p-2">
                         <div className="flex items-start gap-2">
