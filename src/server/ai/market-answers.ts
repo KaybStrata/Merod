@@ -252,31 +252,113 @@ async function stockFacts(f: AssetFacts, a: any, userId?: string) {
 
 /* ───────────────────────── Gather ───────────────────────── */
 export async function gatherFacts(text: string, opts: { userId?: string; screenAssetId?: string | null } = {}): Promise<{ facts: AssetFacts[]; dates: DateAsk[] }> {
-  const named = extractAssets(text, 8);
+  // Unlimited assets per question: every ticker/name in the text, plus groups like "top 50 coins" / "top 20 stocks".
+  const named = extractAssets(text, 5000);
+  const groupClass = new Map<string, string>();
+  for (const g of await topGroup(text, opts.userId)) {
+    groupClass.set(g.symbol.toUpperCase(), g.cls);
+    if (!named.some((n) => n.symbol?.toUpperCase() === g.symbol.toUpperCase())) named.push({ symbol: g.symbol, contract: null, network: null });
+  }
+  const dates = parseDates(text);
+  const nowS = Math.floor(Date.now() / 1000);
+  // Long lists stay fast and within provider rate limits: one batch quote call for coins, and history only where it's needed.
+  const many = named.length > 10;
+  const deep = !many || dates.some((d) => d.from < nowS - 400 * DAY);
   const rows: any[] = [];
   for (const n of named) {
     const r = n.contract
       ? await one<any>("SELECT * FROM assets WHERE lower(identifier)=lower($1) AND NOT ('demo_data'=ANY(risk_flags)) ORDER BY market_cap DESC NULLS LAST LIMIT 1", [n.contract])
       : await one<any>(`SELECT * FROM assets WHERE upper(symbol)=upper($1) AND NOT ('demo_data'=ANY(risk_flags))
           ORDER BY (asset_class = $2) DESC, (coingecko_id IS NOT NULL OR asset_class <> 'crypto') DESC, market_cap DESC NULLS LAST LIMIT 1`, [n.symbol, hintClass(text)]);
-    rows.push(r ?? { symbol: n.symbol ?? n.contract, name: n.symbol ?? n.contract, asset_class: n.contract ? "crypto" : guessClass(text), venue: n.network, identifier: n.contract });
+    rows.push(r ?? { symbol: n.symbol ?? n.contract, name: n.symbol ?? n.contract, asset_class: n.contract ? "crypto" : groupClass.get(String(n.symbol).toUpperCase()) ?? guessClass(text), venue: n.network, identifier: n.contract });
   }
   if (!rows.length && opts.screenAssetId) { const r = await one<any>("SELECT * FROM assets WHERE id=$1", [opts.screenAssetId]); if (r) rows.push(r); }
-  const facts = await Promise.all(rows.map(async (a) => {
+  const batch = many ? await coingeckoBatch(rows.filter((r) => r.asset_class === "crypto"), opts.userId) : new Map<string, any>();
+  const one1 = async (a: any) => {
     const f: AssetFacts = { symbol: a.symbol, name: a.name ?? a.symbol, assetClass: a.asset_class, venue: a.venue ?? null, live: null, history: null, errors: [] };
-    try { if (a.asset_class === "crypto") await cryptoFacts(f, a, opts.userId); else await stockFacts(f, a, opts.userId); }
-    catch (e: any) { f.errors.push(e.message); }
+    try {
+      if (a.asset_class === "crypto" && many) await cryptoLight(f, a, batch.get(String(a.symbol).toUpperCase()), dates, deep);
+      else if (a.asset_class === "crypto") await cryptoFacts(f, a, opts.userId);
+      else await stockFacts(f, a, opts.userId);
+    } catch (e: any) { f.errors.push(e.message); }
     // Last resort for live: Merod's own quote, but only when it came from a real provider in the last 15 minutes.
     if (!f.live && a.last_price && isRealSource(a.price_source) && !(a.risk_flags ?? []).includes("demo_data") && Date.now() - new Date(a.price_updated_at ?? 0).getTime() < 15 * 60_000)
       f.live = { price: Number(a.last_price), change24hPct: a.change_24h != null ? Number(a.change_24h) : null, marketCap: a.market_cap ? Number(a.market_cap) : null, volume24h: a.volume_24h ? Number(a.volume_24h) : null, source: a.price_source, at: new Date(a.price_updated_at).toISOString() };
     if (!f.live) f.errors.push("No live quote from a real data source right now.");
     if (f.history) f.history.bars.sort((x, y) => x.t - y.t);
     return f;
-  }));
-  return { facts, dates: parseDates(text) };
+  };
+  // Six at a time, so hundreds of assets don't open hundreds of connections at once.
+  const facts: AssetFacts[] = [];
+  for (let i = 0; i < rows.length; i += 6) facts.push(...(await Promise.all(rows.slice(i, i + 6).map(one1))));
+  return { facts, dates };
+}
+
+/** "top 50 coins", "top 20 crypto", "top 10 meme coins", "top 30 stocks": the biggest by market cap. */
+async function topGroup(text: string, userId?: string): Promise<{ symbol: string; cls: string }[]> {
+  const m = text.toLowerCase().match(/\btop\s+(\d{1,4})\s+(meme\s*coins?|coins?|cryptos?|cryptocurrenc(?:y|ies)|tokens?|stocks?|etfs?|companies)\b/);
+  if (!m) return [];
+  const n = Math.min(1000, Math.max(1, Number(m[1])));
+  if (/coin|crypto|token/.test(m[2]) && !/meme/.test(m[2])) {
+    try {
+      const cg = await coingecko(userId);
+      const out: { symbol: string; cls: string }[] = [];
+      for (let page = 1; out.length < n && page <= 4; page++) {
+        const rows = await cg.get(`/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${Math.min(250, n)}&page=${page}`);
+        if (!Array.isArray(rows) || !rows.length) break;
+        out.push(...rows.map((r: any) => ({ symbol: String(r.symbol).toUpperCase(), cls: "crypto" })));
+      }
+      if (out.length) return out.slice(0, n);
+    } catch { /* fall back to Merod's catalog */ }
+  }
+  const cls = /stock|compan/.test(m[2]) ? "AND asset_class='stock'" : /etf/.test(m[2]) ? "AND asset_class='etf'" : /meme/.test(m[2]) ? "AND asset_class='crypto' AND 'meme' = ANY(categories)" : "AND asset_class='crypto'";
+  return q<{ symbol: string }>(`SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS symbol, market_cap FROM assets WHERE NOT ('demo_data'=ANY(risk_flags)) ${cls} ORDER BY upper(symbol), market_cap DESC NULLS LAST`)
+    .then((r: any[]) => r.sort((a, b) => Number(b.market_cap ?? 0) - Number(a.market_cap ?? 0)).slice(0, n).map((x) => ({ symbol: x.symbol, cls: /stock|compan/.test(m[2]) ? "stock" : /etf/.test(m[2]) ? "etf" : "crypto" })));
+}
+
+/** One CoinGecko call for many coins: price, 24h/7d/30d/1y change, market cap, volume, ATH/ATL. */
+async function coingeckoBatch(rows: any[], userId?: string) {
+  const out = new Map<string, any>();
+  if (!rows.length) return out;
+  const cg = await coingecko(userId);
+  const ids = rows.map((r) => r.coingecko_id).filter(Boolean);
+  const syms = rows.filter((r) => !r.coingecko_id).map((r) => String(r.symbol).toLowerCase());
+  const take = (list: any[]) => { for (const c of list ?? []) { const k = String(c.symbol).toUpperCase(); const prev = out.get(k); if (!prev || (c.market_cap ?? 0) > (prev.market_cap ?? 0)) out.set(k, c); } };
+  try {
+    for (let i = 0; i < ids.length; i += 250) take(await cg.get(`/coins/markets?vs_currency=usd&ids=${encodeURIComponent(ids.slice(i, i + 250).join(","))}&per_page=250&price_change_percentage=7d,30d,1y`));
+    for (let i = 0; i < syms.length; i += 100) take(await cg.get(`/coins/markets?vs_currency=usd&symbols=${encodeURIComponent(syms.slice(i, i + 100).join(","))}&per_page=250&price_change_percentage=7d,30d,1y`));
+  } catch { /* each coin falls back to Merod's live quote */ }
+  return out;
+}
+
+/** A coin in a long list: the batch quote, plus Coinbase history only for the dates asked about (or full history when deep). */
+async function cryptoLight(f: AssetFacts, a: any, c: any, dates: DateAsk[], deep: boolean) {
+  if (c) {
+    f.name = c.name ?? f.name;
+    if (typeof c.current_price === "number") f.live = { price: c.current_price, change24hPct: c.price_change_percentage_24h ?? null, marketCap: c.market_cap ?? null, volume24h: c.total_volume ?? null, source: "CoinGecko", at: c.last_updated ?? new Date().toISOString() };
+    if (c.ath) f.ath = { price: c.ath, date: String(c.ath_date ?? "").slice(0, 10) };
+    if (c.atl) f.atl = { price: c.atl, date: String(c.atl_date ?? "").slice(0, 10) };
+    f.extra = { market_cap_rank: c.market_cap_rank, change_7d_pct: c.price_change_percentage_7d_in_currency, change_30d_pct: c.price_change_percentage_30d_in_currency, change_1y_pct: c.price_change_percentage_1y_in_currency };
+  }
+  if (!dates.length && !deep) return;
+  try {
+    const bars = deep ? await coinbaseHistory(f.symbol) : (await Promise.all(dates.map((d) => coinbaseWindow(f.symbol, d.from - 5 * DAY, Math.min(d.to + 5 * DAY, Math.floor(Date.now() / 1000)))))).flat();
+    if (bars.length) f.history = { source: "Coinbase", bars: [...new Map(bars.map((b) => [b.t, b])).values()].sort((x, y) => x.t - y.t), note: deep ? undefined : "Daily prices around the dates asked (Coinbase)." };
+  } catch (e: any) { f.errors.push(`Coinbase history: ${e.message}`); }
+}
+/** Coinbase daily candles for one window (≤ 300 days per request). */
+async function coinbaseWindow(symbol: string, from: number, to: number): Promise<Bar[]> {
+  const out: Bar[] = [];
+  for (let s = from; s < to; s += 300 * DAY) {
+    const e = Math.min(to, s + 300 * DAY);
+    const res = await providerFetch("coinbase_public", "production", `https://api.exchange.coinbase.com/products/${symbol.toUpperCase()}-USD/candles?granularity=86400&start=${new Date(s * 1000).toISOString()}&end=${new Date(e * 1000).toISOString()}`, { headers: { accept: "application/json", "user-agent": "merod" }, timeoutMs: 12_000 });
+    if (res.status === 404) break;
+    out.push(...parseCoinbaseCandles(await readJson(res, "coinbase_public")));
+  }
+  return out;
 }
 const hintClass = (t: string) => /\b(stocks?|shares?|equity|etf|nasdaq|nyse|company|ipo|earnings)\b/i.test(t) ? "stock" : "crypto";
-const guessClass = (t: string) => /\b(coin|token|crypto|chain|defi|meme)\b/i.test(t) ? "crypto" : "stock";
+const guessClass = (t: string) => /\b(coins?|tokens?|crypto|cryptos|cryptocurrenc(y|ies)|chains?|defi|memes?|memecoins?)\b/i.test(t) ? "crypto" : "stock";
 
 /* ───────────────────────── Stats ───────────────────────── */
 const at = (bars: Bar[], t: number) => { let best: Bar | null = null; for (const b of bars) { if (b.t < t + DAY) best = b; else break; } return best; };
@@ -297,6 +379,7 @@ export function rangeStats(bars: Bar[], from: number, to: number) {
 
 /** Compact, labelled data packet for the AI (and the source of the no-AI answer). */
 export function factsPacket(facts: AssetFacts[], dates: DateAsk[]) {
+  if (facts.length > 10) return compactPacket(facts, dates);
   const now = Math.floor(Date.now() / 1000);
   const lines: string[] = [`now_utc=${new Date().toISOString()}`];
   for (const f of facts) {
@@ -333,9 +416,38 @@ export function factsPacket(facts: AssetFacts[], dates: DateAsk[]) {
   return lines.join("\n");
 }
 
+/** One line per asset, for questions about many assets at once. */
+function compactPacket(facts: AssetFacts[], dates: DateAsk[]) {
+  const now = Math.floor(Date.now() / 1000);
+  const lines = [`now_utc=${new Date().toISOString()} assets=${facts.length} (one line each: symbol | live | changes | ATH/ATL | prices on the dates asked)`];
+  for (const f of facts) {
+    const b = f.history?.bars ?? [];
+    const cur = f.live?.price ?? b.at(-1)?.c;
+    const ch = cur ? [["7d", 7], ["30d", 30], ["1y", 365], ["5y", 1825]].flatMap(([k, d]) => { const p = near(b, now - (d as number) * DAY); return p ? [`${k}=${sp(pct(p.c, cur))}`] : []; }) : [];
+    const ex = f.extra as any;
+    if (!ch.length && ex) for (const [k, v] of [["7d", ex.change_7d_pct], ["30d", ex.change_30d_pct], ["1y", ex.change_1y_pct]]) if (typeof v === "number") ch.push(`${k}=${sp(v)}`);
+    const ds = dates.map((d) => { if (!b.length) return `${d.label}=n/a`; if (d.point) { const p = at(b, d.from); return p && Math.abs(p.t - d.from) < 5 * DAY ? `${d.label}=${+p.c.toPrecision(6)}` : `${d.label}=n/a`; } const r = rangeStats(b, d.from, d.to); return r ? `${d.label}: o=${+r.open.toPrecision(6)} c=${+r.close.toPrecision(6)} chg=${sp(r.changePct)}` : `${d.label}=n/a`; });
+    lines.push(`${f.symbol} (${f.name}, ${f.assetClass}) | ${f.live ? `${f.live.price} 24h=${f.live.change24hPct ?? "n/a"}% mcap=${f.live.marketCap ?? "n/a"} src=${f.live.source}` : "live=n/a"} | ${ch.join(" ")} | ${f.ath ? `ath=${f.ath.price}@${f.ath.date}` : ""}${f.atl ? ` atl=${f.atl.price}@${f.atl.date}` : ""}${b.length ? ` history=${f.history!.source} ${iso(b[0].t)}→${iso(b.at(-1)!.t)}` : ""} | ${ds.join(" ")}${f.errors.length && !f.live ? ` | gaps=${f.errors[0].slice(0, 80)}` : ""}`);
+  }
+  return lines.join("\n");
+}
+
 /** Plain answer from the data alone (used when no AI key is connected, or as a fallback). */
 export function factsAnswer(facts: AssetFacts[], dates: DateAsk[]) {
   if (!facts.length) return null;
+  if (facts.length > 10) {
+    const now = Math.floor(Date.now() / 1000);
+    const rows = facts.map((f) => {
+      const b = f.history?.bars ?? [], cur = f.live?.price ?? b.at(-1)?.c ?? null;
+      const parts = [cur != null ? money(cur) : "no live price", f.live?.change24hPct != null ? `${sp(f.live.change24hPct)} 24h` : null];
+      const y = cur ? near(b, now - 365 * DAY) : null;
+      if (y && cur) parts.push(`${sp(pct(y.c, cur))} 1y`); else if (typeof (f.extra as any)?.change_1y_pct === "number") parts.push(`${sp((f.extra as any).change_1y_pct)} 1y`);
+      for (const d of dates) { if (d.point) { const p = at(b, d.from); parts.push(p && Math.abs(p.t - d.from) < 5 * DAY ? `${d.label}: ${money(p.c)}` : `${d.label}: n/a`); } else { const r = rangeStats(b, d.from, d.to); parts.push(r ? `${d.label}: ${sp(r.changePct)}` : `${d.label}: n/a`); } }
+      if (f.ath) parts.push(`ATH ${money(f.ath.price)} (${f.ath.date})`);
+      return `• ${f.symbol}${f.name && f.name !== f.symbol ? ` (${f.name})` : ""}: ${parts.filter(Boolean).join(" · ")}`;
+    });
+    return `${facts.length} assets:\n${rows.join("\n")}`;
+  }
   const now = Math.floor(Date.now() / 1000);
   return facts.map((f) => {
     const out: string[] = [];

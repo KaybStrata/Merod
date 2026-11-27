@@ -153,9 +153,15 @@ export function extractAssets(text: string, max = 3): { symbol: string | null; c
     if (CATALOG.names.has(w)) push({ symbol: CATALOG.names.get(w)!, contract: null, network: first.network });
     else if (!ENGLISH.has(w) && !STOP_WORDS.has(w) && !VOCAB_SET.has(w) && CATALOG.symbols.has(w.toUpperCase())) push({ symbol: w.toUpperCase(), contract: null, network: first.network });
   }
+  // A list of 3+ capitalised tickers ("AAPL, NET, KO, ZM") counts word-tickers like NET or ALL too.
+  const caps = [...text.matchAll(/(?<![A-Za-z$])([A-Z]{2,5}(?:\.[A-Z])?)(?![A-Za-z])/g)].map((m) => m[1]).filter((w) => !CAPS_STOP.has(w));
+  const list = caps.length >= 3;
+  for (const w of caps) if (list || !ENGLISH.has(w.toLowerCase())) push({ symbol: w, contract: null, network: first.network });
   if (!out.length && first.symbol) push(first);
   return out;
 }
+/** Capitalised words that aren't tickers. */
+const CAPS_STOP = new Set(["I", "A", "USD", "USDT", "ETF", "ETFS", "ATH", "ATL", "PNL", "AI", "API", "CEO", "IPO", "UTC", "EST", "PST", "PT", "ET", "US", "USA", "UK", "EU", "OK", "AM", "PM", "YTD", "ROI", "APY", "APR", "DCA", "TP", "SL", "NFT", "DEX", "CEX", "TVL", "FDV", "GDP", "CPI", "FED", "SEC", "LLC", "INC", "VS", "AND", "OR", "THE", "ALL", "TOP", "MY", "IN", "ON", "OF", "TO", "FOR", "WHAT", "HOW", "WHY", "WHEN", "IS", "WAS", "DID", "NEW", "BUY", "SELL", "PRICE", "STATS", "DATA", "INFO", "COIN", "COINS", "STOCK", "STOCKS"]);
 
 function amount(text: string): { type: TradeLeg["amount_type"]; value: number | null } {
   const t = normalize(text);

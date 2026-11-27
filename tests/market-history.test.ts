@@ -41,3 +41,36 @@ test("any point in history: old coin prices from Coinbase when CoinGecko's free 
     assert.match(factsAnswer(s.facts, s.dates)!, /June 2010: opened \$9, closed \$9\.25/);
   } finally { globalThis.fetch = real; }
 });
+
+test("unlimited assets per question: 30 tickers (coins + stocks, even ones not in the catalog) and 'top 25 coins'", async () => {
+  const real = globalThis.fetch;
+  const calls: string[] = [];
+  const coins = Array.from({ length: 25 }, (_, i) => ({ id: `coin-${i}`, symbol: `c${String.fromCharCode(65 + i)}x`, name: `Coin ${i}`, current_price: 10 + i, price_change_percentage_24h: 1, market_cap: 1e9 - i, total_volume: 1e6, ath: 50, ath_date: "2021-11-10T00:00:00Z", atl: 1, atl_date: "2018-12-15T00:00:00Z", market_cap_rank: i + 1, last_updated: new Date().toISOString() }));
+  globalThis.fetch = (async (url: any) => {
+    const u = String(url); calls.push(u);
+    if (u.includes("/coins/markets")) return new Response(JSON.stringify(u.includes("order=market_cap_desc") ? coins : coins.filter((c) => u.toLowerCase().includes(c.symbol.toLowerCase()) || u.includes(c.id))), { status: 200 });
+    if (u.includes("stooq.com")) return new Response("Date,Open,High,Low,Close,Volume\n2020-03-02,10,11,9,10.5,1\n2024-01-02,20,21,19,20.5,1\n", { status: 200 });
+    if (u.includes("api.exchange.coinbase.com")) return new Response("[]", { status: 200 });
+    return new Response(JSON.stringify({ error: "n/a" }), { status: 503 });
+  }) as any;
+  try {
+    const stocks = ["AAPL", "MSFT", "KO", "ZM", "PLTR", "SHOP", "UBER", "ABNB", "SNOW", "CRWD", "NET", "DDOG", "MDB", "TEAM", "ZS", "OKTA", "TWLO", "ROKU", "SQ", "PYPL"];
+    const r = await gatherFacts(`compare ${stocks.join(", ")} in March 2020`);
+    const got = new Set(r.facts.map((f) => f.symbol));
+    for (const s of stocks) assert.ok(got.has(s), `${s} included`);
+    assert.ok(r.facts.length >= 20);
+    const zm = r.facts.find((f) => f.symbol === "ZM")!;
+    assert.equal(zm.history?.source, "Stooq");
+    const ans = factsAnswer(r.facts, r.dates)!;
+    assert.match(ans, new RegExp(`^${r.facts.length} assets:`));
+    assert.match(ans, /• ZM.*March 2020: \+5\.00%/);
+    const { factsPacket } = await import("@/server/ai/market-answers");
+    assert.ok(factsPacket(r.facts, r.dates).split("\n").length <= r.facts.length + 1, "compact packet: one line per asset");
+
+    calls.length = 0;
+    const t = await gatherFacts("give me stats on the top 25 coins");
+    assert.ok(t.facts.length >= 25, `got ${t.facts.length}`);
+    assert.ok(calls.filter((c) => c.includes("/coins/markets")).length <= 4, "one batch quote call, not one per coin");
+    assert.ok(t.facts.filter((f) => f.live?.source === "CoinGecko").length >= 25);
+  } finally { globalThis.fetch = real; }
+});
