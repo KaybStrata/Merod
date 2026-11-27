@@ -293,7 +293,7 @@ export function parsePrompt(raw: string): Instruction {
   }
 
   if (/\b(portfolio|holdings|p&l|pnl|how am i doing|performance)\b/.test(t)) return base("portfolio_question", "Portfolio summary");
-  if (/\?|\b(why|what|how|analy[sz]e|research|explain|outlook|news)\b/.test(t)) return base("research", "Market research", { research_query: text });
+  if (/\?|\b(why|what|how|when|analy[sz]e|research|explain|outlook|news|stats?|statistics|info|information|history|historical|data|performance|price|prices|chart|ath|all[- ]time|high|low|worth|returns?|compare|vs|versus|market cap|volume|since|ago|in (19|20)\d\d)\b/.test(t)) return base("research", "Market research", { research_query: text });
   if ((asset.symbol || asset.contract) && t.split(" ").length <= 4)
     return base("clarify", `What to do with ${asset.symbol ?? "this token"}`, { clarification_question: `What would you like to do with ${asset.symbol ?? "this token"}? Buy, sell, set an alert, or analyze it?`,
       trades: [leg({ side: "buy", symbol: asset.symbol, network: asset.network, contract_address: asset.contract })] });

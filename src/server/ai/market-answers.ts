@@ -75,6 +75,45 @@ export function parseDates(text: string, nowSec = Math.floor(Date.now() / 1000))
   return out.slice(0, 6);
 }
 
+/* ───────────────────────── Keyless full-history sources ───────────────────────── */
+/** Coinbase Exchange public daily candles: [[time, low, high, open, close, volume], …] (newest first). */
+export function parseCoinbaseCandles(rows: any): Bar[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((r) => Array.isArray(r) && r.length >= 5).map((r) => ({ t: Number(r[0]), l: Number(r[1]), h: Number(r[2]), o: Number(r[3]), c: Number(r[4]) }))
+    .filter((b) => Number.isFinite(b.t) && b.c > 0).sort((a, b) => a.t - b.t);
+}
+/** Every daily candle Coinbase has for SYM-USD (back to its listing, e.g. 2015 for BTC), 300 days per request. */
+export async function coinbaseHistory(symbol: string): Promise<Bar[]> {
+  const product = `${symbol.toUpperCase()}-USD`;
+  const out = new Map<number, Bar>();
+  let end = Math.floor(Date.now() / 1000);
+  for (let i = 0; i < 16; i++) {
+    const start = end - 300 * DAY;
+    const res = await providerFetch("coinbase_public", "production", `https://api.exchange.coinbase.com/products/${product}/candles?granularity=86400&start=${new Date(start * 1000).toISOString()}&end=${new Date(end * 1000).toISOString()}`,
+      { headers: { accept: "application/json", "user-agent": "merod" }, timeoutMs: 12_000 });
+    if (res.status === 404) break;
+    const bars = parseCoinbaseCandles(await readJson(res, "coinbase_public"));
+    if (!bars.length) break;
+    for (const b of bars) out.set(b.t, b);
+    end = start;
+  }
+  return [...out.values()].sort((a, b) => a.t - b.t);
+}
+/** Stooq daily CSV: Date,Open,High,Low,Close,Volume. */
+export function parseStooqCsv(csv: string): Bar[] {
+  const lines = String(csv ?? "").trim().split(/\r?\n/);
+  if (!/^date,open,high,low,close/i.test(lines[0] ?? "")) return [];
+  return lines.slice(1).map((l) => l.split(",")).filter((c) => c.length >= 5 && /^\d{4}-\d{2}-\d{2}$/.test(c[0]))
+    .map((c) => ({ t: utc(+c[0].slice(0, 4), +c[0].slice(5, 7) - 1, +c[0].slice(8, 10)), o: +c[1], h: +c[2], l: +c[3], c: +c[4] })).filter((b) => b.c > 0);
+}
+/** Full daily history for a US stock or ETF from Stooq (no key; decades of data). */
+export async function stooqHistory(symbol: string): Promise<Bar[]> {
+  const s = `${symbol.toLowerCase().replace(/\./g, "-")}.us`;
+  const res = await providerFetch("stooq", "production", `https://stooq.com/q/d/l/?s=${encodeURIComponent(s)}&i=d`, { headers: { "user-agent": "merod" }, timeoutMs: 15_000 });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return parseStooqCsv(await res.text());
+}
+
 /* ───────────────────────── Source helpers ───────────────────────── */
 async function coingecko(userId: string | undefined) {
   const key = await getCredential("coingecko", "production", "COINGECKO_API_KEY", userId).catch(() => undefined);
@@ -115,6 +154,7 @@ async function cryptoFacts(f: AssetFacts, a: any, userId?: string) {
         if (pts.length) { f.history = { source: "CoinGecko", closesOnly: true, bars: pts.map(([ms, p]) => ({ t: Math.floor(ms / 1000), o: p, h: p, l: p, c: p })), note: days === "365" ? "CoinGecko's free tier only returns the last 365 days of daily prices; ATH/ATL above cover the full history." : undefined }; break; }
       } catch (e: any) { if (days !== "max" || cg.plan === "pro") f.errors.push(`CoinGecko history: ${e.message}`); }
     }
+    await fillOlderCrypto(f);
     return;
   }
   // DEX token (contract address): DEX Screener live, Birdeye history if a key is connected.
@@ -139,6 +179,21 @@ async function cryptoFacts(f: AssetFacts, a: any, userId?: string) {
       } catch (e: any) { f.errors.push(`Birdeye history: ${e.message}`); }
     } else f.errors.push("Daily history for DEX tokens needs a Birdeye key (Broker & AI Keys).");
   }
+}
+
+/** Coins: add Coinbase's full daily OHLC history (back to listing) where CoinGecko's free tier stops at 365 days. */
+async function fillOlderCrypto(f: AssetFacts) {
+  const first = f.history?.bars.length ? Math.min(...f.history.bars.map((b) => b.t)) : Infinity;
+  if (first < Math.floor(Date.now() / 1000) - 400 * DAY) return; // already have deep history
+  try {
+    const cb = await coinbaseHistory(f.symbol);
+    if (!cb.length) return;
+    const have = new Map((f.history?.bars ?? []).map((b) => [Math.floor(b.t / DAY), b]));
+    for (const b of cb) if (!have.has(Math.floor(b.t / DAY))) have.set(Math.floor(b.t / DAY), b);
+    const bars = [...have.values()].sort((x, y) => x.t - y.t);
+    f.history = { source: f.history ? `${f.history.source} + Coinbase` : "Coinbase", closesOnly: !f.history ? false : f.history.closesOnly, bars,
+      note: `Older daily prices from Coinbase (${f.symbol}-USD, from ${iso(cb[0].t)}); before a coin listed on Coinbase there is no data from this source.` };
+  } catch (e: any) { f.errors.push(`Coinbase history: ${e.message}`); }
 }
 
 async function stockFacts(f: AssetFacts, a: any, userId?: string) {
@@ -178,7 +233,14 @@ async function stockFacts(f: AssetFacts, a: any, userId?: string) {
       } catch (e: any) { f.errors.push(`Alpaca: ${e.message}`); }
     }
   }
-  if (!f.history && !mk && !tk) f.errors.push("Stock price history needs a Massive, Twelve Data or Alpaca key (Broker & AI Keys).");
+  // 4) Stooq: free daily history for US stocks and ETFs (decades), no key needed.
+  if (!f.history) {
+    try {
+      const bars = await stooqHistory(sym);
+      if (bars.length) f.history = { source: "Stooq", bars, note: "Free daily data from Stooq; check split/dividend adjustments for very old prices." };
+    } catch (e: any) { f.errors.push(`Stooq: ${e.message}`); }
+  }
+  if (!f.history) f.errors.push("No price history found for this symbol (Massive, Twelve Data, Alpaca or Stooq).");
   // Live: Merod's live feed if it's real, else the latest daily close.
   if (a?.last_price && isRealSource(a.price_source) && !(a.risk_flags ?? []).includes("demo_data"))
     f.live = { price: Number(a.last_price), change24hPct: a.change_24h != null ? Number(a.change_24h) : null, marketCap: a.market_cap ? Number(a.market_cap) : null, volume24h: a.volume_24h ? Number(a.volume_24h) : null, source: a.price_source, at: new Date(a.price_updated_at ?? Date.now()).toISOString() };
@@ -190,7 +252,7 @@ async function stockFacts(f: AssetFacts, a: any, userId?: string) {
 
 /* ───────────────────────── Gather ───────────────────────── */
 export async function gatherFacts(text: string, opts: { userId?: string; screenAssetId?: string | null } = {}): Promise<{ facts: AssetFacts[]; dates: DateAsk[] }> {
-  const named = extractAssets(text, 3);
+  const named = extractAssets(text, 8);
   const rows: any[] = [];
   for (const n of named) {
     const r = n.contract
