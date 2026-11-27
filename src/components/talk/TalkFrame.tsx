@@ -7,6 +7,7 @@ import { useShell } from "@/components/shell/context";
 import { Logo } from "@/components/shell/Logo";
 import { ModeSwitch } from "./ModeSwitch";
 import { TalkActivity } from "./TalkActivity";
+import { MapLink } from "@/components/shell/MapLink";
 import { api, useApi } from "@/lib/api";
 import { Button, Modal, cx, useToast } from "@/components/ui";
 
@@ -137,6 +138,7 @@ function TalkTopBar({ onMenu }: { onMenu: () => void }) {
         {title?.section && <span className="text-faint"> · {title.section}</span>}
       </div>
       <TalkActivity />
+      <MapLink />
       <ModeSwitch force />
       <span className={cx("rounded-md border px-2 py-1 text-[10px] font-bold tracking-wider", live || user.tradingMode === "live" ? "border-down/40 bg-down-soft text-down" : "border-warn/40 bg-warn-soft text-warn")}
         title="Shown only. Change real-money trading in Classic mode.">{live ? "REAL MONEY ON" : user.tradingMode === "live" ? "LIVE" : "PAPER"}</span>

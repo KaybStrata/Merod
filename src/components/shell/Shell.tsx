@@ -14,6 +14,7 @@ import { RightRail } from "./RightRail";
 import { PromptBar } from "./PromptBar";
 import { MobileNav } from "./MobileNav";
 import { ModeSwitch } from "@/components/talk/ModeSwitch";
+import { MapLink } from "./MapLink";
 import { TalkFrame } from "@/components/talk/TalkFrame";
 import { Logo } from "./Logo";
 import { ToastProvider, useToast, cx, Modal, Button } from "@/components/ui";
@@ -271,6 +272,7 @@ function TopBar({ onMenu, unread, connected, onModo }: { onMenu: () => void; unr
       </div>
       <div className={cx("flex shrink-0 items-center gap-2", !title && "ml-auto")}>
         <span className="hidden items-center gap-1.5 rounded-full border border-line px-2.5 py-1 text-[11px] text-muted xl:flex"><span className={cx("size-1.5 rounded-full", mkt.open ? "bg-up pulse-dot" : "bg-faint")} />{mkt.text}</span>
+        <MapLink />
         <ModeSwitch callout />
         <span className={cx("hidden rounded-md border px-2 py-1 text-[10px] font-bold tracking-wider sm:block", user.tradingMode === "live" ? "border-down/40 bg-down-soft text-down" : "border-warn/40 bg-warn-soft text-warn")}>{user.tradingMode === "live" ? "LIVE TRADING" : "PAPER TRADING"}</span>
         <Link href="/wallet" className="hidden h-8 items-center gap-1.5 rounded-lg bg-grad px-3 text-[12.5px] font-semibold text-bg sm:flex"><Plus className="size-3.5" /> Deposit</Link>

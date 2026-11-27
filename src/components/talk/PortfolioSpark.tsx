@@ -87,6 +87,16 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
     <div className={className}>
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         {!compact && <span className={cx("num whitespace-nowrap text-[12px] font-semibold", up ? "text-up" : "text-down")}>{pts.length > 1 ? `${up ? "+" : "−"}${usd(Math.abs(change))} (${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%)` : "—"}{useBe && <span className="ml-1 font-normal text-faint">vs {usd(breakEven!)} put in</span>}</span>}
+        {/* P&L out of the initial investment, e.g. "+$300 / $100,000": total made since you started vs what you put in. */}
+        {!compact && breakEven != null && pts.length > 0 && (() => {
+          const made = last - breakEven;
+          return (
+            <span className="num order-last w-full whitespace-nowrap text-[11.5px] text-muted" title={`Total P&L since you started out of your initial investment (${usd(breakEven)} = starting balance + deposits − withdrawals)`}>
+              <span className={cx("font-semibold", made >= 0 ? "text-up" : "text-down")}>{made >= 0 ? "+" : "−"}{usd(Math.abs(made))}</span>
+              <span className="text-faint"> / </span>{usd(breakEven)}<span className="text-faint"> invested · {made >= 0 ? "+" : "−"}{pctLabel(Math.abs(made), breakEven)}% all-time</span>
+            </span>
+          );
+        })()}
         {!compact && (
           <button onClick={(e) => { e.stopPropagation(); toggleBe(); }} aria-pressed={beOn}
             title={breakEven ? `Break-even P&L: how much you've made after your initial investment (${usd(breakEven)} = starting balance + deposits − withdrawals)` : "Break-even P&L: how much you've made after your initial investment"}

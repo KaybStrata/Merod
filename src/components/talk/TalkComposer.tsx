@@ -7,6 +7,7 @@ import { cx } from "@/components/ui";
 import { AttachButton, AttachmentChips, filesFrom, useAttachments } from "@/components/shell/Attachments";
 import { GhostText, TypeAheadList, useTypeAhead } from "@/components/shell/TypeAhead";
 import { SkillsMenu } from "@/components/shell/SkillsMenu";
+import { UpdateRecord } from "./UpdateRecord";
 
 /** Talk composer: text (and optional browser speech-to-text), Attach, Paper badge, @Agents, suggestion pills. Sends via the existing prompt API. */
 export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi, narrate = false, onNarrate }: { onSend: (t: string, attachmentIds?: string[]) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic"; onAi?: (a: "merod" | "openai" | "anthropic") => void; narrate?: boolean; onNarrate?: (on: boolean) => void }) {
@@ -95,6 +96,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
           {ai !== "merod" && <a href={ai === "openai" ? "https://platform.openai.com/settings/organization/billing/" : "https://console.anthropic.com/settings/billing"} target="_blank" rel="noreferrer noopener" className="text-[11px] text-accent-2 underline underline-offset-2 hover:text-text">{ai === "openai" ? "OpenAI" : "Claude"} credits →</a>}
           <span className="hidden h-6 w-px bg-line sm:block" aria-hidden />
           {/* Tools */}
+          <UpdateRecord />
           <div className="relative">
             <button onClick={() => setSuggOpen((o) => !o)} aria-expanded={suggOpen} className={cx("flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px]", suggOpen ? "border-accent/50 text-accent-2" : "border-line text-muted hover:text-text")}><Lightbulb className="size-3.5" /> Suggestions</button>
             {suggOpen && (
