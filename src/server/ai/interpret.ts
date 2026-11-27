@@ -602,11 +602,20 @@ export async function handlePrompt(userId: string, input: PromptInput) {
         ? `Here's what Merod read from your attachment${input.attached.names.length > 1 ? "s" : ""}:\n${input.attached.plain}${plain ? `\n\n${plain}${sourcesLine(facts)}` : ""}${why ? `\n\n${why}` : ""}`
         : plain
         ? `${plain}${sourcesLine(facts)}${why ? `\n\n${why}` : ""}`
-        : `I couldn't answer that from price data alone.${why ? ` ${why}` : ""}`;
+        : `${MODO_HELP}${why ? `\n\nFor open questions and reasoning beyond these, Merod uses Claude or ChatGPT: ${why}` : ""}`;
       return reply(t, { type: "research", text: t }, "info", instruction, { chartSymbol: facts[0]?.symbol ?? null });
     }
   }
 }
+
+/** What Merod's own rules (Modo) can do without any AI key, shown when a request isn't recognised and no AI answered. */
+const MODO_HELP = `Modo (Merod's built-in rules) didn't recognise that as a command. Here's what it does on its own, no AI key needed. Try wording it like one of these:
+• Update many bots/agents at once: "all bots $35 per trade" · "increase every agent's budget by 20%" · "stop loss 8% on all bots" · "give all agents $5,000 capital" · "turn off SOL Momentum"
+• Trade: "buy $100 of SOL" · "sell half my ETH" · "alert me if BTC drops below 60000"
+• Create: "create a bot that buys SOL dips of 3% and sells at +5%" · "create 3 agents that trade ETH"
+• Ask: "how is my portfolio doing?" · "how are my bots doing?" · "what was BTC in March 2021?" · "compare NVDA and AMD over 1 year"
+• Advice: "any suggestions?" · "should I buy SOL?" · "give me live updates on BTC"
+• Rules & schedules: "create a skill: always use a 5% stop loss" · "every day at 9am buy $20 of BTC"`;
 
 /** Human approval of an assistant plan card. Runs through the engine with userConfirmed=true. */
 export async function approvePlan(userId: string, messageId: string, overrides?: { config?: Partial<BotConfig>; mimic?: { percent?: number; maxDailyUsd?: number }; intent?: Record<string, unknown> }) {
