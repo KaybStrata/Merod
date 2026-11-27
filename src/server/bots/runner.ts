@@ -6,6 +6,8 @@ import { getFlags } from "../flags";
 import { place, notify } from "../engine/engine";
 import { usdPx, getStrategy, type Decision, type Observation } from "./strategies";
 import { heldForProfit } from "../engine/profit-guard";
+/** Last status line per bot+coin (signature without numbers), so unchanged lines aren't re-logged every tick. */
+const lastObs = new Map<string, { sig: string; at: number }>();
 
 /**
  * Persistent bot runner (runs in the Railway worker, never in the browser).
@@ -100,7 +102,14 @@ async function tickBot(b: any) {
     const held = obs.positionQty > 0 && obs.avgCost ? obs.avgCost : null;
     const coin = { symbol: a.symbol, assetId, price: obs.price, source: a.price_source,
       move: held ? ((obs.price - held) / held) * 100 : a.change_24h != null ? Number(a.change_24h) : null, basis: held ? "since buy" : "24h" };
-    await log(b.id, "observation", decision.action === "none" && decision.note ? decision.note : `${a.symbol} @ ${usdPx(obs.price)}`, { coin });
+    // Status lines are written when they change (or every 10 minutes), not on every 5-second tick.
+    const obsText = decision.action === "none" && decision.note ? decision.note : `${a.symbol} @ ${usdPx(obs.price)}`;
+    const obsKey = `${b.id}:${assetId}`, prevObs = lastObs.get(obsKey);
+    const sig = obsText.replace(/[\d.,$%]+/g, "#");
+    if (!prevObs || prevObs.sig !== sig || Date.now() - prevObs.at > 600_000 || decision.action !== "none") {
+      lastObs.set(obsKey, { sig, at: Date.now() });
+      await log(b.id, "observation", obsText, { coin });
+    }
     if (decision.action === "none") continue;
     if (decision.action === "complete") { await q("UPDATE trading_bots SET status='stopped' WHERE id=$1", [b.id]); await log(b.id, "control", `Completed: ${decision.reason}`); break; }
     if (decision.action === "alert") { await notify(b.user_id, "bot", `${b.name}: ${a.symbol}`, decision.message, `/bots/${b.id}`); continue; }

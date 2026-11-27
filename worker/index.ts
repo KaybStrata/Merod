@@ -161,6 +161,7 @@ const timers = [
   every("modo_learning", 600_000, () => modoLearn()),
   every("simulated_feed", 3000, async () => { const f = await getFlags(); if (f.paper_trading && f.simulated_prices) await tickSimulated(); }),
   every("prune_1m_bars", 3_600_000, () => prune1mBars()),
+  every("retention", 900_000, async () => (await import("@/server/retention")).pruneOldData()),
   every("real_history", 90_000, async () => { if (!(await simulationOn())) await backfillRealHistory(3); }),
   every("paper_triggers", 3000, processPaperTriggers),
   every("bots", 5000, () => tickDueBots(WORKER_ID)),

@@ -16,6 +16,8 @@ export async function providerFetch(providerId: string, env: ProviderEnv, url: s
     const res = await fetch(url, { ...init, signal: ctrl.signal, cache: "no-store" });
     const latency = Date.now() - started;
     const kind = res.status === 429 ? "rate_limit" : res.ok ? "request" : "error";
+    // Every error is logged; successful requests are sampled (1 in 20) — logging each one filled the database disk.
+    if (kind === "request" && Math.random() > 0.05) return res;
     pool.query("INSERT INTO provider_events (provider_id, environment, kind, status_code, latency_ms, message) VALUES ($1,$2,$3,$4,$5,$6)",
       [providerId, env, kind, res.status, latency, `${init.method ?? "GET"} ${safeUrl}`]).catch(() => {});
     return res;
