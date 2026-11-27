@@ -17,7 +17,7 @@ const KINDS: { k: Ev["kind"]; label: string; icon: any; cls: string }[] = [
 const SINGULAR: Record<string, string> = { thought: "Thought", decision: "Decision", execution: "Execution", close: "Close" };
 const time = (t: string) => {
   const d = new Date(t), today = d.toDateString() === new Date().toDateString();
-  const hms = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  const hms = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
   return today ? hms : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${hms.slice(0, 5)}`;
 };
 

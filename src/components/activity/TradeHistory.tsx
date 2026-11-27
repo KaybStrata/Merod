@@ -8,7 +8,7 @@ import { usd } from "@/lib/format";
 
 const SOURCE: Record<string, string> = { manual: "You", prompt: "Ask Merod", shortcut: "Shortcut", bot: "Bot", agent: "Agent", auto: "Auto trading", modo: "Modo", copy: "Mimic", mimic: "Mimic", system: "Merod" };
 const TITLE = { buy: "Purchase history", sell: "Sold", profit: "Profit" } as const;
-const when = (t: string) => new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+const when = (t: string) => new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
 const qtyFmt = (n: number) => (n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : Number(n.toPrecision(6)).toString());
 const priceFmt = (n: number) => (n >= 1 ? usd(n) : `$${Number(n.toPrecision(4))}`);
 

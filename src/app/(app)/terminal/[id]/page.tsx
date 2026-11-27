@@ -266,7 +266,7 @@ export default function TerminalPage({ params }: { params: Promise<{ id: string 
             {!detail.data?.trades?.length ? <p className="mt-3 text-center text-[11px] text-muted">No trades yet.</p> : (
               <ul className="mt-1 max-h-72 space-y-0.5 overflow-y-auto">
                 {detail.data.trades.slice(0, 40).map((t: any, i: number) => (
-                  <li key={i} className="grid grid-cols-3 text-[11.5px]"><span className={cx("num", t.side === "buy" ? "text-up" : "text-down")}>{price(t.price)}</span><span className="num text-right">{qty(t.quantity)}</span><span className="text-right text-faint">{new Date(t.executed_at).toLocaleTimeString([], { hour12: false })}</span></li>
+                  <li key={i} className="grid grid-cols-3 text-[11.5px]"><span className={cx("num", t.side === "buy" ? "text-up" : "text-down")}>{price(t.price)}</span><span className="num text-right">{qty(t.quantity)}</span><span className="text-right text-faint">{new Date(t.executed_at).toLocaleTimeString([], { hour12: true })}</span></li>
                 ))}
               </ul>
             )}

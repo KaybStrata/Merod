@@ -10,7 +10,7 @@ export type DigestT = {
   events: { at: string; kind: string; agent?: string | null; text: string; pnl?: number | null }[];
 };
 const greet = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
-const hm = (t: string) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+const hm = (t: string) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
 
 /** "While you were away": serif greeting, 4 stat tiles and what happened since the last visit (all from the user's own data). */
 export function Digest({ d }: { d: DigestT }) {

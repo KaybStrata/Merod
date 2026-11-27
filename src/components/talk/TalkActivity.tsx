@@ -18,7 +18,7 @@ const KIND: Record<string, [any, string]> = {
 const SOURCES: [string, string][] = [["all", "All"], ["order", "Trades"], ["bot", "Bots"], ["agent", "Agents"], ["auto", "Auto"], ["modo", "Modo"], ["copy", "Mimic"], ["update", "Updates"], ["buy", "Buys"], ["sell", "Sells"], ["profit", "Profit"], ["loss", "Loss"]];
 /** Profit / Loss: closed trades by realized P&L in $ (or % for theoretical Auto/Modo trades with no order). */
 const pnlOf = (i: Item) => i.pnl ?? i.pnlPct;
-const hms = (t: string) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const hms = (t: string) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
 
 /** "Activity" button in the Talk top bar: opens a live side panel of everything trading for you, without leaving Talk. */
 export function TalkActivity() {

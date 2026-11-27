@@ -19,7 +19,7 @@ const MAX_ROWS = 400;
 type StockStatus = { state: "off" | "connecting" | "live" | "error"; provider: string | null; feed: string | null; message?: string; tradesPerMin: number };
 type Flow = { t: number; sym: string; cls: WorldTrade["cls"]; side: WorldTrade["side"]; usd: number };
 
-const hhmmss = (t: number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const hhmmss = (t: number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
 const loadSyms = () => { try { const v = JSON.parse(localStorage.getItem("merod-world-crypto") ?? "null"); if (Array.isArray(v) && v.length) return v.map(String).slice(0, 40); } catch {} return DEFAULT_CRYPTO; };
 
 function Dot({ state }: { state: FeedState | StockStatus["state"] }) {

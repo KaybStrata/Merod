@@ -12,7 +12,7 @@ const when = (t: string) => {
   const d = new Date(t), s = (Date.now() - d.getTime()) / 1000;
   if (s < 60) return `${Math.max(1, Math.round(s))}s ago`;
   if (s < 3600) return `${Math.round(s / 60)}m ago`;
-  if (d.toDateString() === new Date().toDateString()) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  if (d.toDateString() === new Date().toDateString()) return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 };
 const signed = (n: number) => `${n >= 0 ? "+" : "−"}${usd(Math.abs(n))}`;

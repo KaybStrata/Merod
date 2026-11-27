@@ -27,7 +27,7 @@ const BAR: Record<string, string> = { thought: "bg-[#c9b6ff]", analysis: "bg-up/
 const SINGULAR: Record<string, string> = { thought: "Thought", analysis: "Analysis", decision: "Decision", execution: "Execution", warning: "Warning", state: "Status" };
 const time = (t: string) => {
   const d = new Date(t), today = d.toDateString() === new Date().toDateString();
-  const hms = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  const hms = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
   return today ? hms : `${d.toLocaleDateString([], { month: "short", day: "numeric" })} ${hms.slice(0, 5)}`;
 };
 

@@ -75,7 +75,7 @@ export const fmtUsd = (n: number | null | undefined, d = 2) => n == null || !Num
 export const fmtSigned = (n: number | null | undefined, d = 2) => n == null || !Number.isFinite(n) ? "—" : `${n >= 0 ? "+" : "-"}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
 export const fmtPct = (n: number | null | undefined, d = 2) => n == null || !Number.isFinite(n) ? "—" : `${n >= 0 ? "+" : ""}${n.toFixed(d)}%`;
 export const toneOf = (n: number | null | undefined) => (n == null ? "text-muted" : n > 0 ? "text-up" : n < 0 ? "text-down" : "text-muted");
-export const clock = (t: string | number) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+export const clock = (t: string | number) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
 
 /** Smooth area chart for agent equity (green when up, red when down). */
 export function AreaChart({ data, height = 56, className, up: upProp }: { data: number[]; height?: number; className?: string; up?: boolean }) {
