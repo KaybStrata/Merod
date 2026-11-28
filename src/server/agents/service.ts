@@ -287,7 +287,7 @@ export async function restoreVersion(userId: string, id: string, version: number
 const ALLOWED: Record<AgentAction, AgentStatus[]> = {
   approve: ["pending_approval"],
   reject: ["pending_approval"],
-  start: ["draft", "configured", "paused", "failed", "completed", "risk_blocked"],
+  start: ["draft", "configured", "paused", "failed", "completed", "risk_blocked", "queued"],
   pause: ["queued", "running", "risk_blocked"],
   resume: ["paused"],
   stop: ["queued", "running", "paused", "risk_blocked", "pending_approval", "failed"],

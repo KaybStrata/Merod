@@ -10,7 +10,7 @@ const TABS: { id: FloatTab; label: string; icon: any; href?: string }[] = [
   { id: "map", label: "Map", icon: MapIcon, href: "/map" },
   { id: "trade", label: "Trade", icon: CandlestickChart, href: "/trade" },
   { id: "portfolio", label: "Portfolio", icon: PieChart, href: "/analytics" },
-  { id: "bots", label: "Bots & agents", icon: Bot, href: "/bots" },
+  { id: "bots", label: "Bots", icon: Bot, href: "/bots" },
   { id: "auton", label: "Auton", icon: Cpu },
   { id: "edit", label: "Edit all", icon: SlidersHorizontal },
   { id: "advisor", label: "Momo", icon: Lightbulb, href: "/advisor" },
@@ -139,10 +139,10 @@ export function BulkEditor() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-3 py-2 text-[12px]">
-        <span className="font-semibold">Edit all bots & agents at once</span>
+        <span className="font-semibold">Edit all bots at once</span>
         <span className="text-faint">· {chosen.length} selected</span>
         <div className="ml-auto flex gap-0.5">
-          {(["all", "bot", "agent", "running"] as const).map((k) => <button key={k} onClick={() => setFilter(k)} className={cx("rounded-md px-2 py-0.5", filter === k ? "bg-accent/20 text-accent-2" : "text-muted hover:text-text")}>{k === "all" ? "All" : k === "bot" ? "Bots" : k === "agent" ? "Agents" : "Running"}</button>)}
+          {(["all", "running"] as const).map((k) => <button key={k} onClick={() => setFilter(k)} className={cx("rounded-md px-2 py-0.5", filter === k ? "bg-accent/20 text-accent-2" : "text-muted hover:text-text")}>{k === "all" ? "All bots" : "Running"}</button>)}
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
@@ -197,10 +197,10 @@ export function BulkEditor() {
   );
 }
 
-/** Edit all: one place to change everything at once — bots & agents, skills & points, Auton, trades and prompts. */
+/** Edit all: one place to change everything at once — bots, skills & points, Auton, trades and prompts. */
 function EditAll() {
   const [sec, setSec] = useState<"bots" | "skills" | "auton" | "trades" | "prompts">("bots");
-  const SECS = [["bots", "Bots & agents", Bot], ["skills", "Skills & points", Wand2], ["auton", "Auton", Cpu], ["trades", "Trades", ListChecks], ["prompts", "Prompts", MessageSquare]] as const;
+  const SECS = [["bots", "Bots", Bot], ["skills", "Skills & points", Wand2], ["auton", "Auton", Cpu], ["trades", "Trades", ListChecks], ["prompts", "Prompts", MessageSquare]] as const;
   return (
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-line bg-panel/40 px-2 py-1">

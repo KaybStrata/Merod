@@ -201,10 +201,7 @@ export function PlanCard({ message, onDone, onChip }: { message: any; onDone?: (
         )}
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
           {Object.entries(c.params ?? {}).filter(([, v]) => v !== null && v !== undefined).map(([k, v]) => <Field key={k} k={k.replace(/_/g, " ")} v={String(v)} />)}
-          <Field k="Budget" v={Number(c.budgetUsd) > 0 ? usd(c.budgetUsd) : "No limit"} />
           <Field k="Per coin buy" v={Number(c.maxPositionUsd) > 0 ? usd(c.maxPositionUsd) : "No limit"} />
-          <Field k="Max daily spend" v={Number(c.maxDailySpendUsd) > 0 ? usd(c.maxDailySpendUsd) : "No limit"} />
-          <Field k="Max daily loss" v={Number(c.maxDailyLossUsd) > 0 ? usd(c.maxDailyLossUsd) : "No limit"} />
           <Field k="Checks every" v={c.schedule.replace("every_", "")} />
           <Field k="Approval per trade" v={c.approvalRequired ? "Yes" : "No"} />
         </div>
@@ -381,7 +378,7 @@ function BotEditor({ config, busy, after, onSave, onCancel }: { config: any; bus
         {numericParams.map(([k]) => (
           <label key={k} className="text-[10.5px] text-faint">{k.replace(/_/g, " ")}<input inputMode="decimal" value={params[k]} onChange={(e) => setParams({ ...params, [k]: e.target.value })} className={numIn} /></label>
         ))}
-        {([["budgetUsd", "Budget $"], ["maxPositionUsd", "Per coin buy $"], ["maxDailySpendUsd", "Max daily spend $"], ["maxDailyLossUsd", "Max daily loss $"]] as const).map(([k, l]) => (
+        {([["maxPositionUsd", "Per coin buy $"]] as const).map(([k, l]) => (
           <label key={k} className="text-[10.5px] text-faint">{l} <span className="text-faint/70">(0 = no limit)</span><input inputMode="decimal" value={lim[k]} onChange={(e) => setLim({ ...lim, [k]: e.target.value })} className={numIn} /></label>
         ))}
       </div>

@@ -115,7 +115,7 @@ export default function ActivityPage() {
           </Card>
           <div className="space-y-4">
           <LearningFeed compact />
-          <Card title="Bots &amp; agents right now" icon={<Bot className="size-4 text-accent-2" />} action={<Link href="/bots" className="text-xs text-accent-2">All bots &amp; agents</Link>}>
+          <Card title="Bots right now" icon={<Bot className="size-4 text-accent-2" />} action={<Link href="/bots" className="text-xs text-accent-2">All bots</Link>}>
             {(mine.data?.bots ?? []).length === 0 ? <Empty title="No active bots">Try the prompt: “buy at 3% dip and sell at 5% increase, rinse and repeat”.</Empty> : (
               <div className="space-y-2">
                 {mine.data.bots.map((b: any) => (

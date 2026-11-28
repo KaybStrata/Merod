@@ -1,3 +1,4 @@
+import { HttpError } from "@/server/errors";
 import { z } from "zod";
 import { requireUser } from "@/server/auth";
 import { ok, parse, rateLimit, route } from "@/server/http";
@@ -51,14 +52,22 @@ export const POST = route(async (req) => {
   const targets = rows.filter((r) => b.targets.some((t) => t.id === r.id && t.kind === r.kind));
   const lines: string[] = [];
   if (Object.keys(b.edit).length) lines.push(...(await applyEdits(u.id, targets.map((t) => ({ kind: t.kind, id: t.id, name: t.name })), b.edit)));
+  if (!targets.length) throw new HttpError(404, "Those bots no longer exist. Refresh and try again.");
   if (b.status === "delete") {
     lines.push(...(await deleteTargets(u.id, targets)));
-    return ok({ updated: targets.length, lines });
+    return done(lines, targets.length);
   }
   if (b.status) {
     const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [u.id]))?.role;
     lines.push(...(await runControl(u.id, b.status as "pause" | "resume", targets.map((t) => ({ kind: t.kind, id: t.id, name: t.name, status: t.status })), role === "super_admin")));
   }
-  return ok({ updated: targets.length, lines });
+  return done(lines, targets.length);
 });
+
+/** Every line a failure → an error the screen shows (instead of a silent "done"). */
+function done(lines: string[], n: number) {
+  const failed = lines.filter((l) => /couldn't|could not|no longer exists/i.test(l));
+  if (lines.length && failed.length === lines.length) throw new HttpError(400, failed.map((l) => l.replace(/^•\s*/, "")).join(" "));
+  return ok({ updated: n, lines, failed: failed.length });
+}
 

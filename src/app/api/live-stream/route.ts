@@ -17,7 +17,8 @@ const AGENT_KIND: Record<string, Item["kind"]> = { thought: "thought", analysis:
 
 /** trades = your orders + Mimic copies; automation = Auto + Modo. */
 type Filter = "all" | "order" | "bot" | "agent" | "auto" | "modo" | "copy" | "update" | "auton" | "buy" | "sell" | "profit" | "loss" | "trades" | "automation";
-const GROUP: Partial<Record<Filter, string[]>> = { trades: ["order", "copy"], automation: ["auto", "modo"] };
+// Bots and agents are one thing in the app ("Bots"): the Bots filter shows both.
+const GROUP: Partial<Record<Filter, string[]>> = { trades: ["order", "copy"], automation: ["auto", "modo"], bot: ["bot", "agent"] };
 const TRADE_FILTERS = new Set(["buy", "sell", "profit", "loss"]);
 /** Same predicate the panel uses: Buys/Sells by side across sources; Profit/Loss by realized $ (or % for theoretical trades). */
 function matches(i: Item, f: Filter) {

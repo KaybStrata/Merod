@@ -70,8 +70,8 @@ const Patch = z.object({
   approvalRequired: z.boolean().optional(),
   allowRisky: z.boolean().optional(),
 });
-const COLS: Record<string, string> = { allowRisky: "allow_risky", name: "name", description: "description", budgetUsd: "budget_usd", maxPositionUsd: "max_position_usd", maxDailySpendUsd: "max_daily_spend_usd",
-  maxDailyLossUsd: "max_daily_loss_usd", maxTradesPerDay: "max_trades_per_day", minLiquidityUsd: "min_liquidity_usd", maxSlippageBps: "max_slippage_bps", schedule: "schedule", approvalRequired: "approval_required" };
+const COLS: Record<string, string> = { allowRisky: "allow_risky", name: "name", description: "description", maxPositionUsd: "max_position_usd", 
+  maxTradesPerDay: "max_trades_per_day", minLiquidityUsd: "min_liquidity_usd", maxSlippageBps: "max_slippage_bps", schedule: "schedule", approvalRequired: "approval_required" };
 
 /** PATCH — edit configuration; only while the bot is not running. */
 export const PATCH = route<Ctx>(async (req, { params }) => {

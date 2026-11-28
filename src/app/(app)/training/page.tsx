@@ -68,7 +68,7 @@ export default function TrainingPage() {
 
       <Card title="What auto-training can adjust">
         <div className="flex flex-wrap gap-6">
-          <Toggle checked={s.scope_bots} disabled={!s.enabled} onChange={(v) => patch({ scope_bots: v })} label="Bots & agents" />
+          <Toggle checked={s.scope_bots} disabled={!s.enabled} onChange={(v) => patch({ scope_bots: v })} label="Bots" />
           <Toggle checked={s.scope_shortcuts} disabled={!s.enabled} onChange={(v) => patch({ scope_shortcuts: v })} label="Shortcut buttons" />
           <Toggle checked={s.scope_prompts} disabled={!s.enabled} onChange={(v) => patch({ scope_prompts: v })} label="Prompt-to-trade" />
           <Select label="Pause bot after consecutive losses" value={s.pause_after_losses} onChange={(e) => patch({ pause_after_losses: Number(e.target.value) })} className="w-56">

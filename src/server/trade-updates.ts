@@ -81,7 +81,7 @@ export async function analyze(userId: string, hours = 24) {
   }
   for (const c of coins.values()) {
     if (c.losses >= 3 && c.net < 0 && c.wins <= c.losses / 3) {
-      decisions.push({ title: `Avoid ${c.symbol} for 7 days`, why: `${c.losses} losing trades vs ${c.wins} winning on ${c.symbol}, net -$${Math.abs(r2(c.net))}. Adds a point so no bot, agent or prompt buys it for a week.`, safe: true, action: { type: "point", name: `Avoid ${c.symbol}`, text: `Never buy ${c.symbol} for 7 days (it kept losing).` } });
+      decisions.push({ title: `Avoid ${c.symbol} for 7 days`, why: `${c.losses} losing trades vs ${c.wins} winning on ${c.symbol}, net -$${Math.abs(r2(c.net))}. Adds a point so no bot or prompt buys it for a week — only if you click it (points are never added on their own).`, safe: false, action: { type: "point", name: `Avoid ${c.symbol}`, text: `Never buy ${c.symbol} for 7 days (it kept losing).` } });
     }
   }
 

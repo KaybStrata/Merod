@@ -102,6 +102,16 @@ export async function setSkillActive(userId: string, id: string, active: boolean
   if (row && active) await applyRules(userId, row.rules ?? {});
   return row;
 }
+/** Edit a skill or point. Its enforced rules are re-read from the new text; nothing is applied unless it's on. */
+export async function updateSkill(userId: string, id: string, p: { name?: string; instructions?: string }) {
+  const cur = await one<any>("SELECT * FROM skills WHERE id=$1 AND user_id=$2", [id, userId]);
+  if (!cur) throw new Error("Not found");
+  const text = (p.instructions ?? cur.instructions).trim().slice(0, 2000);
+  if (text.length < 3) throw new Error("Write the instruction first");
+  const rules = extractRules(text);
+  return one<any>("UPDATE skills SET name=$3, instructions=$4, rules=$5, updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING *",
+    [id, userId, (p.name ?? cur.name).trim().slice(0, 60) || cur.name, text, JSON.stringify(rules)]);
+}
 export const deleteSkill = (userId: string, id: string) => q("DELETE FROM skills WHERE id=$1 AND user_id=$2", [id, userId]);
 
 /** Active skills and points as instructions for any AI answering or planning for the user. */

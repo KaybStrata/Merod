@@ -5,6 +5,7 @@ import { Wand2, Trash2, CalendarClock, Plus, Crosshair } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { cx, useToast } from "@/components/ui";
 import { AutoModesBar } from "@/components/AutoModesBar";
+import { SkillText } from "@/components/SkillText";
 
 /**
  * Skills button for the prompt box. Skills are standing instructions that change how Modo, OpenAI, Claude, bots and
@@ -46,7 +47,7 @@ export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) =>
       {open && (
         <div className={cx("absolute bottom-10 z-40 max-h-[min(72vh,640px)] w-[360px] max-w-[90vw] overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-2xl", pop.cls)}>
           <div className="mb-2 rounded-lg border border-teal-400/25 bg-teal-400/5 p-2">
-            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-teal-300">Auto skills · on for all bots & agents</div>
+            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-teal-300">Auto skills · on for all bots</div>
             <AutoModesBar compact />
           </div>
           <div className="mb-2 flex gap-1 text-[12px]">
@@ -74,7 +75,7 @@ export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) =>
                 {skills.map((s) => (
                   <div key={s.id} className="flex items-start gap-2 rounded-lg border border-line/60 px-2 py-1.5">
                     <Switch on={s.active} onClick={() => toggle("skill", s.id, !s.active)} />
-                    <div className="min-w-0 flex-1"><div className="truncate text-[12.5px] font-medium">{s.name}{s.expired ? <span className="ml-1 text-[10px] text-faint">(expired)</span> : s.expires_at ? <span className="ml-1 text-[10px] text-faint">until {new Date(s.expires_at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</span> : null}</div><div className="line-clamp-2 text-[11px] text-muted">{s.instructions}</div></div>
+                    <SkillText s={s} onSaved={() => data.refresh()} title={<>{s.name}{s.expired ? <span className="ml-1 text-[10px] text-faint">(expired)</span> : s.expires_at ? <span className="ml-1 text-[10px] text-faint">until {new Date(s.expires_at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</span> : null}</>} />
                     <button onClick={() => remove("skill", s.id)} className="text-faint hover:text-down" aria-label="Delete skill"><Trash2 className="size-3.5" /></button>
                   </div>
                 ))}

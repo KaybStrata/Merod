@@ -5,6 +5,7 @@ import { api, useApi } from "@/lib/api";
 import { cx, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
 import { AutoModesBar } from "@/components/AutoModesBar";
+import { SkillText } from "@/components/SkillText";
 
 const inp = "rounded-md border border-line bg-bg px-2 py-1 text-[12px] outline-none focus:border-accent/60";
 const btn = "rounded-lg border border-line px-2.5 py-1 text-[12px] text-muted hover:text-text disabled:opacity-50";
@@ -27,7 +28,7 @@ export function SkillsSection() {
   return (
     <div className="space-y-1.5 p-3">
       <div className="rounded-lg border border-teal-400/25 bg-teal-400/5 p-2">
-        <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-teal-300">Auto skills (all bots & agents)</div>
+        <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-teal-300">Auto skills (all bots)</div>
         <AutoModesBar />
       </div>
       <div className="flex items-center gap-2 text-[12px]"><span className="font-semibold">{rows.length} skills & points</span>
@@ -36,10 +37,7 @@ export function SkillsSection() {
       {rows.map((r) => (
         <div key={r.id} className="flex items-start gap-2 rounded-lg border border-line px-2.5 py-1.5">
           <Sw on={r.active} label={`${r.name} on/off`} onClick={() => act(() => api("/api/skills", { method: "PATCH", json: { kind: "skill", id: r.id, active: !r.active } }))} />
-          <div className="min-w-0 flex-1">
-            <div className="text-[12.5px] font-medium"><span className={cx("mr-1.5 rounded px-1 text-[9.5px] font-bold uppercase", r.kind === "point" ? "bg-rose-400/15 text-rose-300" : "bg-amber-300/15 text-amber-200")}>{r.kind ?? "skill"}</span>{r.kind === "point" ? String(r.instructions).slice(0, 60) : r.name}</div>
-            <div className="line-clamp-2 text-[11px] text-muted">{r.instructions}</div>
-          </div>
+          <SkillText s={r} onSaved={refresh} title={<><span className={cx("mr-1.5 rounded px-1 text-[9.5px] font-bold uppercase", r.kind === "point" ? "bg-rose-400/15 text-rose-300" : "bg-amber-300/15 text-amber-200")}>{r.kind ?? "skill"}</span>{r.name}</>} />
           <button onClick={() => { if (confirm("Delete this for good?")) void act(() => api(`/api/skills?id=${r.id}`, { method: "DELETE" })); }} className={del} aria-label="Delete"><Trash2 className="size-3.5" /></button>
         </div>
       ))}
@@ -112,7 +110,7 @@ function AutonFleet({ bots, agents, refresh }: { bots: any[]; agents: any[]; ref
     <div className="space-y-3">
       <div className="rounded-lg border border-line bg-panel/40 p-2.5">
         <div className="mb-1.5 flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-faint">All of Auton's bots & agents ({everyone.length})</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-faint">All of Auton's bots ({everyone.length})</span>
           <button onClick={() => bulk(everyone, { status: "resume" }, "All on")} disabled={!everyone.length} className={cx(btn, "ml-auto")}>All on</button>
           <button onClick={() => bulk(everyone, { status: "pause" }, "All off")} disabled={!everyone.length} className={btn}>All off</button>
           <button onClick={() => { if (confirm(`Delete all ${everyone.length} of Auton's bots and agents? Past trades stay in your history.`)) void bulk(everyone, { status: "delete" }, "Deleted"); }} disabled={!everyone.length} className={cx(btn, "text-down hover:text-down")}>Delete all</button>
@@ -141,13 +139,13 @@ function AutonFleet({ bots, agents, refresh }: { bots: any[]; agents: any[]; ref
         </div>
       </div>
       <div>
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Auton's agents ({agents.length})</div>
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Auton's AI bots ({agents.length})</div>
         {!agents.length && <p className="text-muted">None yet.</p>}
         <div className="space-y-1">
           {agents.map((g: any) => (
             <div key={g.id} className="flex flex-wrap items-end gap-2 rounded-lg border border-line px-2.5 py-1.5">
               <Sw on={g.status === "running"} label={`${g.name} on/off`} onClick={() => bulk([{ kind: "agent", id: g.id }], { status: g.status === "running" ? "pause" : "resume" }, `${g.name} turned ${g.status === "running" ? "off" : "on"}`)} />
-              <div className="min-w-[120px] flex-1"><div className="truncate font-medium">{g.name}</div><div className="text-[10.5px] text-muted">{g.status} · agent</div></div>
+              <div className="min-w-[120px] flex-1"><div className="truncate font-medium">{g.name}</div><div className="text-[10.5px] text-muted">{g.status} · AI bot</div></div>
               <label className="text-[10px] text-faint">Capital $<input key={`${g.id}-${g.capital_usd}`} defaultValue={Number(g.capital_usd ?? 0)} inputMode="decimal" onBlur={(e) => { const v = numOrNull(e.target.value); if (v != null && v !== Number(g.capital_usd)) void bulk([{ kind: "agent", id: g.id }], { edit: { capitalUsd: v } }, `${g.name}: capital → $${v}`); }} className={cx(inp, "mt-0.5 w-[80px]")} /></label>
               <button onClick={() => { if (confirm(`Delete “${g.name}”?`)) void bulk([{ kind: "agent", id: g.id }], { status: "delete" }, "Deleted"); }} className={del} aria-label="Delete agent"><Trash2 className="size-3.5" /></button>
             </div>

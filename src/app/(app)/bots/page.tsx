@@ -47,11 +47,11 @@ export default function BotsPage() {
 
   return (
     <div className="space-y-5">
-      <SectionTabs tabs={[{ href: "/bots", label: "Bots & agents", icon: Bot }, { href: "/agents", label: "Agent command center", icon: Sparkles }, { href: "/agents/fleets", label: "Fleet builder", icon: LayoutTemplate }, { href: "/shortcuts", label: "Shortcut buttons", icon: Zap }]} />
+      <SectionTabs tabs={[{ href: "/bots", label: "Bots", icon: Bot }, { href: "/agents", label: "Command center", icon: Sparkles }, { href: "/agents/fleets", label: "Fleet builder", icon: LayoutTemplate }, { href: "/shortcuts", label: "Shortcut buttons", icon: Zap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="page-title">Bots & Agents</h1>
-          <p className="text-sm text-muted">Every bot and agent in one list — automated strategies running on Merod's servers that keep working when your browser is closed. Profit is never guaranteed.</p>
+          <h1 className="page-title">Bots</h1>
+          <p className="text-sm text-muted">Every bot in one list (AI bots included) — automated strategies running on Merod's servers that keep working when your browser is closed. Profit is never guaranteed.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => emergency("pause_all")} loading={busy === "pause_all"}><PauseCircle className="size-4" /> Pause all</Button>
@@ -63,7 +63,7 @@ export default function BotsPage() {
       {user.role === "super_admin" && <CopyBotsPanel compact />}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[["Bots & agents", bots.length + agents.length], ["Running", running], ["Paused", bots.filter((b) => b.status === "paused").length + agents.filter((a) => a.status === "paused").length], ["Total P&L", usd(bots.reduce((s, b) => s + Number(b.pnl_usd), 0) + agents.reduce((s, a) => s + Number(a.metrics?.pnl ?? 0), 0), { sign: true })]].map(([k, v]) => (
+        {[["Bots", bots.length + agents.length], ["Running", running], ["Paused", bots.filter((b) => b.status === "paused").length + agents.filter((a) => a.status === "paused").length], ["Total P&L", usd(bots.reduce((s, b) => s + Number(b.pnl_usd), 0) + agents.reduce((s, a) => s + Number(a.metrics?.pnl ?? 0), 0), { sign: true })]].map(([k, v]) => (
           <div key={k as string} className="rounded-xl border border-line bg-panel/80 p-4"><div className="text-xs text-muted">{k}</div><div className="num mt-1 text-xl font-semibold">{v}</div></div>
         ))}
       </div>
@@ -73,12 +73,12 @@ export default function BotsPage() {
         <AutoModesBar />
       </Card>
 
-      <Card title="Your bots & agents" icon={<Bot className="size-4 text-accent-2" />} pad={false}>
+      <Card title="Your bots" icon={<Bot className="size-4 text-accent-2" />} pad={false}>
         {bots.length + agents.length === 0 ? <div className="p-4"><Empty icon={<Bot className="size-6" />} title="No bots yet" action={<Button size="sm" variant="primary" onClick={() => setCreating("dip_rebound_loop")}>Create a bot</Button>}>Start from a template below, describe one in plain English, or configure it manually. New bots run in paper mode.</Empty></div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-faint"><tr className="border-b border-line">
-                <th className="px-4 py-2 font-medium">Bot / agent</th><th className="px-3 font-medium">Strategy / role</th><th className="px-3 font-medium">Assets</th><th className="px-3 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">Bot</th><th className="px-3 font-medium">Strategy</th><th className="px-3 font-medium">Assets</th><th className="px-3 font-medium">Status</th>
                 <th className="px-3 text-right font-medium">P&L</th><th className="px-3 text-right font-medium">Trades today</th><th className="px-3 font-medium">Last activity</th><th className="px-4" /></tr></thead>
               <tbody>
                 {bots.map((b) => (
@@ -100,7 +100,7 @@ export default function BotsPage() {
                 ))}
                 {agents.map((a) => (
                   <tr key={a.id} className="border-b border-line/60 hover:bg-panel-2/40">
-                    <td className="px-4 py-3"><Link href={`/agents/${a.id}`} className="font-medium hover:text-accent-2">{a.name}</Link><div className="mt-0.5 flex items-center gap-1"><Badge>agent</Badge>{a.fleet_name && <span className="text-[11px] text-faint">{a.fleet_name}</span>}</div></td>
+                    <td className="px-4 py-3"><Link href={`/agents/${a.id}`} className="font-medium hover:text-accent-2">{a.name}</Link><div className="mt-0.5 flex items-center gap-1"><Badge>AI bot</Badge>{a.fleet_name && <span className="text-[11px] text-faint">{a.fleet_name}</span>}</div></td>
                     <td className="px-3 text-muted">{a.roleName}</td>
                     <td className="px-3">{(a.symbols ?? []).join(", ") || <span className="text-faint">—</span>}</td>
                     <td className="px-3"><StatusPill status={a.status} /></td>
@@ -255,7 +255,7 @@ function BotForm({ strategies, initialStrategy, onCreated }: { strategies: any[]
       <div>
         <div className="mb-2 text-sm font-medium">Risk limits</div>
         <div className="grid gap-3 sm:grid-cols-4">
-          {num("budgetUsd", "Starting budget ($)", "0 = no limit")}{num("maxPositionUsd", "Max position ($)", "0 = no limit")}{num("maxDailySpendUsd", "Max daily spend ($)", "0 = no limit")}{num("maxDailyLossUsd", "Max daily loss ($)", "0 = no limit")}
+          {num("maxPositionUsd", "Max position ($)", "0 = no limit")}
           {num("minLiquidityUsd", "Min liquidity ($)")}{num("maxSlippageBps", "Max slippage (bps)")}{num("maxPriceDeviationPct", "Max price deviation (%)")}
           {num("profitTargetPct", "Profit target (%)", "optional")}{num("stopLossPct", "Stop-loss (%)", "optional")}
           <Select label="Check every" value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })}>{SCHEDULES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>

@@ -51,8 +51,8 @@ export async function createBot(userId: string, cfg: BotConfig, actor: "user" | 
        max_daily_spend_usd, max_daily_loss_usd, max_trades_per_day, min_liquidity_usd, max_slippage_bps, max_price_deviation_pct, profit_target_pct, stop_loss_pct,
        schedule, approval_required, notify, created_from_prompt, allow_risky)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING *`,
-    [userId, cfg.name, cfg.description, cfg.strategyId, JSON.stringify(params), cfg.assetIds, cfg.markets, account.id, isPaper, cfg.budgetUsd, cfg.maxPositionUsd,
-     cfg.maxDailySpendUsd, cfg.maxDailyLossUsd, cfg.maxTradesPerDay, cfg.minLiquidityUsd, cfg.maxSlippageBps, cfg.maxPriceDeviationPct, cfg.profitTargetPct ?? null,
+    [userId, cfg.name, cfg.description, cfg.strategyId, JSON.stringify(params), cfg.assetIds, cfg.markets, account.id, isPaper, 0, cfg.maxPositionUsd,
+     0, 0, cfg.maxTradesPerDay, cfg.minLiquidityUsd, cfg.maxSlippageBps, cfg.maxPriceDeviationPct, cfg.profitTargetPct ?? null,
      cfg.stopLossPct ?? null, cfg.schedule, cfg.approvalRequired, JSON.stringify(cfg.notify), cfg.createdFromPrompt ?? null, allowRisky]);
   await q("INSERT INTO bot_activity_logs (bot_id, level, message, data) VALUES ($1,'control',$2,$3)", [bot.id, `Created by ${actor}${isPaper ? " (paper)" : ""}`, JSON.stringify({ params })]);
   await audit({ actorType: actor, actorId: userId, userId, action: "bot.create", target: bot.id, data: { strategy: cfg.strategyId, paper: isPaper } });

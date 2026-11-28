@@ -151,7 +151,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
 const SUGGESTION_GROUPS: [string, string[]][] = [
   ["For you", ["How is my portfolio doing?", "What moved my portfolio today?"]],
   ["Trade", ["Buy $100 of SOL", "Sell 25% of my biggest winner", "Buy $500 of NVDA if it dips 3%, take profit at 8%"]],
-  ["Bots & agents", ["Pick the top 20 Solana meme coin gainers, buy $10 each, sell at 2% profit, repeat", "Create 3 agents that trade Solana meme coins", "Make a bot that buys ETH at a 3% dip and sells at 5% profit"]],
+  ["Bots", ["Pick the top 20 Solana meme coin gainers, buy $10 each, sell at 2% profit, repeat", "Create 3 agents that trade Solana meme coins", "Make a bot that buys ETH at a 3% dip and sells at 5% profit"]],
   ["Mimic", ["Mimic the top 50 stock and crypto traders this week", "Mimic the top ROI earner for Solana meme coins this week"]],
   ["Settings", ["Turn off risk flagging for all bots", "Turn Modo Autopilot on", "Risk level 80, per trade $50, take profit 10%, stop loss 3%", "Open purchase history"]],
 ];

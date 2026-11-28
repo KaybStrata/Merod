@@ -52,7 +52,7 @@ export default function Analytics() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-0.5 rounded-lg border border-line bg-panel/60 p-0.5">
-          {([["portfolio", "Portfolio"], ["agents", "Agents"], ["fleets", "Fleets"], ["trades", "Agent trade log"]] as const).map(([k, l]) => <button key={k} onClick={() => setView(k)} className={cx("rounded-md px-3 py-1 text-[12px]", view === k ? "nav-active" : "text-muted hover:text-text")}>{l}</button>)}
+          {([["portfolio", "Portfolio"], ["agents", "AI bots"], ["fleets", "Fleets"], ["trades", "AI bot trade log"]] as const).map(([k, l]) => <button key={k} onClick={() => setView(k)} className={cx("rounded-md px-3 py-1 text-[12px]", view === k ? "nav-active" : "text-muted hover:text-text")}>{l}</button>)}
         </div>
         {view === "portfolio" && <div className="flex gap-0.5 rounded-lg border border-line bg-panel/60 p-0.5">{(["paper", "live"] as const).map((b) => <button key={b} onClick={() => setBook(b)} className={cx("rounded-md px-3 py-1 text-[12px]", book === b ? "bg-panel-2 text-text" : "text-muted hover:text-text")}>{b === "paper" ? "Paper" : "Live"}</button>)}</div>}
         <div className="ml-auto flex items-center gap-2">

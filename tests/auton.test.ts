@@ -26,8 +26,7 @@ test("Auton: one cycle reads history, opens paper bots within budget, makes its 
   assert.ok(bots.length >= 1 && bots.length <= 2, c);
   for (const b of bots) { assert.equal(b.is_paper, true); assert.match(b.name, /^Auton · /); assert.equal(Number(b.params.amount_usd), 200); }
   assert.ok(await one("SELECT 1 FROM e_wallets WHERE user_id=$1 AND name='Auton profits'", [u]), "its e-wallet");
-  const sk = await one<any>("SELECT active FROM skills WHERE user_id=$1 AND name='Auton rules'", [u]);
-  assert.equal(sk?.active, false, "its skill only applies to its own bots");
+  assert.equal(await one("SELECT 1 FROM skills WHERE user_id=$1", [u]), null, "Auton never makes skills or points on its own");
   const m = await one<any>("SELECT nodes FROM strategy_maps WHERE user_id=$1 AND name='Auton'", [u]);
   assert.ok(m.nodes.some((n: any) => n.type === "auton"), "Auton map with the Auton box");
   const ev = await one<any>("SELECT count(*)::int AS n FROM auton_events WHERE user_id=$1", [u]);

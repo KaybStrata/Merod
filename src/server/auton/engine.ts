@@ -215,14 +215,8 @@ async function ensureExtras(userId: string, s: AutonSettings, conv: string | nul
     const has = await one("SELECT 1 FROM e_wallet_rules WHERE user_id=$1 AND wallet_id=$2 AND scope='bot' AND scope_ref=$3", [userId, wid, b.id]);
     if (!has) await addRule(userId, wid!, { percent: 20, scope: "bot", scopeRef: b.id, scopeLabel: b.name }).catch(() => {});
   }
-  // Skill: Auton's own rules, map-only (switched off globally, so it never changes your other bots).
-  let sid = (await own(userId, "skill"))[0]?.ref_id;
-  if (!sid) {
-    const { createMapInstruction } = await import("../map");
-    const sk = await createMapInstruction(userId, "skill", "Auton rules", "stop loss 4%, take profit 3%, buy on a 2% dip; skip coins that kept losing; never more than its budget", false);
-    sid = sk.id; await remember(userId, "skill", sk.id, "Auton rules");
-    await L("execution", "Created skill “Auton rules” (applies only to Auton's own bots)");
-  }
+  // Auton never makes skills or points on its own (only when you ask for one).
+  const sid = (await own(userId, "skill"))[0]?.ref_id;
   // Scout agent: research-only, no capital (it watches the market and reports; Auton decides).
   if (!(await own(userId, "agent")).length) {
     try {
@@ -245,8 +239,8 @@ async function ensureExtras(userId: string, s: AutonSettings, conv: string | nul
   N("brain", "auton", 0, 0, { label: "Auton" });
   N("plan", "method", 340, 0, { label: "Auton plan" });
   N("prompt", "prompt", 340, -210, { label: "Auton prompt", text: `${s.goals ? `${s.goals}. ` : ""}buy on a 2% dip, take profit 3%, stop loss 4%, $${s.max_capital_usd > 0 ? Math.max(5, Math.floor(s.max_capital_usd / Math.max(1, s.max_bots || 5))) : Number(s.memory?.trade_usd ?? 100)} per trade` });
-  N("skill", "skill", 340, 210, { refId: sid, label: "Auton rules" });
-  E("brain", "plan"); E("prompt", "plan"); E("skill", "plan");
+  if (sid) N("skill", "skill", 340, 210, { refId: sid, label: "Auton rules" });
+  E("brain", "plan"); E("prompt", "plan"); if (sid) E("skill", "plan");
   live.forEach((b, i) => { N(`b${i}`, "bot", 700, (i - (live.length - 1) / 2) * 150, { refId: b.id, label: b.name }); E("plan", `b${i}`); });
   await saveMap(userId, mapId!, { nodes, edges });
 }
