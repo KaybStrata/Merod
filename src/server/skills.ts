@@ -153,6 +153,16 @@ export async function skillCommand(userId: string, raw: string, tz = "UTC"): Pro
       : `Skill “${skill.name}” is on. Modo, OpenAI and Claude now follow it in every answer and plan.`;
     return `${head}${enforced.length ? `\nMerod also enforces: ${enforced.join("; ")}.` : ""}${applied.length ? `\n${applied.join("\n")}` : ""}\nManage ${make.kind}s with the Skills button.`;
   }
+  // "turn off/on all skills" (without naming points) covers points too: the Skills menu holds both.
+  if (/\ball\b/i.test(t) && /\bskills?\b/i.test(t) && !/\bpoints?\b/i.test(t) && /\b(turn off|disable|pause|off|turn on|enable|resume)\b/i.test(t)) {
+    const on = /\b(turn on|enable|resume)\b/i.test(t) && !/\b(turn off|disable|pause)\b/i.test(t);
+    const all = await listSkills(userId);
+    const pick = all.filter((r) => r.active !== on);
+    for (const r of pick) await setSkillActive(userId, r.id, on);
+    const ns = pick.filter((r) => r.kind !== "point").length, np = pick.length - ns;
+    if (!pick.length) return `All your skills and points are already ${on ? "on" : "off"}.`;
+    return `Turned ${on ? "on" : "off"} ${ns} skill${ns === 1 ? "" : "s"} and ${np} point${np === 1 ? "" : "s"}.${on ? "" : " Nothing was deleted (say “turn on all skills” to bring them back), and settings they already changed on bots and agents stay as they are."}`;
+  }
   const kindWord = /\bpoints?\b/i.test(t) ? "point" : /\bskills?\b/i.test(t) ? "skill" : null;
   if (!kindWord) return null;
   const rows = (await listSkills(userId)).filter((r) => r.kind === kindWord);

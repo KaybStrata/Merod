@@ -50,7 +50,15 @@ export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) =>
                 {t === "skills" ? <Wand2 className="size-3" /> : t === "points" ? <Crosshair className="size-3" /> : <CalendarClock className="size-3" />}{t}{t === "schedules" && schedules.length ? ` ${schedules.length}` : ""}
               </button>
             ))}
-            <button onClick={() => setOpen(false)} className="ml-auto px-1 text-faint hover:text-text" aria-label="Close">✕</button>
+            {all.some((s) => s.active) && (
+              <button onClick={async () => {
+                const on = all.filter((s) => s.active);
+                if (!confirm(`Turn off all ${on.length} skills and points? Nothing is deleted; you can turn them back on any time.`)) return;
+                try { await Promise.all(on.map((s) => api("/api/skills", { method: "PATCH", json: { kind: "skill", id: s.id, active: false } }))); toast(`Turned off ${on.length}`, "up"); data.refresh(); }
+                catch (e: any) { toast(e.message, "down"); }
+              }} className="ml-auto rounded-md border border-line px-1.5 py-0.5 text-[11px] text-muted hover:border-down/50 hover:text-down" title="Turn off every skill and point (nothing is deleted)">Turn all off</button>
+            )}
+            <button onClick={() => setOpen(false)} className={cx("px-1 text-faint hover:text-text", !all.some((s) => s.active) && "ml-auto")} aria-label="Close">✕</button>
           </div>
           {tab !== "schedules" ? (
             <>
