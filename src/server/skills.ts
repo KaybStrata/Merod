@@ -51,9 +51,45 @@ const describeRules = (r: SkillRules) => [
   r.maxTradeUsd ? `max $${r.maxTradeUsd} per buy` : null,
 ].filter(Boolean) as string[];
 
-export type Kind = "skill" | "point";
+export type Kind = "skill" | "point" | "rule";
+export type RuleScope = "all" | "bots" | "bot" | "prompts";
 const LIVE = "(expires_at IS NULL OR expires_at > now())";
-export const listSkills = (userId: string) => q<any>(`SELECT *, (expires_at IS NOT NULL AND expires_at <= now()) AS expired FROM skills WHERE user_id=$1 ORDER BY kind, active DESC, created_at DESC`, [userId]);
+export const listSkills = (userId: string) => q<any>(`SELECT s.*, (s.expires_at IS NOT NULL AND s.expires_at <= now()) AS expired,
+       (SELECT name FROM trading_bots b WHERE b.id::text = s.scope_ref UNION ALL SELECT name FROM agents a WHERE a.id::text = s.scope_ref LIMIT 1) AS scope_name
+  FROM skills s WHERE s.user_id=$1 ORDER BY s.kind, s.active DESC, s.created_at DESC`, [userId]);
+
+/** Which trades a rule covers, in words. */
+export const scopeLabel = (scope?: string | null, name?: string | null) =>
+  scope === "bot" ? `only ${name ?? "one bot"}` : scope === "bots" ? "all bots" : scope === "prompts" ? "prompted trades" : "everything (Modo / Merod trading)";
+
+/** SQL: rows that apply to an order from `source` (and bot/agent `ref`). Skills and points always apply; rules only to what they target. */
+const appliesSql = (sourceParam: string, refParam: string) =>
+  `(kind <> 'rule' OR scope = 'all' OR (scope = 'bots' AND ${sourceParam} IN ('bot','agent')) OR (scope = 'prompts' AND ${sourceParam} = 'prompt') OR (scope = 'bot' AND scope_ref = ${refParam}))`;
+
+/** Create a rule for one bot, all bots, prompted trades or everything. Its stop-loss / take-profit / amount / dip go to the bots it covers. */
+export async function createRule(userId: string, name: string, instructions: string, scope: RuleScope, scopeRef?: string | null) {
+  const text = instructions.trim().slice(0, 2000);
+  if (text.length < 3) throw new Error("Write the rule, e.g. “stop loss 5%, never buy BONK, max $50 per trade”.");
+  if (scope === "bot" && !scopeRef) throw new Error("Pick which bot this rule is for.");
+  const rules = extractRules(text);
+  const row = await one<any>("INSERT INTO skills (user_id, name, instructions, rules, kind, scope, scope_ref) VALUES ($1,$2,$3,$4,'rule',$5,$6) RETURNING *",
+    [userId, (name || text.split(/[.,;\n]/)[0]).trim().slice(0, 60), text, JSON.stringify(rules), scope, scope === "bot" ? scopeRef : null]);
+  const applied = await applyRuleEdits(userId, row);
+  return { skill: row, enforced: describeRules(rules), applied };
+}
+
+/** A rule's numbers go to the bots it covers (not to everything, like a skill's). */
+async function applyRuleEdits(userId: string, row: any) {
+  const r: SkillRules = row.rules ?? {};
+  if (!r.edits || row.scope === "prompts") return [] as string[];
+  const { parseTargets } = await import("./ai/bulk-edit");
+  let targets: { kind: "bot" | "agent"; id: string; name: string }[] = [];
+  if (row.scope === "bot") {
+    const t = await one<any>("SELECT 'bot' AS kind, id, name FROM trading_bots WHERE id::text=$1 AND user_id=$2 UNION ALL SELECT 'agent', id, name FROM agents WHERE id::text=$1 AND user_id=$2 LIMIT 1", [row.scope_ref, userId]);
+    if (t) targets = [t];
+  } else targets = ((await parseTargets(userId, "all bots and agents")) ?? []) as any;
+  return targets.length ? applyEdits(userId, targets, r.edits) : [];
+}
 
 /** "for 2 hours", "for today", "for 3 days", "this week", "until friday" → when a Point stops applying (null = until you remove it). */
 export function parseExpiry(text: string, tz = "UTC", now = new Date()): Date | null {
@@ -99,7 +135,7 @@ async function applyRules(userId: string, r: SkillRules) {
 
 export async function setSkillActive(userId: string, id: string, active: boolean) {
   const row = await one<any>("UPDATE skills SET active=$3, updated_at=now() WHERE id=$1 AND user_id=$2 RETURNING *", [id, userId, active]);
-  if (row && active) await applyRules(userId, row.rules ?? {});
+  if (row && active) { if (row.kind === "rule") await applyRuleEdits(userId, row); else await applyRules(userId, row.rules ?? {}); }
   return row;
 }
 /** Edit a skill or point. Its enforced rules are re-read from the new text; nothing is applied unless it's on. */
@@ -116,18 +152,19 @@ export const deleteSkill = (userId: string, id: string) => q("DELETE FROM skills
 
 /** Active skills and points as instructions for any AI answering or planning for the user. */
 export async function skillNotes(userId: string): Promise<string | null> {
-  const rows = await q<any>(`SELECT kind, name, instructions, expires_at FROM skills WHERE user_id=$1 AND active AND ${LIVE} ORDER BY kind DESC, created_at LIMIT 40`, [userId]).catch(() => []);
+  const rows = await q<any>(`SELECT kind, name, instructions, expires_at, scope, (SELECT name FROM trading_bots b WHERE b.id::text = skills.scope_ref LIMIT 1) AS scope_name FROM skills WHERE user_id=$1 AND active AND ${LIVE} ORDER BY kind DESC, created_at LIMIT 40`, [userId]).catch(() => []);
   if (!rows.length) return null;
-  const sk = rows.filter((r: any) => r.kind !== "point"), pt = rows.filter((r: any) => r.kind === "point");
+  const sk = rows.filter((r: any) => r.kind === "skill"), pt = rows.filter((r: any) => r.kind === "point"), ru = rows.filter((r: any) => r.kind === "rule");
   const out: string[] = [];
   if (sk.length) out.push(`user_skills (the user's own standing instructions: follow them in how you interpret, reason, decide and plan):\n${sk.map((r: any) => `- ${r.name}: ${String(r.instructions).replace(/\s+/g, " ").slice(0, 400)}`).join("\n")}`);
   if (pt.length) out.push(`user_points (specific instructions from the user that apply right now; they take priority over general habits):\n${pt.map((r: any) => `- ${String(r.instructions).replace(/\s+/g, " ").slice(0, 400)}${r.expires_at ? ` (until ${new Date(r.expires_at).toISOString()})` : ""}`).join("\n")}`);
+  if (ru.length) out.push(`user_rules (the user's rules, each for a specific target; apply each only to what it targets):\n${ru.map((r: any) => `- [${scopeLabel(r.scope, r.scope_name)}] ${r.name}: ${String(r.instructions).replace(/\s+/g, " ").slice(0, 400)}`).join("\n")}`);
   return out.join("\n\n");
 }
 
 /** Merged enforceable rules of all active skills and live points (checked by the trading engine on every buy, and for new bots/agents). */
-export async function activeRules(userId: string): Promise<SkillRules> {
-  const rows = await q<any>(`SELECT rules FROM skills WHERE user_id=$1 AND active AND ${LIVE}`, [userId]).catch(() => []);
+export async function activeRules(userId: string, ctx?: { source?: string | null; ref?: string | null }): Promise<SkillRules> {
+  const rows = await q<any>(`SELECT rules FROM skills WHERE user_id=$1 AND active AND ${LIVE} AND ${appliesSql("$2::text", "$3::text")}`, [userId, ctx?.source ?? null, ctx?.ref ?? null]).catch(() => []);
   const out: SkillRules = {};
   for (const { rules: r } of rows) {
     if (r?.edits) out.edits = { ...(out.edits ?? {}), ...r.edits };
@@ -156,6 +193,21 @@ export async function skillCommand(userId: string, raw: string, tz = "UTC"): Pro
   if (m1) make = { kind: m1[1].toLowerCase() as Kind, name: m1[2] ?? "", text: m1[3] };
   const m2 = !make && t.match(/^(skill|point)\s*:\s*([\s\S]+)$/i);
   if (m2) make = { kind: m2[1].toLowerCase() as Kind, name: "", text: m2[2] };
+  const mr = t.match(/^(?:please\s+)?(?:(?:create|add|make|new|save|set)\s+(?:me\s+)?(?:a\s+|the\s+)?(?:new\s+)?)?rule(?:\s+(?:called|named)\s+["“]?([^:"”]{1,60})["”]?)?(?:\s+for\s+([^:]{1,80}?))?\s*(?::|-|—|that|to)\s*([\s\S]+)$/i);
+  if (mr && mr[3].trim().length >= 3) {
+    const target = (mr[2] ?? "").trim().toLowerCase();
+    let scope: RuleScope = "all", ref: string | null = null, label = "everything";
+    if (/^(all\s+)?(my\s+)?(bots|ai bots|agents)$/.test(target)) { scope = "bots"; label = "all bots"; }
+    else if (/^(all\s+)?(my\s+)?(prompts?|prompted trades|chat|prompt trades)$/.test(target)) { scope = "prompts"; label = "prompted trades"; }
+    else if (target && !/^(everything|all|merod|modo|trading|all trading)$/.test(target)) {
+      const { parseTargets } = await import("./ai/bulk-edit");
+      const tg = await parseTargets(userId, target).catch(() => null);
+      if (!tg?.length) return `I couldn't find a bot called “${mr[2]}”. Say “rule for <bot name>: …”, “rule for all bots: …”, “rule for prompts: …” or “rule: …” (everything).`;
+      scope = "bot"; ref = tg[0].id; label = tg[0].name;
+    }
+    const { skill, enforced, applied } = await createRule(userId, mr[1] ?? "", mr[3], scope, ref);
+    return `Rule “${skill.name}” is on for ${label}.${enforced.length ? `\nMerod enforces: ${enforced.join("; ")} — on ${label} only.` : ""}${applied.length ? `\n${applied.join("\n")}` : ""}\nManage rules in Skills → Rules.`;
+  }
   if (make && make.text.trim().length >= 3) {
     const { skill, enforced, applied } = await createSkill(userId, make.name, make.text, make.kind, tz);
     const head = make.kind === "point"
@@ -173,7 +225,7 @@ export async function skillCommand(userId: string, raw: string, tz = "UTC"): Pro
     if (!pick.length) return `All your skills and points are already ${on ? "on" : "off"}.`;
     return `Turned ${on ? "on" : "off"} ${ns} skill${ns === 1 ? "" : "s"} and ${np} point${np === 1 ? "" : "s"}.${on ? "" : " Nothing was deleted (say “turn on all skills” to bring them back), and settings they already changed on bots and agents stay as they are."}`;
   }
-  const kindWord = /\bpoints?\b/i.test(t) ? "point" : /\bskills?\b/i.test(t) ? "skill" : null;
+  const kindWord = /\brules?\b/i.test(t) && !/\bauton rules\b/i.test(t) ? "rule" : /\bpoints?\b/i.test(t) ? "point" : /\bskills?\b/i.test(t) ? "skill" : null;
   if (!kindWord) return null;
   const rows = (await listSkills(userId)).filter((r) => r.kind === kindWord);
   const line = (r: any, i: number) => `${i + 1}. ${r.kind === "point" ? "" : `${r.name}: `}${String(r.instructions).slice(0, 140)}${!r.active ? " (off)" : r.expired ? " (expired)" : r.expires_at ? ` (until ${new Date(r.expires_at).toLocaleString("en-US", { timeZone: tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })})` : ""}`;

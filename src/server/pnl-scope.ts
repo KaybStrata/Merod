@@ -1,5 +1,5 @@
 import "@/lib/server-only-shim";
-import { q } from "./db";
+import { one, q } from "./db";
 
 /**
  * P&L for any group of trades (all trades, bots, auto trading, Modo, Mimic, Auton, a Talk tab, or a mix):
@@ -82,9 +82,49 @@ export async function scopePnl(userId: string, scope: Scope, rangeSec: number | 
     sql += tabOrderCond(params.length + 1);
     params = [...params, s.msgIds, s.botIds, s.agentIds];
   }
-  const orders = await q<any>(
+  // Newest trades for the line (busy accounts have hundreds of thousands; the oldest ones don't matter for a window).
+  const orders = (await q<any>(
     `SELECT o.side, o.filled_quantity, o.avg_fill_price, o.realized_pnl, o.updated_at, o.asset_id, a.symbol, a.last_price
        FROM orders o JOIN assets a ON a.id=o.asset_id
-      WHERE o.user_id=$1 AND o.status IN ('filled','partially_filled') ${sql} ORDER BY o.updated_at LIMIT 20000`, params);
-  return { scope, ...pnlFromOrders(orders, rangeSec), bots: c.bots ?? null, agents: c.agents ?? null };
+      WHERE o.user_id=$1 AND o.status IN ('filled','partially_filled') ${sql} ORDER BY o.updated_at DESC LIMIT 20000`, params)).reverse();
+  // Exact totals straight from the database (every trade, not just the newest 20,000).
+  const n = params.length;
+  const now = Date.now(), since = rangeSec ? new Date(now - rangeSec * 1000) : new Date(0), prevSince = rangeSec ? new Date(now - 2 * rangeSec * 1000) : new Date(0);
+  const t = await one<any>(
+    `SELECT COALESCE(SUM(o.realized_pnl) FILTER (WHERE o.side='sell'),0) AS realized,
+            COALESCE(SUM(o.realized_pnl) FILTER (WHERE o.side='sell' AND o.updated_at >= $${n + 1}),0) AS win_realized,
+            COALESCE(SUM(o.realized_pnl) FILTER (WHERE o.side='sell' AND o.updated_at >= $${n + 2} AND o.updated_at < $${n + 1}),0) AS prev_realized,
+            count(*) FILTER (WHERE o.side='sell')::int AS closed, count(*) FILTER (WHERE o.side='sell' AND o.realized_pnl > 0)::int AS wins,
+            count(*) FILTER (WHERE o.side='sell' AND o.updated_at >= $${n + 1})::int AS w_closed, count(*) FILTER (WHERE o.side='sell' AND o.updated_at >= $${n + 1} AND o.realized_pnl > 0)::int AS w_wins,
+            count(*) FILTER (WHERE o.side='sell' AND o.updated_at >= $${n + 2} AND o.updated_at < $${n + 1})::int AS p_closed,
+            count(*) FILTER (WHERE o.side='sell' AND o.updated_at >= $${n + 2} AND o.updated_at < $${n + 1} AND o.realized_pnl > 0)::int AS p_wins,
+            count(*)::int AS orders, COALESCE(SUM(o.filled_quantity * o.avg_fill_price) FILTER (WHERE o.side='buy'),0) AS invested
+       FROM orders o WHERE o.user_id=$1 AND o.status IN ('filled','partially_filled') ${sql}`, [...params, since, prevSince]);
+  const base = pnlFromOrders(orders, rangeSec);
+  if (!t) return { scope, ...base, bots: c.bots ?? null, agents: c.agents ?? null };
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const winRealized = Number(t.win_realized), realized = Number(t.realized);
+  // Line: realized profit built up inside the window (from 0), ending at the window total + open positions.
+  const nowSec = Math.floor(now / 1000), sinceSec = Math.floor(since.getTime() / 1000);
+  let run = 0;
+  const pts: { time: number; value: number; trade?: any }[] = [{ time: rangeSec ? sinceSec : (base.points[0]?.time ?? nowSec - 3600), value: 0 }];
+  for (const p of base.points) {
+    if (!p.trade) continue;
+    if (rangeSec && p.time < sinceSec) continue;
+    if (p.trade.side === "sell" && p.trade.pnl != null) run += p.trade.pnl;
+    pts.push({ ...p, value: r2(run) });
+  }
+  // If the newest 20,000 don't reach back to the window start, shift the line so it still ends at the true total.
+  const shift = r2(winRealized - run);
+  if (Math.abs(shift) > 0.005) for (const p of pts.slice(1)) p.value = r2(p.value + shift);
+  const period = r2(winRealized + base.unrealized);
+  pts.push({ time: nowSec, value: period });
+  return {
+    scope, ...base,
+    total: r2(realized + base.unrealized), realized: r2(realized), invested: r2(Number(t.invested)), orders: t.orders, closed: t.closed, wins: t.wins,
+    period: { pnl: period, realized: r2(winRealized), closed: rangeSec ? t.w_closed : t.closed, wins: rangeSec ? t.w_wins : t.wins },
+    previous: rangeSec ? { pnl: r2(Number(t.prev_realized)), closed: t.p_closed, wins: t.p_wins } : null,
+    points: pts,
+    bots: c.bots ?? null, agents: c.agents ?? null,
+  };
 }

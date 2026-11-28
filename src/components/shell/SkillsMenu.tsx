@@ -1,7 +1,7 @@
 "use client";
 import { usePopSide } from "@/lib/usePopSide";
 import { useState } from "react";
-import { Wand2, Trash2, CalendarClock, Plus, Crosshair } from "lucide-react";
+import { Wand2, Trash2, CalendarClock, Plus, Crosshair, Scale } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { cx, useToast } from "@/components/ui";
 import { AutoModesBar } from "@/components/AutoModesBar";
@@ -16,19 +16,24 @@ export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) =>
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const pop = usePopSide(open, 360);
-  const [tab, setTab] = useState<"skills" | "points" | "schedules">("skills");
+  const [tab, setTab] = useState<"skills" | "points" | "rules" | "schedules">("skills");
+  // Rules: what a new rule applies to.
+  const [scope, setScope] = useState<"all" | "bots" | "bot" | "prompts">("all");
+  const [scopeRef, setScopeRef] = useState("");
+  const botsList = useApi<any>(open && tab === "rules" ? "/api/bots" : null);
   const [name, setName] = useState(""), [text, setText] = useState(""), [busy, setBusy] = useState(false);
   const data = useApi<any>(open ? "/api/skills" : null);
   const all: any[] = data.data?.skills ?? [], schedules: any[] = data.data?.schedules ?? [];
-  const skills = all.filter((s) => (s.kind ?? "skill") === (tab === "points" ? "point" : "skill"));
+  const skills = all.filter((s) => (s.kind ?? "skill") === (tab === "points" ? "point" : tab === "rules" ? "rule" : "skill"));
   const activeCount = all.filter((s) => s.active && !s.expired).length;
 
   async function save() {
     if (text.trim().length < 3) return toast("Describe the skill first", "down");
     setBusy(true);
     try {
-      const r: any = await api("/api/skills", { method: "POST", json: { name: name || undefined, instructions: text, kind: tab === "points" ? "point" : "skill", tz: Intl.DateTimeFormat().resolvedOptions().timeZone } });
-      toast(`${tab === "points" ? "Point" : "Skill"} “${r.skill.name}” is on${r.enforced?.length ? `. Merod enforces: ${r.enforced.join("; ")}` : ""}`, "up");
+      if (tab === "rules" && scope === "bot" && !scopeRef) { setBusy(false); return toast("Pick which bot this rule is for", "down"); }
+      const r: any = await api("/api/skills", { method: "POST", json: { name: name || undefined, instructions: text, kind: tab === "points" ? "point" : tab === "rules" ? "rule" : "skill", tz: Intl.DateTimeFormat().resolvedOptions().timeZone, ...(tab === "rules" ? { scope, scopeRef: scope === "bot" ? scopeRef : undefined } : {}) } });
+      toast(`${tab === "points" ? "Point" : tab === "rules" ? "Rule" : "Skill"} “${r.skill.name}” is on${r.enforced?.length ? `. Merod enforces: ${r.enforced.join("; ")}` : ""}`, "up");
       setName(""); setText(""); data.refresh();
     } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
   }
@@ -51,9 +56,9 @@ export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) =>
             <AutoModesBar compact />
           </div>
           <div className="mb-2 flex gap-1 text-[12px]">
-            {(["skills", "points", "schedules"] as const).map((t) => (
+            {(["skills", "points", "rules", "schedules"] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} className={cx("flex items-center gap-1 rounded-md px-2 py-1 capitalize", tab === t ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>
-                {t === "skills" ? <Wand2 className="size-3" /> : t === "points" ? <Crosshair className="size-3" /> : <CalendarClock className="size-3" />}{t}{t === "schedules" && schedules.length ? ` ${schedules.length}` : ""}
+                {t === "skills" ? <Wand2 className="size-3" /> : t === "points" ? <Crosshair className="size-3" /> : t === "rules" ? <Scale className="size-3" /> : <CalendarClock className="size-3" />}{t}{t === "schedules" && schedules.length ? ` ${schedules.length}` : ""}
               </button>
             ))}
             {all.some((s) => s.active) && (
@@ -68,23 +73,37 @@ export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) =>
           </div>
           {tab !== "schedules" ? (
             <>
-              <p className="mb-2 text-[11px] text-muted">{tab === "points" ? "Points are specific instructions for right now, e.g. “focus on Solana coins with rising volume today” or “no new buys until Friday”. Add “for 2 hours”, “today” or “until Friday” to make one expire. Type “point: …” in the prompt box, or switch Send as → Point." : "Skills shape overall decision making: how Modo, OpenAI and Claude think and plan. Merod enforces their stop-loss, take-profit, $ per trade, never-buy / only-trade lists, max per trade and sell-in-profit on every bot, agent and buy. Type “create a skill: …”, or switch Send as → Skill."}</p>
+              <p className="mb-2 text-[11px] text-muted">{tab === "rules" ? "Rules are aimed at something specific: one bot, all bots, prompted trades, or everything (Modo / Merod trading in general). Merod enforces their stop-loss, take-profit, $ per trade, never-buy / only-trade lists and max per trade only on what each rule targets. Type “rule for Dip buyer: stop loss 5%”, “rule for all bots: never buy BONK”, “rule for prompts: max $50 per trade” or “rule: …”." : tab === "points" ? "Points are specific instructions for right now, e.g. “focus on Solana coins with rising volume today” or “no new buys until Friday”. Add “for 2 hours”, “today” or “until Friday” to make one expire. Type “point: …” in the prompt box, or switch Send as → Point." : "Skills shape overall decision making: how Modo, OpenAI and Claude think and plan. Merod enforces their stop-loss, take-profit, $ per trade, never-buy / only-trade lists, max per trade and sell-in-profit on every bot, agent and buy. Type “create a skill: …”, or switch Send as → Skill."}</p>
               <div className="max-h-44 space-y-1 overflow-y-auto">
                 {!data.data && <p className="text-[12px] text-faint">Loading…</p>}
                 {data.data && !skills.length && <p className="text-[12px] text-faint">No {tab} yet.</p>}
                 {skills.map((s) => (
                   <div key={s.id} className="flex items-start gap-2 rounded-lg border border-line/60 px-2 py-1.5">
                     <Switch on={s.active} onClick={() => toggle("skill", s.id, !s.active)} />
-                    <SkillText s={s} onSaved={() => data.refresh()} title={<>{s.name}{s.expired ? <span className="ml-1 text-[10px] text-faint">(expired)</span> : s.expires_at ? <span className="ml-1 text-[10px] text-faint">until {new Date(s.expires_at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</span> : null}</>} />
+                    <SkillText s={s} onSaved={() => data.refresh()} title={<>{s.kind === "rule" && <span className="mr-1 rounded bg-sky-400/15 px-1 text-[9.5px] font-semibold text-sky-300">{s.scope === "bot" ? (s.scope_name ?? "one bot") : s.scope === "bots" ? "all bots" : s.scope === "prompts" ? "prompts" : "everything"}</span>}{s.name}{s.expired ? <span className="ml-1 text-[10px] text-faint">(expired)</span> : s.expires_at ? <span className="ml-1 text-[10px] text-faint">until {new Date(s.expires_at).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}</span> : null}</>} />
                     <button onClick={() => remove("skill", s.id)} className="text-faint hover:text-down" aria-label="Delete skill"><Trash2 className="size-3.5" /></button>
                   </div>
                 ))}
               </div>
               <div className="mt-2 space-y-1.5 border-t border-line pt-2">
+                {tab === "rules" && (
+                  <div className="flex flex-wrap items-center gap-1 text-[11px]">
+                    <span className="text-muted">Applies to</span>
+                    {([["all", "Everything"], ["bots", "All bots"], ["bot", "One bot"], ["prompts", "Prompted trades"]] as const).map(([k, l]) => (
+                      <button key={k} onClick={() => setScope(k)} className={cx("rounded-md border px-1.5 py-0.5", scope === k ? "border-accent/60 bg-accent-soft text-accent-2" : "border-line text-muted hover:text-text")}>{l}</button>
+                    ))}
+                    {scope === "bot" && (
+                      <select value={scopeRef} onChange={(e) => setScopeRef(e.target.value)} className="mt-1 w-full rounded-md border border-line bg-bg-2 px-1.5 py-1 text-[12px]">
+                        <option value="">Pick a bot…</option>
+                        {(botsList.data?.bots ?? []).map((b: any) => <option key={b.id} value={b.id}>{b.name} ({b.status})</option>)}
+                      </select>
+                    )}
+                  </div>
+                )}
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tab === "points" ? "Name (optional), e.g. Today's focus" : "Name (optional), e.g. Safe meme trading"} className="w-full rounded-md border border-line bg-bg-2 px-2 py-1 text-[12px] outline-none focus:border-accent/60" />
                 <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2} placeholder={tab === "points" ? "e.g. Focus on Solana meme coins with rising volume today, and take profits early" : "e.g. Always use a 5% stop loss, only sell in profit, never buy BONK, max $25 per trade, prefer coins with rising volume"}
                   className="w-full resize-none rounded-md border border-line bg-bg-2 px-2 py-1 text-[12px] outline-none focus:border-accent/60" />
-                <button onClick={save} disabled={busy} className="flex w-full items-center justify-center gap-1 rounded-md bg-grad py-1.5 text-[12px] font-semibold text-bg disabled:opacity-50"><Plus className="size-3.5" />{busy ? "Saving…" : tab === "points" ? "Add point" : "Add skill"}</button>
+                <button onClick={save} disabled={busy} className="flex w-full items-center justify-center gap-1 rounded-md bg-grad py-1.5 text-[12px] font-semibold text-bg disabled:opacity-50"><Plus className="size-3.5" />{busy ? "Saving…" : tab === "points" ? "Add point" : tab === "rules" ? "Add rule" : "Add skill"}</button>
               </div>
             </>
           ) : (

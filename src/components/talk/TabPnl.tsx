@@ -70,7 +70,7 @@ export function PnlLine({ pts, color, height = 64, nowLabel = "now (incl. open)"
           onPointerLeave={() => setHover(null)} style={{ height }}>
           <svg viewBox="0 0 300 100" preserveAspectRatio="none" className="absolute inset-0 h-full w-full" aria-label="This tab's P&L">
             <line x1="0" x2="300" y1={g.zero} y2={g.zero} stroke="currentColor" className="text-line-2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
-            <path d={g.line} fill="none" stroke={color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+            <path d={g.line} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
           </svg>
           {g.neon && (
             <svg viewBox="0 0 300 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full [filter:drop-shadow(0_0_3px_#39ff14)_drop-shadow(0_0_8px_#39ff14)]" aria-label="Profit line (closed trades)">
@@ -78,7 +78,7 @@ export function PnlLine({ pts, color, height = 64, nowLabel = "now (incl. open)"
             </svg>
           )}
           {/* trade dots: green = buy, red = sell */}
-          {pts.filter((p) => p.trade).map((p, i) => (
+          {pts.filter((p) => p.trade).length <= 60 && pts.filter((p) => p.trade).map((p, i) => (
             <span key={i} className={cx("pointer-events-none absolute size-[6px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-bg-2", p.trade!.side === "buy" ? "bg-up" : "bg-down")}
               style={{ left: `${g.fx(p.time) * 100}%`, top: `${g.fy(p.value) * 100}%` }} />
           ))}

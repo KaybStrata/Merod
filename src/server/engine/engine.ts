@@ -279,14 +279,14 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
   // Skills (your standing instructions): "never buy X", "only trade X, Y", "max $N per trade".
   if (intent.side === "buy") {
     const { activeRules } = await import("../skills");
-    const sk = await activeRules(ctx.userId).catch(() => ({} as any));
+    const sk = await activeRules(ctx.userId, { source: ctx.source, ref: ctx.sourceRef ?? null }).catch(() => ({} as any));
     const sym = String(asset.symbol).toUpperCase();
     if (sk.neverBuy?.length) {
       let why = `Not on your never-buy list`;
       if (sk.neverBuy.includes(sym)) {
         // Say exactly which skill or point blocks it, and where to turn it off.
         const src = await one<any>("SELECT kind, name, instructions FROM skills WHERE user_id=$1 AND active AND (expires_at IS NULL OR expires_at > now()) AND rules->'neverBuy' ? $2 ORDER BY created_at DESC LIMIT 1", [ctx.userId, sym]).catch(() => null);
-        why = src ? `Your ${src.kind === "point" ? "point" : "skill"} “${String(src.kind === "point" ? src.instructions : src.name).slice(0, 80)}” blocks buying ${sym} (turn it off in Skills → ${src.kind === "point" ? "Points" : "Skills"}, or say “turn off all skills”)` : `Your skills/points say never buy ${sym}`;
+        why = src ? `Your ${src.kind} “${String(src.kind === "point" ? src.instructions : src.name).slice(0, 80)}” blocks buying ${sym} (turn it off in Skills → ${src.kind === "point" ? "Points" : src.kind === "rule" ? "Rules" : "Skills"}, or say “turn off all skills”)` : `Your skills/points say never buy ${sym}`;
       }
       add("skill_never_buy", !sk.neverBuy.includes(sym), why);
     }

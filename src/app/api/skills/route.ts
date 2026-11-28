@@ -2,7 +2,7 @@ import { z } from "zod";
 import { requireUser } from "@/server/auth";
 import { ok, parse, route } from "@/server/http";
 import { HttpError } from "@/server/errors";
-import { createSkill, deleteSkill, listSkills, setSkillActive, updateSkill } from "@/server/skills";
+import { createSkill, createRule, deleteSkill, listSkills, setSkillActive, updateSkill } from "@/server/skills";
 import { listSchedules } from "@/server/schedules";
 import { q } from "@/server/db";
 
@@ -15,8 +15,12 @@ export const GET = route(async () => {
 /** Create a skill: { name?, instructions }. */
 export const POST = route(async (req) => {
   const u = await requireUser();
-  const b = await parse(req, z.object({ name: z.string().max(60).optional(), instructions: z.string().min(3).max(2000), kind: z.enum(["skill", "point"]).optional(), tz: z.string().max(60).optional() }));
-  try { return ok(await createSkill(u.id, b.name ?? "", b.instructions, b.kind ?? "skill", b.tz ?? "UTC")); }
+  const b = await parse(req, z.object({ name: z.string().max(60).optional(), instructions: z.string().min(3).max(2000), kind: z.enum(["skill", "point", "rule"]).optional(), tz: z.string().max(60).optional(),
+    scope: z.enum(["all", "bots", "bot", "prompts"]).optional(), scopeRef: z.string().uuid().optional() }));
+  try {
+    if (b.kind === "rule") return ok(await createRule(u.id, b.name ?? "", b.instructions, b.scope ?? "all", b.scopeRef ?? null));
+    return ok(await createSkill(u.id, b.name ?? "", b.instructions, b.kind ?? "skill", b.tz ?? "UTC"));
+  }
   catch (e: any) { throw new HttpError(400, e.message); }
 });
 

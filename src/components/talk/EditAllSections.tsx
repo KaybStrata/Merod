@@ -37,7 +37,7 @@ export function SkillsSection() {
       {rows.map((r) => (
         <div key={r.id} className="flex items-start gap-2 rounded-lg border border-line px-2.5 py-1.5">
           <Sw on={r.active} label={`${r.name} on/off`} onClick={() => act(() => api("/api/skills", { method: "PATCH", json: { kind: "skill", id: r.id, active: !r.active } }))} />
-          <SkillText s={r} onSaved={refresh} title={<><span className={cx("mr-1.5 rounded px-1 text-[9.5px] font-bold uppercase", r.kind === "point" ? "bg-rose-400/15 text-rose-300" : "bg-amber-300/15 text-amber-200")}>{r.kind ?? "skill"}</span>{r.name}</>} />
+          <SkillText s={r} onSaved={refresh} title={<><span className={cx("mr-1.5 rounded px-1 text-[9.5px] font-bold uppercase", r.kind === "point" ? "bg-rose-400/15 text-rose-300" : r.kind === "rule" ? "bg-sky-400/15 text-sky-300" : "bg-amber-300/15 text-amber-200")}>{r.kind === "rule" ? `rule · ${r.scope === "bot" ? (r.scope_name ?? "one bot") : r.scope === "bots" ? "all bots" : r.scope === "prompts" ? "prompts" : "everything"}` : r.kind ?? "skill"}</span>{r.name}</>} />
           <button onClick={() => { if (confirm("Delete this for good?")) void act(() => api(`/api/skills?id=${r.id}`, { method: "DELETE" })); }} className={del} aria-label="Delete"><Trash2 className="size-3.5" /></button>
         </div>
       ))}

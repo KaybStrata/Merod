@@ -216,7 +216,7 @@ function AutonControls({ onAuton }: { onAuton: (t: string) => void }) {
               className={cx("relative mt-0.5 h-3.5 w-6 shrink-0 rounded-full transition", r.active ? "bg-accent" : "bg-panel-2 ring-1 ring-line")}>
               <span className={cx("absolute top-[2px] size-2.5 rounded-full bg-white transition-all", r.active ? "left-[12px]" : "left-[2px]")} />
             </button>
-            <SkillText s={r} onSaved={sk.refresh} title={<><span className={cx("mr-1 rounded px-1 text-[9px] font-bold uppercase", r.kind === "point" ? "bg-rose-400/15 text-rose-300" : "bg-amber-300/15 text-amber-200")}>{r.kind ?? "skill"}</span>{r.name}</>} />
+            <SkillText s={r} onSaved={sk.refresh} title={<><span className={cx("mr-1 rounded px-1 text-[9px] font-bold uppercase", r.kind === "point" ? "bg-rose-400/15 text-rose-300" : r.kind === "rule" ? "bg-sky-400/15 text-sky-300" : "bg-amber-300/15 text-amber-200")}>{r.kind === "rule" ? `rule · ${r.scope === "bot" ? (r.scope_name ?? "one bot") : r.scope === "bots" ? "all bots" : r.scope === "prompts" ? "prompts" : "everything"}` : r.kind ?? "skill"}</span>{r.name}</>} />
             <button onClick={() => { if (confirm(`Delete “${r.name}”?`)) void act(() => api(`/api/skills?id=${r.id}`, { method: "DELETE" })); }} className="mt-0.5 text-faint hover:text-down" aria-label="Delete"><Trash2 className="size-3" /></button>
           </div>
         ))}
