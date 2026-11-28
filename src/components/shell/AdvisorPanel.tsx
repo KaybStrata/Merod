@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /** Tell every Advisor view (sidebar, page) to reload after a change made in one of them. */
 export const advisorChanged = () => { try { window.dispatchEvent(new Event("merod-advisor")); } catch { /* ignore */ } };
 export function useAdvisorSync(refresh: () => unknown) {
   useEffect(() => { const f = () => { void refresh(); }; window.addEventListener("merod-advisor", f); return () => window.removeEventListener("merod-advisor", f); }, [refresh]);
 }
-import { Lightbulb, Check, X, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
+import { Lightbulb, Check, X, ChevronDown, ChevronRight, Loader2, Maximize2 } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { useRealtime } from "./context";
 import { cx, useToast } from "@/components/ui";
@@ -30,7 +31,7 @@ export function TipRow({ t, onDone, compact }: { t: any; onDone: () => void; com
   const body = (
     <>
       <div className={cx("font-medium leading-snug", compact ? "text-[12px]" : "text-[13px]")}>{t.priority === 1 && <span className="mr-1 inline-block size-1.5 rounded-full bg-accent-2 align-middle" />}{t.title}</div>
-      <div className={cx("mt-0.5 leading-snug text-muted", compact ? "line-clamp-4 text-[11px]" : "text-[12px]")}>{t.body}</div>
+      <div className={cx("mt-0.5 leading-snug text-muted", compact ? "line-clamp-2 text-[11px]" : "text-[12.5px]")}>{t.body}</div>
       {t.action && !t.applied_at && <div className={cx("mt-0.5 text-faint", compact ? "text-[10.5px]" : "text-[11px]")}>“Do it” → {t.action.type === "prompt" ? `“${t.action.text}”` : t.action.type === "pause" ? `turn off ${t.action.name}` : t.action.type === "edit" ? `change ${t.action.name}'s settings` : `add a point: ${t.action.text}`}</div>}
     </>
   );
@@ -62,18 +63,26 @@ export function AdvisorPanel({ className, onOpenAll }: { className?: string; onO
   const toggleOpen = () => setOpen((o) => { try { localStorage.setItem("merod-advisor-open", o ? "0" : "1"); } catch { /* ignore */ } return !o; });
   const s = data?.settings, on = !!s?.active;
   const tips: any[] = (data?.tips ?? []).filter((t: any) => !t.applied_at);
+  // Pop-out: a big panel beside the sidebar with every suggestion in full.
+  const [pop, setPop] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [popLeft, setPopLeft] = useState(290);
+  useEffect(() => { if (pop && boxRef.current) setPopLeft(Math.round(boxRef.current.getBoundingClientRect().right + 12)); }, [pop]);
+  useEffect(() => { if (!pop) return; const k = (e: KeyboardEvent) => e.key === "Escape" && setPop(false); window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [pop]);
   async function setOn(v: boolean) {
     try { await api("/api/advisor", { method: "POST", json: { active: v } }); if (v) await api("/api/advisor/run", { method: "POST" }).catch(() => {}); await refresh(); advisorChanged(); toast(v ? "Advisor on: it keeps analysing until you turn it off" : "Advisor off", "up"); }
     catch (e: any) { toast(e.message, "down"); }
   }
   return (
-    <div className={cx("rounded-xl border border-line bg-panel/60 p-2", className)}>
+    <div ref={boxRef} className={cx("rounded-xl border border-line bg-panel/60 p-2", className)}>
       <div className="flex items-center gap-1.5">
         <button onClick={toggleOpen} className="flex min-w-0 flex-1 items-center gap-1.5 text-left text-[12px] font-semibold" aria-expanded={open}>
           {open ? <ChevronDown className="size-3 text-faint" /> : <ChevronRight className="size-3 text-faint" />}
           <Lightbulb className={cx("size-3.5", on ? "text-accent-2" : "text-faint")} />Advisor
           {on && tips.length > 0 && <span className="rounded-full bg-accent-soft px-1.5 text-[10px] text-accent-2">{tips.length}</span>}
         </button>
+        <button onClick={() => setPop((v) => !v)} title="Open the Advisor in a big panel (every suggestion, fully explained)" aria-label="Expand Advisor"
+          className={cx("rounded-md p-1 hover:bg-panel-2", pop ? "text-accent-2" : "text-faint hover:text-text")}><Maximize2 className="size-3.5" /></button>
         <button role="switch" aria-checked={on} aria-label="Advisor on/off" onClick={() => setOn(!on)} title={on ? "Advisor is on: analysing markets and your trading continuously. Click to turn off." : "Turn on: Merod continuously analyses coin/stock data and your trades, bots, agents and prompts, and suggests improvements."}
           className={cx("relative h-4 w-7 shrink-0 rounded-full transition-colors", on ? "bg-accent" : "bg-panel-2 ring-1 ring-line")}>
           <span className={cx("absolute top-0.5 size-3 rounded-full bg-white transition-all", on ? "left-3.5" : "left-0.5")} />
@@ -89,6 +98,25 @@ export function AdvisorPanel({ className, onOpenAll }: { className?: string; onO
             : <Link href="/advisor" className="block px-0.5 pt-0.5 text-[11px] text-accent-2 hover:underline">{tips.length > 3 ? `See all ${tips.length} suggestions →` : "Advisor settings & history →"}</Link>}
         </div>
       )}
+      {pop && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[70]" onClick={() => setPop(false)}>
+          <div className="absolute bottom-4 flex max-h-[min(86dvh,900px)] w-[min(520px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-line-2 bg-bg-2 shadow-[0_20px_70px_rgba(0,0,0,.6)]"
+            style={{ left: Math.min(popLeft, (typeof window !== "undefined" ? window.innerWidth : 1200) - 532) }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+              <Lightbulb className={cx("size-4", on ? "text-accent-2" : "text-faint")} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[14px] font-semibold">Advisor <span className="font-normal text-muted">· {tips.length} suggestion{tips.length === 1 ? "" : "s"}</span></div>
+                <div className="text-[11px] text-faint">{on ? `Watching markets + your trading · every ${everyLabel(s.every_sec ?? (s.every_min ?? 10) * 60)}${s.last_run_at ? ` · checked ${ago(s.last_run_at)}` : ""}` : "Off: turn it on with the switch in the sidebar."}</div>
+              </div>
+              {onOpenAll && <button onClick={() => { setPop(false); onOpenAll(); }} className="text-[11.5px] text-accent-2 hover:underline">Settings & history</button>}
+              <button onClick={() => setPop(false)} className="rounded-md p-1 text-faint hover:text-text" aria-label="Close"><X className="size-4" /></button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+              {tips.map((t) => <TipRow key={t.id} t={t} onDone={refresh} />)}
+              {!tips.length && <p className="p-2 text-[12.5px] text-muted">{on ? "No suggestions right now. New ones appear here as markets move and you trade." : "Turn the Advisor on to get continuous suggestions."}</p>}
+            </div>
+          </div>
+        </div>, document.body)}
     </div>
   );
 }

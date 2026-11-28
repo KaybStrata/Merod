@@ -80,7 +80,16 @@ function MapEditor() {
   const [cmd, setCmd] = useState("");
   const [cmdBusy, setCmdBusy] = useState(false);
   const [history, setHistory] = useState(true);
-  useEffect(() => { try { if (localStorage.getItem("merod-map-history") === "0") setHistory(false); } catch { /* ignore */ } }, []);
+  const [showPal, setShowPal] = useState(true);
+  const [embedded, setEmbedded] = useState(false);
+  useEffect(() => {
+    let framed = false; try { framed = window.self !== window.top; } catch { framed = true; }
+    setEmbedded(framed);
+    const narrow = window.innerWidth < 1100;
+    // Narrow screens (and the floating window) start with the side panels tucked away so the canvas has room.
+    if (narrow) { setShowPal(false); setHistory(false); }
+    else { try { if (localStorage.getItem("merod-map-history") === "0") setHistory(false); } catch { /* ignore */ } }
+  }, []);
 
   const load = useCallback(async (id?: string | null) => {
     const r = await api(`/api/map${id ? `?id=${id}` : ""}`);
@@ -197,9 +206,9 @@ function MapEditor() {
 
   return (
     <Ctx.Provider value={{ update, run, remove, running, info }}>
-      <div className="flex h-[calc(100dvh-8.5rem)] min-h-[560px] gap-3">
+      <div className={cx("flex gap-2 sm:gap-3", embedded ? "h-[calc(100dvh-5.25rem)] min-h-[360px]" : "h-[calc(100dvh-8.5rem)] min-h-[520px]")}>
         {/* Palette */}
-        <aside className="surface flex w-64 shrink-0 flex-col rounded-2xl p-2.5">
+        {showPal && <aside className="surface flex w-60 shrink-0 flex-col rounded-2xl p-2.5">
           <div className="grid grid-cols-2 gap-1.5">
             <button onClick={() => addNode("prompt", { label: "", text: "" })} className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-400/40 px-2 py-1.5 text-[12px] text-emerald-300 hover:bg-emerald-400/10"><Plus className="size-3.5" />Prompt</button>
             <button onClick={() => addNode("method", { label: "New method" })} className="inline-flex items-center justify-center gap-1 rounded-lg border border-accent/50 px-2 py-1.5 text-[12px] text-accent-2 hover:bg-accent/10"><Plus className="size-3.5" />Method</button>
@@ -224,7 +233,7 @@ function MapEditor() {
             })}
           </div>
           <p className="mt-2 border-t border-line pt-2 text-[10.5px] leading-snug text-faint">Drag from a dot to another box to attach. Prompts, skills and points attached to a bot or agent become its instructions. Put several into a <b>Method</b> to reuse the mix. Select + Backspace removes.</p>
-        </aside>
+        </aside>}
 
         {/* Canvas */}
         <div className="surface relative min-w-0 flex-1 overflow-hidden rounded-2xl">
@@ -237,25 +246,21 @@ function MapEditor() {
             <button onClick={async () => { const n = prompt("Name the new map", "New map"); if (!n) return; const r = await api("/api/map", { method: "POST", json: { name: n } }); load(r.map.id); }} className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text"><Plus className="size-3.5" />New map</button>
             {maps.length > 1 && <button onClick={async () => { if (!mapId || !confirm(`Delete map “${name}”? Bots, agents, skills and points themselves are not deleted.`)) return; await api(`/api/map/${mapId}`, { method: "DELETE" }); load(); }} className="rounded-lg border border-line p-1.5 text-faint hover:text-down" title="Delete this map"><Trash2 className="size-3.5" /></button>}
             <span className="text-[11px] text-faint">{saved === "saved" ? "Saved" : saved === "saving" ? "Saving…" : "Unsaved changes"}</span>
+            <button onClick={() => setShowPal((v) => !v)} className={cx("inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[12px]", showPal ? "border-accent/50 text-accent-2" : "border-line text-muted hover:text-text")} title="Show or hide the list of bots, agents, skills and points"><Plus className="size-3.5" />{showPal ? "Hide items" : "Add items"}</button>
             {!history && <button onClick={() => { setHistory(true); try { localStorage.setItem("merod-map-history", "1"); } catch { /* ignore */ } }} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text"><History className="size-3.5" />History & advice</button>}
             <button onClick={() => run()} disabled={!!running} className={cx("inline-flex items-center gap-1.5 rounded-lg bg-grad px-3 py-1.5 text-[12.5px] font-semibold text-bg disabled:opacity-60", history && "ml-auto")}>{running === "all" ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}Run map</button>
           </div>
-          <form onSubmit={(e) => { e.preventDefault(); void sendCmd(); }} className="absolute left-3 right-3 top-12 z-10 flex items-center gap-1.5 rounded-xl border border-line-2 bg-panel/95 p-1 pl-2.5 shadow-lg backdrop-blur focus-within:border-accent/60">
-            <Sparkles className="size-3.5 shrink-0 text-accent-2" />
-            <input value={cmd} onChange={(e) => setCmd(e.target.value)} disabled={cmdBusy} placeholder="Tell the map: “method Safe with stop loss 5%, take profit 10% for all bots” · “rename Safe to Careful” · “change Safe to take profit 12%” · “remove SOL Momentum” · “run Safe”"
-              className="min-w-0 flex-1 bg-transparent py-1 text-[12.5px] outline-none placeholder:text-faint" />
-            <button type="submit" disabled={cmdBusy || !cmd.trim()} className="shrink-0 rounded-lg bg-grad px-2.5 py-1 text-[12px] font-semibold text-bg disabled:opacity-40">{cmdBusy ? <Loader2 className="size-3.5 animate-spin" /> : "Do it"}</button>
-          </form>
+
           <ReactFlow<MNode, Edge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             connectionMode={ConnectionMode.Loose} colorMode="dark" onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
             onMoveEnd={() => loaded.current && setSaved((s) => s)} deleteKeyCode={["Backspace", "Delete"]} fitView fitViewOptions={{ padding: 0.3, maxZoom: 1 }} minZoom={0.2} maxZoom={2} proOptions={{ hideAttribution: true }}
             defaultEdgeOptions={{ style: { strokeWidth: 2 } }} className="!bg-transparent">
             <Background gap={22} size={1.2} />
-            <Controls position="bottom-left" />
+            <Controls position="bottom-left" className="!bottom-[7.5rem]" />
             <MiniMap position="bottom-right" pannable zoomable nodeColor={(n) => ({ bot: "#38bdf8", agent: "#a78bfa", prompt: "#34d399", skill: "#fcd34d", point: "#fb7185", method: "#d6b37a" } as any)[n.type ?? "prompt"]} className="!bg-panel max-xl:!hidden" />
           </ReactFlow>
           {!nodes.length && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+            <div className="pointer-events-none absolute inset-x-0 bottom-32 top-12 flex items-center justify-center p-6">
               <div className="max-w-md rounded-2xl border border-dashed border-line bg-panel/80 p-5 text-center text-[13px] text-muted">
                 <MapIcon className="mx-auto mb-2 size-6 text-accent-2" />
                 <div className="font-semibold text-text">Build your first method</div>
@@ -263,8 +268,24 @@ function MapEditor() {
               </div>
             </div>
           )}
+          {/* Prompt box: build and edit the map by typing (works in the floating window too). */}
+          <div className="absolute inset-x-2 bottom-2 z-20 sm:inset-x-3 sm:bottom-3">
+            <div className="mb-1.5 flex gap-1 overflow-x-auto pb-0.5">
+              {["Method “Safe” with stop loss 5%, take profit 10% for all bots", "Add all my agents", "Change Safe to take profit 12%", "Rename Safe to Careful", "Run Safe", "Show my map"].map((ex) => (
+                <button key={ex} onClick={() => setCmd(ex)} className="shrink-0 rounded-full border border-line bg-panel/90 px-2.5 py-0.5 text-[11px] text-muted hover:border-accent/50 hover:text-text">{ex}</button>
+              ))}
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); void sendCmd(); }} className="flex items-end gap-2 rounded-2xl border border-line-2 bg-panel/95 p-2 shadow-2xl backdrop-blur focus-within:border-accent/60">
+              <Sparkles className="mb-2 ml-1 size-4 shrink-0 text-accent-2" />
+              <textarea value={cmd} onChange={(e) => setCmd(e.target.value)} disabled={cmdBusy} rows={2}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendCmd(); } }}
+                placeholder="Tell the map what to build or change: “create a method called Safe with stop loss 5%, take profit 10% for all bots and run it”, “connect Safe to ETH Accumulation”, “remove SOL Momentum”…"
+                className="nowheel min-w-0 flex-1 resize-none bg-transparent py-1 text-[13px] leading-snug outline-none placeholder:text-faint" />
+              <button type="submit" disabled={cmdBusy || !cmd.trim()} className="shrink-0 rounded-xl bg-grad px-3.5 py-2 text-[12.5px] font-semibold text-bg disabled:opacity-40">{cmdBusy ? <Loader2 className="size-4 animate-spin" /> : "Build"}</button>
+            </form>
+          </div>
           {result && (
-            <div className="absolute bottom-3 left-14 z-10 max-h-[40%] w-[min(520px,calc(100%-14rem))] overflow-y-auto rounded-xl border border-line bg-panel/95 p-3 text-[12px] shadow-2xl backdrop-blur">
+            <div className="absolute bottom-[7.5rem] left-14 z-10 max-h-[40%] w-[min(520px,calc(100%-14rem))] overflow-y-auto rounded-xl border border-line bg-panel/95 p-3 text-[12px] shadow-2xl backdrop-blur">
               <div className="mb-1 flex items-center text-[12px] font-semibold">Last run <span className="ml-1 font-normal text-faint">· {ago(result.at)}</span><button onClick={() => setResult(null)} className="ml-auto text-faint hover:text-text"><X className="size-3.5" /></button></div>
               <pre className="whitespace-pre-wrap font-sans leading-relaxed text-muted">{result.lines.join("\n")}</pre>
             </div>
