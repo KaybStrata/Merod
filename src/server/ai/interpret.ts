@@ -184,6 +184,13 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   // Skills: "create a skill: always use a 5% stop-loss…", "show my skills", "turn off skill Safe".
   const sk = input.part ? null : await skillCommand(userId, text, input.tz || "UTC").catch((e: any) => `Couldn't save that skill: ${e.message}`);
   if (sk) return early(sk, { type: "executed", detail: "Skills updated" }, "executed", null);
+  // Map setups from the prompt box: "create a map method called Safe with stop loss 5% for all bots (and run it)".
+  if (!input.part) {
+    const { mapCommand } = await import("../map-prompt");
+    const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role;
+    const mc = await mapCommand(userId, text, { isOwner: role === "super_admin", tz: input.tz }).catch((e: any) => `Couldn't update the map: ${e.message}`);
+    if (mc) return early(mc, { type: "executed", detail: "Map updated" }, "executed", null);
+  }
   // Schedules: "show my schedules", "cancel schedule 2"; and "every morning at 2am LA time, buy … " creates one.
   // Wallet addresses (any number): "mimic <addr> <addr> …", "stop mimicking <addr>", or stats for every address pasted.
   if (!input.part && /[1-9A-HJ-NP-Za-km-z]{32,44}|0x[a-fA-F0-9]{40}/.test(text)) {
