@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Wand2, Trash2, CalendarClock, Plus, Crosshair } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { cx, useToast } from "@/components/ui";
+import { AutoModesBar } from "@/components/AutoModesBar";
 
 /**
  * Skills button for the prompt box. Skills are standing instructions that change how Modo, OpenAI, Claude, bots and
@@ -44,6 +45,10 @@ export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) =>
       </button>
       {open && (
         <div className={cx("absolute bottom-10 z-40 max-h-[min(72vh,640px)] w-[360px] max-w-[90vw] overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-2xl", pop.cls)}>
+          <div className="mb-2 rounded-lg border border-teal-400/25 bg-teal-400/5 p-2">
+            <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-teal-300">Auto skills · on for all bots & agents</div>
+            <AutoModesBar compact />
+          </div>
           <div className="mb-2 flex gap-1 text-[12px]">
             {(["skills", "points", "schedules"] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} className={cx("flex items-center gap-1 rounded-md px-2 py-1 capitalize", tab === t ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>

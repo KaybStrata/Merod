@@ -76,7 +76,7 @@ export function MimicAssistant() {
       </section>
 
       <section className="surface rounded-2xl p-4">
-        <header className="mb-2 flex items-center justify-between"><h3 className="flex items-center gap-2 text-[15px] font-semibold"><Bot className="size-4 text-accent-2" /> Agents</h3><Link href="/agents" className="text-[11px] text-muted hover:text-text">All agents →</Link></header>
+        <header className="mb-2 flex items-center justify-between"><h3 className="flex items-center gap-2 text-[15px] font-semibold"><Bot className="size-4 text-accent-2" /> Agents</h3><Link href="/bots" className="text-[11px] text-muted hover:text-text">All bots &amp; agents →</Link></header>
         <ul className="space-y-1">{agents.map((a) => <li key={a.id}><Link href={`/agents/${a.id}`} className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1.5 hover:bg-panel-2"><span className="min-w-0"><span className="block truncate text-[13px] font-medium">{a.name}</span><span className="text-[11px] text-muted">{a.roleName} · {(a.universe?.wallets ?? []).length} wallet{(a.universe?.wallets ?? []).length === 1 ? "" : "s"}</span></span><StatusDot status={a.status} /></Link></li>)}
           {!agents.length && <li className="text-[12px] text-muted">No mimic or wallet agents yet.</li>}</ul>
         <div className="mt-3 grid gap-2">

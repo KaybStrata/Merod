@@ -2,13 +2,14 @@
 import { SectionTabs } from "@/components/SectionTabs";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bot, Plus, OctagonX, PauseCircle, PlayCircle, Sparkles, Loader2, X, LayoutTemplate, Zap } from "lucide-react";
+import { Bot, Plus, OctagonX, PauseCircle, PlayCircle, Sparkles, Loader2, X, LayoutTemplate, Zap, Trash2 } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { Badge, Button, Card, Empty, Input, Modal, PaperBadge, Select, StatusPill, Toggle, cx, useToast } from "@/components/ui";
 import { PlanCard } from "@/components/shell/PlanCard";
 import { CopyBotsPanel } from "@/components/CopyBots";
 import { useShell } from "@/components/shell/context";
 import { usd, ago, tone } from "@/lib/format";
+import { AutoModesBar } from "@/components/AutoModesBar";
 
 const SCHEDULES = [["every_15s", "15 seconds"], ["every_1m", "1 minute"], ["every_5m", "5 minutes"], ["every_15m", "15 minutes"], ["every_1h", "1 hour"]];
 
@@ -20,8 +21,15 @@ export default function BotsPage() {
   const [creating, setCreating] = useState<string | null>(null);
   const [promptOpen, setPromptOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const agentsApi = useApi<any>("/api/agents", { refreshMs: 15000 });
   const bots: any[] = data?.bots ?? [];
-  const running = bots.filter((b) => b.status === "running").length;
+  const agents: any[] = agentsApi.data?.agents ?? [];
+  const running = bots.filter((b) => b.status === "running").length + agents.filter((a) => a.status === "running").length;
+  const reload = () => { refresh(); agentsApi.refresh(); };
+  async function bulk(kind: "bot" | "agent", id: string, status: "pause" | "resume" | "delete") {
+    try { await api("/api/bots/bulk", { method: "POST", json: { targets: [{ kind, id }], status } }); toast(status === "delete" ? "Deleted" : status === "pause" ? "Turned off" : "Turned on", "up"); reload(); }
+    catch (e: any) { toast(e.message, "down"); }
+  }
 
   async function emergency(action: "stop" | "pause_all") {
     if (action === "stop" && !confirm("Emergency stop: halt ALL bots, cancel ALL open orders and engage your trading halt?")) return;
@@ -39,11 +47,11 @@ export default function BotsPage() {
 
   return (
     <div className="space-y-5">
-      <SectionTabs tabs={[{ href: "/bots", label: "Bots", icon: Bot }, { href: "/shortcuts", label: "Shortcut buttons", icon: Zap }]} />
+      <SectionTabs tabs={[{ href: "/bots", label: "Bots & agents", icon: Bot }, { href: "/agents", label: "Agent command center", icon: Sparkles }, { href: "/agents/fleets", label: "Fleet builder", icon: LayoutTemplate }, { href: "/shortcuts", label: "Shortcut buttons", icon: Zap }]} />
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="page-title">Bots</h1>
-          <p className="text-sm text-muted">Automated strategies running on Merod's servers — they keep working when your browser is closed. Profit is never guaranteed.</p>
+          <h1 className="page-title">Bots & Agents</h1>
+          <p className="text-sm text-muted">Every bot and agent in one list — automated strategies running on Merod's servers that keep working when your browser is closed. Profit is never guaranteed.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={() => emergency("pause_all")} loading={busy === "pause_all"}><PauseCircle className="size-4" /> Pause all</Button>
@@ -55,22 +63,27 @@ export default function BotsPage() {
       {user.role === "super_admin" && <CopyBotsPanel compact />}
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {[["Bots", bots.length], ["Running", running], ["Paused", bots.filter((b) => b.status === "paused").length], ["Total bot P&L", usd(bots.reduce((s, b) => s + Number(b.pnl_usd), 0), { sign: true })]].map(([k, v]) => (
+        {[["Bots & agents", bots.length + agents.length], ["Running", running], ["Paused", bots.filter((b) => b.status === "paused").length + agents.filter((a) => a.status === "paused").length], ["Total P&L", usd(bots.reduce((s, b) => s + Number(b.pnl_usd), 0) + agents.reduce((s, a) => s + Number(a.metrics?.pnl ?? 0), 0), { sign: true })]].map(([k, v]) => (
           <div key={k as string} className="rounded-xl border border-line bg-panel/80 p-4"><div className="text-xs text-muted">{k}</div><div className="num mt-1 text-xl font-semibold">{v}</div></div>
         ))}
       </div>
 
-      <Card title="Your bots" icon={<Bot className="size-4 text-accent-2" />} pad={false}>
-        {bots.length === 0 ? <div className="p-4"><Empty icon={<Bot className="size-6" />} title="No bots yet" action={<Button size="sm" variant="primary" onClick={() => setCreating("dip_rebound_loop")}>Create a bot</Button>}>Start from a template below, describe one in plain English, or configure it manually. New bots run in paper mode.</Empty></div> : (
+      <Card title="Auto bots" icon={<Zap className="size-4 text-accent-2" />}>
+        <p className="mb-2 text-xs text-muted">Four helpers that run on their own for every bot and agent. Switch them per bot on its own page, attach them on the Map, or say “turn on auto gainer” in any prompt box.</p>
+        <AutoModesBar />
+      </Card>
+
+      <Card title="Your bots & agents" icon={<Bot className="size-4 text-accent-2" />} pad={false}>
+        {bots.length + agents.length === 0 ? <div className="p-4"><Empty icon={<Bot className="size-6" />} title="No bots yet" action={<Button size="sm" variant="primary" onClick={() => setCreating("dip_rebound_loop")}>Create a bot</Button>}>Start from a template below, describe one in plain English, or configure it manually. New bots run in paper mode.</Empty></div> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-faint"><tr className="border-b border-line">
-                <th className="px-4 py-2 font-medium">Bot</th><th className="px-3 font-medium">Strategy</th><th className="px-3 font-medium">Assets</th><th className="px-3 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">Bot / agent</th><th className="px-3 font-medium">Strategy / role</th><th className="px-3 font-medium">Assets</th><th className="px-3 font-medium">Status</th>
                 <th className="px-3 text-right font-medium">P&L</th><th className="px-3 text-right font-medium">Trades today</th><th className="px-3 font-medium">Last activity</th><th className="px-4" /></tr></thead>
               <tbody>
                 {bots.map((b) => (
                   <tr key={b.id} className="border-b border-line/60 hover:bg-panel-2/40">
-                    <td className="px-4 py-3"><Link href={`/bots/${b.id}`} className="font-medium hover:text-accent-2">{b.name}</Link><div className="mt-0.5"><PaperBadge paper={b.is_paper} /></div></td>
+                    <td className="px-4 py-3"><Link href={`/bots/${b.id}`} className="font-medium hover:text-accent-2">{b.name}</Link><div className="mt-0.5 flex items-center gap-1"><Badge>bot</Badge><PaperBadge paper={b.is_paper} /></div></td>
                     <td className="px-3 text-muted">{b.strategy_name}</td>
                     <td className="px-3">{(b.symbols ?? []).join(", ") || <span className="text-faint">{b.strategy_id === "watchlist_monitor" ? "Watchlist" : b.strategy_id === "meme_discovery" ? "New launches" : "—"}</span>}</td>
                     <td className="px-3"><StatusPill status={b.status} /></td>
@@ -80,6 +93,25 @@ export default function BotsPage() {
                     <td className="px-4 text-right">
                       {b.status === "running" ? <Button size="sm" onClick={() => control(b.id, "pause")}><PauseCircle className="size-3.5" /> Pause</Button>
                         : ["draft", "paused", "stopped", "error", "halted"].includes(b.status) && <Button size="sm" variant="success" onClick={() => control(b.id, b.status === "paused" ? "resume" : "start")}><PlayCircle className="size-3.5" /> {b.status === "paused" ? "Resume" : "Start"}</Button>}
+                      <button onClick={async () => { if (!confirm(`Delete “${b.name}”? It stops and is removed; its past trades stay in your history.`)) return; await bulk("bot", b.id, "delete"); }}
+                        className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:border-down/50 hover:text-down" title="Delete this bot" aria-label={`Delete ${b.name}`}><Trash2 className="size-3.5" /></button>
+                    </td>
+                  </tr>
+                ))}
+                {agents.map((a) => (
+                  <tr key={a.id} className="border-b border-line/60 hover:bg-panel-2/40">
+                    <td className="px-4 py-3"><Link href={`/agents/${a.id}`} className="font-medium hover:text-accent-2">{a.name}</Link><div className="mt-0.5 flex items-center gap-1"><Badge>agent</Badge>{a.fleet_name && <span className="text-[11px] text-faint">{a.fleet_name}</span>}</div></td>
+                    <td className="px-3 text-muted">{a.roleName}</td>
+                    <td className="px-3">{(a.symbols ?? []).join(", ") || <span className="text-faint">—</span>}</td>
+                    <td className="px-3"><StatusPill status={a.status} /></td>
+                    <td className={cx("num px-3 text-right", tone(a.metrics?.pnl ?? 0))}>{usd(a.metrics?.pnl ?? 0, { sign: true })}</td>
+                    <td className="num px-3 text-right">{a.metrics?.trades24h ?? 0}</td>
+                    <td className="max-w-[260px] truncate px-3 text-xs text-muted" title={a.last_event}>{a.last_event ?? "—"}</td>
+                    <td className="px-4 text-right">
+                      {a.status === "running" ? <Button size="sm" onClick={() => bulk("agent", a.id, "pause")}><PauseCircle className="size-3.5" /> Pause</Button>
+                        : <Button size="sm" variant="success" onClick={() => bulk("agent", a.id, "resume")}><PlayCircle className="size-3.5" /> Start</Button>}
+                      <button onClick={() => { if (confirm(`Delete “${a.name}”? It stops, open orders are cancelled and it's archived; past trades stay in your history.`)) void bulk("agent", a.id, "delete"); }}
+                        className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:border-down/50 hover:text-down" title="Delete this agent" aria-label={`Delete ${a.name}`}><Trash2 className="size-3.5" /></button>
                     </td>
                   </tr>
                 ))}

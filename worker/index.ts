@@ -172,6 +172,7 @@ const timers = [
   every("broker_catalog", 6 * 3600_000, syncBrokerCatalog),
   every("snapshots", 300000, snapshotPortfolios),
   every("auto_training", 60000, runTraining),
+  every("auto_modes", 10_000, async () => (await import("@/server/auto-modes")).runAutoModes()),
   every("ai_learning", 120000, runLearning),
   every("prompt_schedules", 30_000, async () => (await import("@/server/schedules")).runDueSchedules()),
   every("auton", 5_000, async () => (await import("@/server/auton/engine")).runDueAutons()),

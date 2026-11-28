@@ -42,7 +42,7 @@ export async function tabPnl(userId: string, conversationId: string) {
     [userId, s.msgIds, s.botIds, s.agentIds]);
   let realized = 0, wins = 0, closed = 0, invested = 0;
   const held = new Map<string, { symbol: string; qty: number; cost: number; price: number }>();
-  const points: { time: number; value: number }[] = [];
+  const points: { time: number; value: number; trade?: { side: string; symbol: string; qty: number; price: number; usd: number; pnl: number | null } }[] = [];
   for (const o of orders) {
     const qty = Number(o.filled_quantity ?? 0), px = Number(o.avg_fill_price ?? 0);
     const h = held.get(o.asset_id) ?? { symbol: o.symbol, qty: 0, cost: 0, price: Number(o.last_price ?? px) };
@@ -53,9 +53,11 @@ export async function tabPnl(userId: string, conversationId: string) {
       h.qty -= sold; h.cost -= sold * avg;
       const pnl = Number(o.realized_pnl ?? 0) || (px - avg) * sold;
       realized += pnl; closed++; if (pnl > 0) wins++;
+      o._pnl = pnl;
     }
     held.set(o.asset_id, h);
-    points.push({ time: Math.floor(new Date(o.updated_at).getTime() / 1000), value: Math.round(realized * 100) / 100 });
+    points.push({ time: Math.floor(new Date(o.updated_at).getTime() / 1000), value: Math.round(realized * 100) / 100,
+      trade: { side: o.side, symbol: o.symbol, qty, price: px, usd: Math.round(qty * px * 100) / 100, pnl: o.side === "sell" ? Math.round(Number(o._pnl ?? 0) * 100) / 100 : null } });
   }
   let unrealized = 0;
   const open = [...held.values()].filter((h) => h.qty > 1e-12).map((h) => { const u = h.qty * h.price - h.cost; unrealized += u; return { symbol: h.symbol, qty: h.qty, value: h.qty * h.price, unrealized: u }; });

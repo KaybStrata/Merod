@@ -2,6 +2,7 @@
 import { CheckCircle2, Circle, XCircle, Sparkles } from "lucide-react";
 import { cx } from "@/components/ui";
 import { PlanCard } from "@/components/shell/PlanCard";
+import { AutoModesBar } from "@/components/AutoModesBar";
 
 const TYPE_LABEL: Record<string, string> = {
   order: "Order plan", bot: "Bot plan", mimic: "Mimic plan", alert: "Alert", executed: "Executed", confirm: "Confirmation", info: "Answer",
@@ -56,7 +57,7 @@ export function MerodReply({ message, onChip }: { message: any; onChip: (t: stri
         {t === "order" && <Pipeline message={message} />}
         {message.plan && t !== "info" && (
           <div className={cx(showHeader && t !== "executed" && "surface mt-2 rounded-xl p-1")}>
-            <PlanCard message={message} onChip={onChip} />
+            <PlanCard message={message} onChip={onChip} /><AutoModesBar compact className="mt-2" />
           </div>
         )}
       </div>

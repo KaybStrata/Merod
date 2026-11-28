@@ -34,8 +34,7 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
     { href: "/radar", label: "Meme Radar", icon: Radar },
   ] },
   { label: "Automate", items: [
-    { href: "/agents", label: "Agents", icon: Sparkles },
-    { href: "/bots", label: "Bots", icon: Bot },
+    { href: "/bots", label: "Bots & Agents", icon: Bot, also: ["/agents"] },
     { href: "/strategies", label: "Strategies", icon: Layers, also: ["/library"] },
     { href: "/auto", label: "Auto trading", icon: Cpu, also: ["/automations", "/sessions", "/modo"] },
     { href: "/mimic", label: "Mimic", icon: Repeat, also: ["/copy", "/signals"] },
@@ -123,8 +122,8 @@ function Frame({ children }: { children: React.ReactNode }) {
         {n.href === "/auto" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} exact items={[{ href: "/auto", label: "Auto trading", icon: Cpu, extra: <AutoTradingSwitch />, below: <AutoActivityFeed /> }, { href: "/auto/activity", label: "Auto trade activity", icon: Activity }, { href: "/modo/activity", label: "Modo activity", icon: Sparkles }, { href: "/sessions", label: "Sessions", icon: Layers }]} />}
         {n.href === "/mimic" && owner && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/mimic", label: "Mimic trading", icon: Repeat }, { href: "/copy", label: "Copy trading", icon: Copy }, { href: "/signals", label: "Signal bots", icon: Webhook }]} />}
         {n.href === "/live" && isActive(pathname, n) && <SubLinks pathname={pathname} items={[{ href: "/live", label: "Live stream", icon: Activity }, { href: "/activity", label: "World activity", icon: Radio }]} />}
-        {n.href === "/agents" && isActive(pathname, n) && <SubLinks pathname={pathname} exact items={[
-          { href: "/agents", label: "Command Center", icon: Radar }, { href: "/agents/workspace", label: "Workspace", icon: Compass }, { href: "/agents/fleets", label: "Fleet Builder", icon: GitBranch },
+        {n.href === "/bots" && isActive(pathname, n) && <SubLinks pathname={pathname} exact items={[
+          { href: "/bots", label: "All bots & agents", icon: Bot }, { href: "/agents", label: "Command Center", icon: Radar }, { href: "/agents/workspace", label: "Workspace", icon: Compass }, { href: "/agents/fleets", label: "Fleet Builder", icon: GitBranch },
           { href: "/agents/rooms", label: "Rooms", icon: MessagesSquare }, { href: "/agents/arena", label: "Arena", icon: Swords }, { href: "/agents/training", label: "Auto-Training", icon: Brain },
           { href: "/agents/capital", label: "Capital & Risk", icon: Shield }, { href: "/agents/marketplace", label: "Marketplace", icon: TrendingUp }]} />}
         {n.href === "/admin" && <AdminSubLinks pathname={pathname} superAdmin={owner} />}

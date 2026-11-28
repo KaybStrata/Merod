@@ -67,7 +67,7 @@ export function ProgressPanel({ compact = false }: { compact?: boolean }) {
         <Bar value={tr.wins ?? 0} max={decided} className="bg-up" />
         <div className="mt-1 text-[10px] text-faint">{decided ? `${Math.round(((tr.wins ?? 0) / decided) * 100)}% winning sells` : "no closed trades yet"}</div>
       </Tile>
-      <Tile icon={Bot} label="Bots" href="/bots" value={<>{running}<span className="text-xs font-normal text-faint"> / {bots.length} running</span></>}
+      <Tile icon={Bot} label="Bots &amp; agents" href="/bots" value={<>{running}<span className="text-xs font-normal text-faint"> / {bots.length} running</span></>}
         sub={<>{bots.reduce((n, b) => n + (b.trades_today ?? 0), 0)} trades today</>}>
         <Bar value={running} max={bots.length} />
       </Tile>
@@ -102,7 +102,7 @@ export function ProgressPanel({ compact = false }: { compact?: boolean }) {
       <Card title={header} icon={<Gauge className="size-4 text-accent-2" />}>{tiles}</Card>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card title="Bots" icon={<Bot className="size-4 text-accent-2" />} action={<Link href="/bots" className="text-xs text-accent-2">All bots</Link>}>
+        <Card title="Bots &amp; agents" icon={<Bot className="size-4 text-accent-2" />} action={<Link href="/bots" className="text-xs text-accent-2">All bots &amp; agents</Link>}>
           {bots.length === 0 ? <div className="text-xs text-muted">No bots yet. <Link href="/bots" className="text-accent-2">Create one</Link>.</div> : (
             <ul className="space-y-3">
               {bots.map((b) => (

@@ -3,6 +3,7 @@ import { requireUser } from "@/server/auth";
 import { ok, parse, rateLimit, route } from "@/server/http";
 import { one, q } from "@/server/db";
 import { applyEdits } from "@/server/ai/bulk-edit";
+import { deleteTargets } from "@/server/bots/delete";
 import { runControl } from "@/server/ai/control";
 import { getStrategy } from "@/server/bots/strategies";
 
@@ -41,7 +42,7 @@ export const POST = route(async (req) => {
     targets: z.array(z.object({ kind: z.enum(["bot", "agent"]), id: z.string().uuid() })).min(1).max(500),
     edit: z.object({ amountUsd: N.min(1).max(1e7).optional(), amountAdd: N.optional(), amountMult: N.min(0.01).max(100).optional(), stopLossPct: N.min(0).max(99).optional(), takeProfitPct: N.min(0).max(10_000).optional(),
       dipPct: N.min(0).max(99).optional(), capitalUsd: N.min(0).max(1e9).optional(), capitalAdd: N.optional(), capitalMult: N.min(0.01).max(100).optional() }).default({}),
-    status: z.enum(["pause", "resume"]).optional(),
+    status: z.enum(["pause", "resume", "delete"]).optional(),
   }));
   // Only the user's own bots/agents, with their names (for the result lines).
   const ids = b.targets.map((t) => t.id);
@@ -50,9 +51,14 @@ export const POST = route(async (req) => {
   const targets = rows.filter((r) => b.targets.some((t) => t.id === r.id && t.kind === r.kind));
   const lines: string[] = [];
   if (Object.keys(b.edit).length) lines.push(...(await applyEdits(u.id, targets.map((t) => ({ kind: t.kind, id: t.id, name: t.name })), b.edit)));
+  if (b.status === "delete") {
+    lines.push(...(await deleteTargets(u.id, targets)));
+    return ok({ updated: targets.length, lines });
+  }
   if (b.status) {
     const role = (await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [u.id]))?.role;
-    lines.push(...(await runControl(u.id, b.status, targets.map((t) => ({ kind: t.kind, id: t.id, name: t.name, status: t.status })), role === "super_admin")));
+    lines.push(...(await runControl(u.id, b.status as "pause" | "resume", targets.map((t) => ({ kind: t.kind, id: t.id, name: t.name, status: t.status })), role === "super_admin")));
   }
   return ok({ updated: targets.length, lines });
 });
+

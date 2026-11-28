@@ -4,6 +4,7 @@ import { PlanCard } from "@/components/shell/PlanCard";
 import { cx } from "@/components/ui";
 import { MerodAvatar } from "./Digest";
 import { Widget, knownWidgets } from "./widgets/Widgets";
+import { AutoModesBar } from "@/components/AutoModesBar";
 
 /** Reply types that get an action card (Approve / Dismiss etc.). app_action = settings and on/off changes from the prompt. */
 const PLAN_TYPES = new Set(["order", "bot", "mimic", "confirm_action", "executed", "alert", "clarify", "app_action"]);
@@ -43,6 +44,7 @@ function MerodMessage({ m, onSend, onDone, allowed }: { m: any; onSend: (t: stri
           </div>
         )}
         {below.map((w, i) => <Widget key={`b${i}`} w={w} onSend={onSend} allowed={allowed} />)}
+        {m.status !== "error" && <AutoModesBar compact />}
       </div>
     </div>
   );

@@ -15,11 +15,13 @@ import { parseEdits, applyEdits, fmtEdit } from "./ai/bulk-edit";
  * Running applies instructions the same way the prompt box does: stop-loss / take-profit / amount / dip settings are
  * written to the bot or agent; "turn off"/"turn on" pauses or resumes it; anything else is sent to Merod addressed to it.
  */
-export type NodeType = "bot" | "agent" | "prompt" | "skill" | "point" | "method" | "auton";
+export type NodeType = "bot" | "agent" | "prompt" | "skill" | "point" | "method" | "auton" | "auto";
 export type MapNode = { id: string; type: NodeType; position: { x: number; y: number }; data: { refId?: string; label?: string; text?: string; color?: string; note?: string } };
 export type MapEdge = { id: string; source: string; target: string; label?: string };
 
-const INSTR = new Set<NodeType>(["prompt", "skill", "point", "method"]);
+// "auto" = an auto switch box (data.text = trainer | gainer | adjuster | scanner). It chains like an instruction:
+// attached to bots/agents (directly or through skills/methods) it switches on for just those; on its own it's for everything.
+const INSTR = new Set<NodeType>(["prompt", "skill", "point", "method", "auto"]);
 const TARGET = new Set<NodeType>(["bot", "agent"]);
 
 export async function listMaps(userId: string) {
@@ -125,6 +127,30 @@ export async function runMap(userId: string, mapId: string, opts: { nodeId?: str
       loose = targets.length ? [] : nodes.filter((n) => n.type === "prompt" && group.has(n.id) && n.data.text?.trim());
     }
   }
+  // Auto switch boxes: on for the bots/agents they reach, or for everything when attached to none.
+  const autoLines: string[] = [];
+  const { setMode, MODE_INFO } = await import("./auto-modes");
+  const autoSettings = async (an: MapNode) => {
+    const txt: string[] = [];
+    for (const i of reach(an.id)) {
+      if (i.type === "prompt" && i.data.text) txt.push(i.data.text);
+      if ((i.type === "skill" || i.type === "point") && i.data.refId) { const sk = await one<any>("SELECT instructions FROM skills WHERE id=$1 AND user_id=$2", [i.data.refId, userId]); if (sk) txt.push(sk.instructions); }
+    }
+    const all = txt.join(" ").toLowerCase(), s: Record<string, number> = {};
+    const pct = all.match(/(\d+(?:\.\d+)?)\s*%/); if (pct) s.share = Math.min(1, Math.max(0.01, Number(pct[1]) / 100));
+    const cap = all.match(/(?:cap|max(?:imum)?|up to)\s*\$?\s*(\d[\d,]*)/); if (cap) s.max_usd = Number(cap[1].replace(/,/g, ""));
+    return Object.keys(s).length ? s : undefined;
+  };
+  const autoNodes = nodes.filter((n) => n.type === "auto" && ["trainer", "gainer", "adjuster", "scanner"].includes(n.data.text ?? "")
+    && (!opts.nodeId || n.id === opts.nodeId || reach(n.id).some((x) => x.id === opts.nodeId) || targetsOf(n.id).some((x) => x.id === opts.nodeId)));
+  for (const an of autoNodes) {
+    const mode = an.data.text as "trainer" | "gainer" | "adjuster" | "scanner";
+    const tg = targetsOf(an.id).filter((x) => x.data.refId);
+    const st = mode === "gainer" ? await autoSettings(an) : undefined;
+    if (tg.length) { for (const x of tg) await setMode(userId, mode, true, x.type as "bot" | "agent", x.data.refId!, st); autoLines.push(`${MODE_INFO[mode].name}: on for ${tg.map((x) => x.data.label ?? x.type).join(", ")}.`); }
+    else { await setMode(userId, mode, true, "all", "", st); autoLines.push(`${MODE_INFO[mode].name}: on for all bots and agents.`); }
+  }
+  if (opts.nodeId && autoNodes.some((a) => a.id === opts.nodeId)) { const res = { at: new Date().toISOString(), lines: autoLines, ran: autoNodes.length }; await q("UPDATE strategy_maps SET last_run=$3 WHERE id=$1 AND user_id=$2", [mapId, userId, JSON.stringify(res)]); return res; }
   // Auton boxes: instructions attached to Auton become its goals; bots/agents attached to it are handed to Auton to manage.
   const autons = nodes.filter((n) => n.type === "auton" && (!opts.nodeId || n.id === opts.nodeId || reach(n.id).some((x) => x.id === opts.nodeId)));
   const autonLines: string[] = [];
@@ -142,14 +168,15 @@ export async function runMap(userId: string, mapId: string, opts: { nodeId?: str
     if (!r.actions.length) autonLines.push("  nothing needed changing");
   }
   if (autons.length && opts.nodeId && autons.some((a) => a.id === opts.nodeId)) { const res = { at: new Date().toISOString(), lines: autonLines, ran: autons.length }; await q("UPDATE strategy_maps SET last_run=$3 WHERE id=$1 AND user_id=$2", [mapId, userId, JSON.stringify(res)]); return res; }
-  if (!targets.length && !loose.length && autons.length) { const res = { at: new Date().toISOString(), lines: autonLines, ran: autons.length }; await q("UPDATE strategy_maps SET last_run=$3 WHERE id=$1 AND user_id=$2", [mapId, userId, JSON.stringify(res)]); return res; }
+  if (!targets.length && !loose.length && (autons.length || autoNodes.length)) { autonLines.unshift(...autoLines); autoLines.length = 0; }
+  if (!targets.length && !loose.length && (autons.length || autonLines.length)) { const res = { at: new Date().toISOString(), lines: autonLines, ran: autons.length }; await q("UPDATE strategy_maps SET last_run=$3 WHERE id=$1 AND user_id=$2", [mapId, userId, JSON.stringify(res)]); return res; }
   if (!targets.length && !loose.length) return { lines: ["Nothing to run: attach a prompt, skill, point or method to a bot or agent (or write a prompt) first."], ran: 0 };
 
   // Load the skills/points referenced on the map once.
   const skillIds = [...new Set(nodes.filter((n) => (n.type === "skill" || n.type === "point") && n.data.refId).map((n) => n.data.refId!))];
   const skills = new Map((skillIds.length ? await q<any>("SELECT id, name, instructions, rules FROM skills WHERE user_id=$1 AND id = ANY($2::uuid[])", [userId, skillIds]) : []).map((s) => [s.id, s]));
   const instrOf = (n: MapNode): Instr | null => {
-    if (n.type === "method") return null;
+    if (n.type === "method" || n.type === "auto") return null;
     if (n.type === "prompt") { const t = (n.data.text ?? "").trim(); return t ? { node: n, text: t, name: n.data.label || "Prompt", edits: parseEdits(t) } : null; }
     const s = n.data.refId ? skills.get(n.data.refId) : null;
     if (!s) return null;
@@ -191,8 +218,9 @@ export async function runMap(userId: string, mapId: string, opts: { nodeId?: str
     const r: any = await handlePrompt(userId, { text: p.data.text!.trim(), tz: opts.tz });
     lines.push(`Prompt “${p.data.text!.trim().slice(0, 80)}” → ${String(r?.message?.content ?? "sent to Merod").split("\n")[0].slice(0, 220)}`); ran++;
   }
+  if (autoLines.length) lines.push(...autoLines);
   if (autonLines.length) lines.push(...autonLines);
-  const result = { at: new Date().toISOString(), lines, ran: ran + autons.length };
+  const result = { at: new Date().toISOString(), lines, ran: ran + autons.length + autoNodes.length };
   await q("UPDATE strategy_maps SET last_run=$3 WHERE id=$1 AND user_id=$2", [mapId, userId, JSON.stringify(result)]);
   return result;
 }

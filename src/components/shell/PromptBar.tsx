@@ -10,6 +10,7 @@ import { SkillsMenu } from "./SkillsMenu";
 import { cx } from "@/components/ui";
 import { useShell } from "./context";
 import { PlanCard } from "./PlanCard";
+import { AutoModesBar } from "@/components/AutoModesBar";
 
 /** Floating natural-language prompt bar, present on every screen. Knows which asset is on screen. */
 export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftCollapsed?: boolean; railOpen?: boolean }) {
@@ -97,7 +98,7 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
                   {m.role === "user" ? m.content : (
                     <div className={cx(m.status === "error" && "text-down")}>
                       <div className="whitespace-pre-wrap">{m.content}</div>
-                      <PlanCard message={m} onChip={(s) => send(s)} />
+                      <PlanCard message={m} onChip={(s) => send(s)} /><AutoModesBar compact className="mt-1.5" />
                     </div>
                   )}
                 </div>

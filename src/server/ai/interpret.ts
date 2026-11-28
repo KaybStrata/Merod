@@ -181,6 +181,12 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       [userId, convId, message, card ? JSON.stringify(card) : null, status]);
     return { conversationId: convId!, message: row, userMessageId: um!.id, fallbackReason: null, provider: "merod", model: "deterministic" };
   };
+  // Auto switches: "turn on auto gainer", "auto scanner off", "turn on all auto switches", "auto gainer 25% for Dip A".
+  if (!input.part && !/\bmap\b/i.test(text) && /\bauto[\s-]?(?:train(?:er|ing)?|gain(?:er)?|adjust(?:er|ing)?|scan(?:ner|ning)?|switches|modes|toggles)\b|\ball autos\b/i.test(text)) {
+    const { autoModeCommand } = await import("../auto-modes");
+    const msg = await autoModeCommand(userId, text).catch((e: any) => `Couldn't change that switch: ${e.message}`);
+    if (msg) return early(msg, { type: "executed", detail: "Auto switches" }, "executed", null);
+  }
   // Skills: "create a skill: always use a 5% stop-loss…", "show my skills", "turn off skill Safe".
   // Auton (autonomous trader): AI = Auton in the composer, or "start/stop Auton", "auton budget $2000", "auton: focus on solana memes".
   if (!input.part && (input.auton || /^\s*(?:(?:start|stop|run|turn (?:on|off)|pause|resume|enable|disable)\s+)?auton\b|\bauton\b.{0,40}\b(budget|max|bots?|goal|focus|start|stop|run|every|real money|paper)\b/i.test(text))) {

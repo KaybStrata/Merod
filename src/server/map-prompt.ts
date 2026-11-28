@@ -43,6 +43,24 @@ export async function mapCommand(userId: string, text: string, opts: { isOwner: 
     return `Auton is on your map${tg.length ? ` and connected to ${tg.map((x) => x.name).join(", ")} (it will manage them)` : ""}. Attach prompts or skills to it to give it goals, then press ▶ on it (or say “run Auton”). Open the Map to see it.`;
   }
 
+  /* ── Auto switches on the map: "add auto gainer to the map", "connect auto scanner to Dip A" ── */
+  const am = t.match(/\bauto[\s-]?(train(?:er|ing)?|gain(?:er)?|adjust(?:er|ing)?|scan(?:ner|ning)?)\b/i);
+  if (am && /\b(add|put|place|drop|connect|attach|link)\b/i.test(t)) {
+    const mode = (["trainer", "gainer", "adjuster", "scanner"] as const).find((x) => am[1].toLowerCase().startsWith(x.slice(0, 4)))!;
+    const label = `Auto ${mode}`;
+    let an = nodes.find((n) => n.type === "auto" && n.data.text === mode);
+    const maxX = nodes.reduce((a, n) => Math.max(a, n.position.x), -320);
+    if (!an) { an = { id: `auto-${Math.random().toString(36).slice(2, 10)}`, type: "auto", position: { x: maxX + 360, y: 160 }, data: { label, text: mode } }; nodes.push(an); }
+    const tg = (await parseTargets(userId, t.replace(am[0], " "))) ?? [];
+    tg.forEach((x, i) => {
+      let n = nodes.find((y) => y.type === x.kind && y.data.refId === x.id);
+      if (!n) { n = { id: `${x.kind}-${Math.random().toString(36).slice(2, 10)}`, type: x.kind, position: { x: an!.position.x + 340, y: an!.position.y + i * 150 }, data: { refId: x.id, label: x.name } }; nodes.push(n); }
+      if (!edges.some((e) => (e.source === an!.id && e.target === n!.id) || (e.target === an!.id && e.source === n!.id))) edges.push({ id: `e-${Math.random().toString(36).slice(2, 10)}`, source: an!.id, target: n.id });
+    });
+    await saveMap(userId, m.id, { nodes, edges });
+    return `${label} is on your map${tg.length ? `, connected to ${tg.map((x) => x.name).join(", ")}` : ""}. Press ▶ on it to switch it on${tg.length ? " for those" : " for everything"} (attach skills or bots to it to narrow it). Open the Map to see it.`;
+  }
+
   /* ── Editing what's already on the map ── */
   const clean = (x: string) => x.replace(/["“”']/g, "").replace(/\b(the|my|method|box|prompt|bot|agent|skill|point)\b/gi, " ").replace(/\s+/g, " ").trim().toLowerCase();
   const find = (name: string) => {

@@ -35,16 +35,20 @@ function Talk() {
   const [narrate, setNarrateState] = useState(false);
   useEffect(() => { try { setNarrateState(localStorage.getItem("merod-talk-narrate") === "1"); } catch { /* ignore */ } }, []);
   const setNarrate = (on: boolean) => { setNarrateState(on); try { localStorage.setItem("merod-talk-narrate", on ? "1" : "0"); } catch { /* ignore */ }
-    setMessages((m) => [...m, { id: `n-sys-${Date.now()}`, role: "assistant", narration: true, content: on ? "Talk is on: your bots, agents, Auto/Modo, Mimic and trades will tell you here what they do, as it happens." : "Talk is off. Everything is still in Activity." }]); };
+    setMessages((m) => [...m, { id: `n-sys-${Date.now()}`, role: "assistant", narration: true, content: on ? "Talk is on for this tab: the trades, bots, agents and Auton started from this tab will tell you here what they do, as it happens. Other tabs narrate their own." : "Talk is off. Everything is still in Activity." }]); };
   const narrSince = useRef(0);
+  // Each tab narrates only its own activity: what that conversation started (its trades, bots, agents, Auton).
+  const narrConv = useRef<string | null>(null);
   useEffect(() => {
-    if (!narrate) return;
+    if (!narrate || !convId) return;
     let live = true;
     narrSince.current = Date.now();
+    narrConv.current = convId;
     const pull = async () => {
       try {
-        const r: any = await api(`/api/live-stream?since=${narrSince.current - 1000}`);
-        if (!live) return;
+        const c = narrConv.current;
+        const r: any = await api(`/api/live-stream?since=${narrSince.current - 1000}&conv=${c}`);
+        if (!live || narrConv.current !== c) return;
         narrSince.current = r.now;
         // Meaningful steps only: trades, decisions, warnings — not the per-tick "watching" lines.
         const items = (r.items ?? []).filter((i: any) => ["execution", "decision", "warning"].includes(i.kind) && i.source !== "merod").reverse();
@@ -64,7 +68,7 @@ function Talk() {
     };
     const t = setInterval(pull, 5000);
     return () => { live = false; clearInterval(t); };
-  }, [narrate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [narrate, convId]); // eslint-disable-line react-hooks/exhaustive-deps
   // Which AI answers Talk prompts (remembered in this browser). Modo = built-in rules, no key needed.
   const [ai, setAiState] = useState<"merod" | "openai" | "anthropic" | "auton">("merod");
   useEffect(() => { try { const v = localStorage.getItem("merod-talk-ai"); if (v === "openai" || v === "anthropic" || v === "merod" || v === "auton") setAiState(v); } catch { /* ignore */ } }, []);

@@ -1,16 +1,17 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CandlestickChart, PieChart, Sparkles, Bot, Settings, SlidersHorizontal, Lightbulb, Map as MapIcon, PiggyBank, X, Minus, ExternalLink, Maximize2, Loader2 } from "lucide-react";
+import { CandlestickChart, PieChart, Sparkles, Bot, Settings, SlidersHorizontal, Lightbulb, Map as MapIcon, PiggyBank, Trash2, Cpu, ListChecks, Wand2, MessageSquare, X, Minus, ExternalLink, Maximize2, Loader2 } from "lucide-react";
 import { api, useApi } from "@/lib/api";
+import { SkillsSection, AutonSection, TradesSection, PromptsSection } from "./EditAllSections";
 import { cx, useToast } from "@/components/ui";
 
-export type FloatTab = "map" | "ewallets" | "trade" | "portfolio" | "agents" | "bots" | "edit" | "advisor" | "settings";
+export type FloatTab = "map" | "ewallets" | "trade" | "portfolio" | "agents" | "bots" | "auton" | "edit" | "advisor" | "settings";
 const TABS: { id: FloatTab; label: string; icon: any; href?: string }[] = [
   { id: "map", label: "Map", icon: MapIcon, href: "/map" },
   { id: "trade", label: "Trade", icon: CandlestickChart, href: "/trade" },
   { id: "portfolio", label: "Portfolio", icon: PieChart, href: "/analytics" },
-  { id: "agents", label: "Agents", icon: Sparkles, href: "/agents" },
-  { id: "bots", label: "Bots", icon: Bot, href: "/bots" },
+  { id: "bots", label: "Bots & agents", icon: Bot, href: "/bots" },
+  { id: "auton", label: "Auton", icon: Cpu },
   { id: "edit", label: "Edit all", icon: SlidersHorizontal },
   { id: "advisor", label: "Advisor", icon: Lightbulb, href: "/advisor" },
   { id: "ewallets", label: "E-wallets", icon: PiggyBank, href: "/e-wallets" },
@@ -37,7 +38,7 @@ export function FloatingPages() {
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const on = (e: Event) => { const t = (e as CustomEvent).detail as FloatTab; setTab(t); setOpen(true); setMin(false); setSeen((s) => new Set(s).add(t)); };
+    const on = (e: Event) => { let t = (e as CustomEvent).detail as FloatTab; if (t === "agents") t = "bots"; setTab(t); setOpen(true); setMin(false); setSeen((s) => new Set(s).add(t)); };
     window.addEventListener("merod-float", on);
     return () => window.removeEventListener("merod-float", on);
   }, []);
@@ -81,7 +82,8 @@ export function FloatingPages() {
         <button onClick={() => setOpen(false)} className="rounded-md p-1.5 text-faint hover:text-text" title="Close" aria-label="Close"><X className="size-3.5" /></button>
       </div>
       <div className="relative min-h-0 flex-1">
-        {tab === "edit" && <BulkEditor />}
+        {tab === "edit" && <EditAll />}
+        {tab === "auton" && <div className="h-full overflow-y-auto"><AutonSection /></div>}
         {TABS.filter((t) => t.href && (seen.has(t.id) || tab === t.id)).map((t) => (
           <iframe key={t.id} src={`${t.href}?embed=1`} title={t.label} allow="microphone; clipboard-write"
             className={cx("absolute inset-0 h-full w-full border-0 bg-bg", tab === t.id ? "block" : "hidden")} />
@@ -120,10 +122,11 @@ export function BulkEditor() {
     if (c != null && Number.isFinite(c)) { if (f.capMode === "set") e.capitalUsd = c; else if (f.capMode === "add") e.capitalAdd = c; else e.capitalMult = 1 + c / 100; }
     return e;
   }
-  async function run(kind: "edit" | "pause" | "resume") {
+  async function run(kind: "edit" | "pause" | "resume" | "delete") {
     if (!chosen.length) return toast("Tick the bots and agents to change first (or the box at the top for all)", "down");
     const edit = kind === "edit" ? buildEdit() : {};
     if (kind === "edit" && !Object.keys(edit).length) return toast("Fill in at least one setting to change", "down");
+    if (kind === "delete" && !confirm(`Delete ${chosen.length} bot${chosen.length === 1 ? "" : "s"}/agent${chosen.length === 1 ? "" : "s"}? Bots stop and are removed, agents are archived. Past trades stay in your history.`)) return;
     setBusy(kind); setResult(null);
     try {
       const r = await api("/api/bots/bulk", { method: "POST", json: { targets: chosen.map((x) => ({ kind: x.kind, id: x.id })), edit, ...(kind !== "edit" ? { status: kind } : {}) } });
@@ -185,9 +188,32 @@ export function BulkEditor() {
           <button onClick={() => run("edit")} disabled={!!busy} className="rounded-lg bg-grad px-3 py-1.5 text-[12.5px] font-semibold text-bg disabled:opacity-60">{busy === "edit" ? "Applying…" : `Apply to ${chosen.length || "selected"}`}</button>
           <button onClick={() => run("resume")} disabled={!!busy} className="rounded-lg border border-up/40 px-3 py-1.5 text-[12.5px] text-up hover:bg-up/10 disabled:opacity-60">{busy === "resume" ? "…" : "Turn on"}</button>
           <button onClick={() => run("pause")} disabled={!!busy} className="rounded-lg border border-down/40 px-3 py-1.5 text-[12.5px] text-down hover:bg-down/10 disabled:opacity-60">{busy === "pause" ? "…" : "Turn off"}</button>
+          <button onClick={() => run("delete")} disabled={!!busy} className="inline-flex items-center gap-1 rounded-lg border border-down/60 bg-down/10 px-3 py-1.5 text-[12.5px] text-down hover:bg-down/20 disabled:opacity-60"><Trash2 className="size-3.5" />{busy === "delete" ? "…" : "Delete"}</button>
           <span className="text-[10.5px] text-faint">Empty boxes stay as they are. Settings a bot's strategy doesn't use are skipped and listed.</span>
         </div>
         {result && <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded-lg border border-line bg-bg p-2 font-sans text-[11.5px] leading-relaxed text-muted">{result.join("\n")}</pre>}
+      </div>
+    </div>
+  );
+}
+
+/** Edit all: one place to change everything at once — bots & agents, skills & points, Auton, trades and prompts. */
+function EditAll() {
+  const [sec, setSec] = useState<"bots" | "skills" | "auton" | "trades" | "prompts">("bots");
+  const SECS = [["bots", "Bots & agents", Bot], ["skills", "Skills & points", Wand2], ["auton", "Auton", Cpu], ["trades", "Trades", ListChecks], ["prompts", "Prompts", MessageSquare]] as const;
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b border-line bg-panel/40 px-2 py-1">
+        {SECS.map(([k, l, I]) => (
+          <button key={k} onClick={() => setSec(k)} className={cx("flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[12px]", sec === k ? "bg-accent/15 text-text" : "text-muted hover:text-text")}><I className="size-3.5" />{l}</button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {sec === "bots" && <BulkEditor />}
+        {sec === "skills" && <SkillsSection />}
+        {sec === "auton" && <AutonSection />}
+        {sec === "trades" && <TradesSection />}
+        {sec === "prompts" && <PromptsSection />}
       </div>
     </div>
   );

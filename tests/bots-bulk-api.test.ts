@@ -20,3 +20,15 @@ test("bulk editor: one change (×1.5 per trade, 6% stop) applies to every select
   await runControl(u, "pause", t.map((x) => ({ ...x, status: "running" })), false);
   assert.equal((await one<any>("SELECT status FROM trading_bots WHERE id=$1", [b2.id]))!.status, "paused");
 });
+
+test("delete: a bot is stopped and removed, an agent is archived, and their Auton/tab links are cleaned up", async () => {
+  const { deleteTargets } = await import("@/server/bots/delete");
+  const u = await newUser();
+  const acct = (await one<any>("SELECT id FROM trading_accounts WHERE user_id=$1 AND kind='paper'", [u]))!;
+  const b = (await one<any>("INSERT INTO trading_bots (user_id, name, strategy_id, account_id, status, params) VALUES ($1,'Gone','dip_rebound_loop',$2,'paused','{\"amount_usd\":10}') RETURNING id", [u, acct.id]))!;
+  await one("INSERT INTO auton_assets (user_id, kind, ref_id, label) VALUES ($1,'bot',$2,'Gone') RETURNING ref_id", [u, String(b.id)]);
+  const lines = await deleteTargets(u, [{ kind: "bot", id: b.id, name: "Gone", status: "paused" }]);
+  assert.match(lines[0], /deleted/);
+  assert.equal(await one("SELECT id FROM trading_bots WHERE id=$1", [b.id]), null);
+  assert.equal(await one("SELECT ref_id FROM auton_assets WHERE user_id=$1 AND ref_id=$2", [u, String(b.id)]), null);
+});

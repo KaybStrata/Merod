@@ -7,6 +7,7 @@ import { api, useApi } from "@/lib/api";
 import { Badge, Button, Card, Input, PaperBadge, Pills, Select, SourceBadge, Stat, StatusPill, Toggle, cx, useToast } from "@/components/ui";
 import { useRealtime } from "@/components/shell/context";
 import { usd, pct, price, qty, ago, tone } from "@/lib/format";
+import { AutoModesBar } from "@/components/AutoModesBar";
 
 const LEVEL_TONE: Record<string, string> = { observation: "text-muted", trigger: "text-accent-2", instruction: "text-[#4aa8ff]", order: "text-warn", result: "text-up", warning: "text-warn", error: "text-down", control: "text-text" };
 
@@ -55,6 +56,7 @@ export default function BotDetail({ params }: { params: Promise<{ id: string }> 
           <p className="mt-1 text-sm text-muted">{bot.strategy_name} · {bot.account_label} · checks every {bot.schedule.replace("every_", "")}{bot.last_tick_at ? ` · last check ${ago(bot.last_tick_at)}` : ""}</p>
           {bot.description && <p className="mt-1 text-sm">{bot.description}</p>}
           {bot.created_from_prompt && <p className="mt-1 text-xs text-faint">Created from prompt: “{bot.created_from_prompt}”</p>}
+          <div className="mt-2"><div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-faint">Auto switches for this bot</div><AutoModesBar scope="bot" scopeRef={bot.id} /></div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 rounded-xl border border-line bg-bg-2 px-3 py-1.5 text-xs text-muted" title="Auto-training only reduces risk; changes are revertible on the Auto-Training page">
