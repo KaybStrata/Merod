@@ -6,6 +6,8 @@ import { useRealtime } from "@/components/shell/context";
 import { PnlLine } from "@/components/talk/TabPnl";
 import { cx } from "@/components/ui";
 import { usd } from "@/lib/format";
+import { TimeDial } from "@/components/TimeDial";
+import { secLabel } from "@/lib/timeDial";
 
 export type PnlScope = "trades" | "bot" | "auto" | "modo" | "copy" | "auton" | "prompt" | "manual";
 const RANGES: [string, number | null, string, string][] = [
@@ -33,9 +35,16 @@ export function ProfitToggle({ on, onChange }: { on: boolean; onChange: (v: bool
  * Pick a range; it's compared with the period before. "Profit" shows closed-trade profit only.
  */
 export function ScopePnlCard({ scope, conv, refId, title, className }: { scope: PnlScope; conv?: string | null; refId?: string; title?: string; className?: string }) {
-  const [ri, setRi] = useState(1);
+  // Each graph (tab, filter, bot) remembers its own range; "Custom" uses the time dial (1 minute → 5 years).
+  const store = `merod-pnl-range:${scope}:${conv ?? "all"}:${refId ?? ""}`;
+  const [ri, setRiState] = useState<number>(() => { try { const v = JSON.parse(localStorage.getItem(store) ?? "null"); return typeof v?.ri === "number" ? v.ri : 1; } catch { return 1; } });
+  const [dialSec, setDialState] = useState<number>(() => { try { const v = JSON.parse(localStorage.getItem(store) ?? "null"); return typeof v?.dial === "number" ? v.dial : 3 * 3600; } catch { return 3 * 3600; } });
+  const remember = (next: { ri?: number; dial?: number }) => { try { localStorage.setItem(store, JSON.stringify({ ri: next.ri ?? ri, dial: next.dial ?? dialSec })); } catch { /* ignore */ } };
+  const setRi = (i: number) => { setRiState(i); remember({ ri: i }); };
+  const setDial = (sec: number) => { setDialState(sec); remember({ dial: sec }); };
+  const custom = ri === RANGES.length;
   const [profitOnly, setProfitOnly] = useProfitOnly();
-  const [label, range, prevLabel, nowLabel] = [RANGES[ri][0], RANGES[ri][1], RANGES[ri][2], RANGES[ri][3]];
+  const [label, range, prevLabel, nowLabel] = custom ? ["Custom", dialSec, `previous ${secLabel(dialSec)}`, `last ${secLabel(dialSec)}`] as const : [RANGES[ri][0], RANGES[ri][1], RANGES[ri][2], RANGES[ri][3]];
   const pnl = useApi<any>(`/api/pnl/scope?scope=${scope}${range ? `&range=${range}` : ""}${conv ? `&conv=${conv}` : ""}${refId ? `&ref=${refId}` : ""}`, { refreshMs: 10_000 });
   useRealtime((e) => { if (e.type === "fill" || e.type === "order") pnl.refresh(); });
   const d = pnl.data;
@@ -53,9 +62,11 @@ export function ScopePnlCard({ scope, conv, refId, title, className }: { scope: 
           <ProfitToggle on={profitOnly} onChange={setProfitOnly} />
           <div className="flex rounded-md border border-line p-0.5">
             {RANGES.map(([l], i) => <button key={l} onClick={() => setRi(i)} className={cx("rounded px-1.5 py-0.5 text-[10.5px]", ri === i ? "bg-panel-2 text-text" : "text-muted hover:text-text")}>{l}</button>)}
+            <button onClick={() => setRi(RANGES.length)} title="Pick any time range with the dial" className={cx("rounded px-1.5 py-0.5 text-[10.5px]", custom ? "bg-panel-2 text-text" : "text-muted hover:text-text")}>{custom ? secLabel(dialSec) : "Custom"}</button>
           </div>
         </div>
       </div>
+      {custom && <TimeDial value={dialSec} onChange={setDial} className="mt-1.5" />}
       {!d ? <div className="h-[140px] text-[11px] text-faint">Loading…</div> : (
         <>
           <div className="mt-1.5 flex items-baseline gap-2">
