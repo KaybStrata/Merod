@@ -24,13 +24,12 @@ test("prompt auto-executes within permissions (auto_within_limits) and rejects a
   assert.equal(over.message.status, "rejected");
 });
 
-test("rinse-and-repeat prompt: clarifies amount, creates a running paper dip-loop bot, bot ticks and logs", async () => {
+test("rinse-and-repeat prompt: no amount → default $100 (no question), creates a running paper dip-loop bot, bot ticks and logs", async () => {
   const u = await newUser(); await freshPrices();
   const sol = await assetId("SOL", "solana");
-  const first = await handlePrompt(u, { text: "buy at 3% dip and sell at 5% increase, and then rinse and repeat", screenAssetId: sol, provider: "merod" });
-  assert.equal(first.message.status, "clarify");
-  const second = await handlePrompt(u, { text: "$100", conversationId: first.conversationId, screenAssetId: sol, provider: "merod" });
-  assert.equal(second.message.plan.type, "bot");
+  const second = await handlePrompt(u, { text: "buy at 3% dip and sell at 5% increase, and then rinse and repeat", screenAssetId: sol, provider: "merod" });
+  assert.equal(second.message.plan.type, "bot", second.message.content);
+  assert.equal(Number(second.message.plan.config.params.amount_usd), 100);
   assert.equal(second.message.plan.config.strategyId, "dip_rebound_loop");
   assert.equal(second.message.plan.config.params.repeat, true);
   const { botId } = await approvePlan(u, second.message.id);

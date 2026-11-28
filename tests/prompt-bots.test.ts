@@ -27,9 +27,11 @@ test("the prompt box builds a bot that watches every Solana meme coin", async ()
   const prev = await q<any>("SELECT id, price_source FROM assets WHERE venue='solana' AND 'meme' = ANY(categories) AND NOT ('demo_data' = ANY(risk_flags))");
   await q("UPDATE assets SET price_source='coingecko' WHERE id = ANY($1::uuid[])", [prev.map((p) => p.id)]);
   try {
+    // No amount given: the bot uses the default size instead of asking.
     const r1 = await handlePrompt(me, { text: "make a bot that watches every solana meme coin and buys at a 6% dip and sells at 3% profit" } as any);
-    assert.equal(r1.message.plan?.type, "clarify", r1.message.content);
-    const r2 = await handlePrompt(me, { text: "$50", conversationId: r1.conversationId } as any);
+    assert.equal(r1.message.plan?.type, "bot", r1.message.content);
+    assert.equal(Number(r1.message.plan.config.params.amount_usd), 100);
+    const r2 = await handlePrompt(me, { text: "make a bot that watches every solana meme coin and buys at a 6% dip and sells at 3% profit, $50 per coin" } as any);
     const card = r2.message.plan;
     assert.equal(card?.type, "bot", r2.message.content);
     assert.equal(card.config.strategyId, "dip_rebound_loop");

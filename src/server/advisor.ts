@@ -25,16 +25,17 @@ const day = () => new Date().toISOString().slice(0, 10);
 
 export async function getAdvisor(userId: string) {
   const s = await one<any>("SELECT * FROM advisor_settings WHERE user_id=$1", [userId]);
-  return s ?? { user_id: userId, active: false, every_min: 10, topics: Object.fromEntries(TOPICS.map((t) => [t, true])), notify: false, last_run_at: null };
+  return s ?? { user_id: userId, active: false, every_sec: 30, every_min: 1, topics: Object.fromEntries(TOPICS.map((t) => [t, true])), notify: false, last_run_at: null };
 }
-export async function setAdvisor(userId: string, o: { active?: boolean; everyMin?: number; topics?: Partial<Record<Topic, boolean>>; notify?: boolean }) {
+export async function setAdvisor(userId: string, o: { active?: boolean; everySec?: number; everyMin?: number; topics?: Partial<Record<Topic, boolean>>; notify?: boolean }) {
   const cur = await getAdvisor(userId);
-  const every = Math.max(2, Math.min(24 * 60, Math.round(o.everyMin ?? cur.every_min ?? 10)));
+  // How often it checks, in seconds (30 s … 1 day). everyMin is still accepted from older clients.
+  const every = Math.max(30, Math.min(86_400, Math.round(o.everySec ?? (o.everyMin != null ? o.everyMin * 60 : cur.every_sec ?? 30))));
   const topics = { ...(cur.topics ?? {}), ...(o.topics ?? {}) };
   const turningOn = o.active === true && !cur.active;
   return one<any>(
-    `INSERT INTO advisor_settings (user_id, active, every_min, topics, notify, next_run_at) VALUES ($1,$2,$3,$4,$5, now())
-     ON CONFLICT (user_id) DO UPDATE SET active=$2, every_min=$3, topics=$4, notify=$5, updated_at=now(),
+    `INSERT INTO advisor_settings (user_id, active, every_sec, every_min, topics, notify, next_run_at) VALUES ($1,$2,$3::int,GREATEST(2, CEIL($3::int/60.0)::int),$4,$5, now())
+     ON CONFLICT (user_id) DO UPDATE SET active=$2, every_sec=$3::int, every_min=GREATEST(2, CEIL($3::int/60.0)::int), topics=$4, notify=$5, updated_at=now(),
        next_run_at = CASE WHEN $6 THEN now() ELSE advisor_settings.next_run_at END
      RETURNING *`, [userId, o.active ?? cur.active ?? false, every, JSON.stringify(topics), o.notify ?? cur.notify ?? false, turningOn]);
 }
@@ -154,7 +155,7 @@ export async function runAdvisor(userId: string) {
 
 /** Worker: run every user's Advisor that's due. */
 export async function runDueAdvisors() {
-  const due = await q<any>("UPDATE advisor_settings SET next_run_at = now() + make_interval(mins => every_min) WHERE active AND next_run_at <= now() RETURNING user_id");
+  const due = await q<any>("UPDATE advisor_settings SET next_run_at = now() + make_interval(secs => every_sec) WHERE active AND next_run_at <= now() RETURNING user_id");
   for (const d of due) await runAdvisor(d.user_id).catch((e) => console.error("[advisor]", d.user_id, e?.message));
   return due.length;
 }

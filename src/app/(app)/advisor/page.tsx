@@ -5,9 +5,9 @@ import { api, useApi } from "@/lib/api";
 import { usePageTitle, useRealtime } from "@/components/shell/context";
 import { cx, Empty, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
-import { TipRow, TOPIC_LABEL, advisorChanged, useAdvisorSync } from "@/components/shell/AdvisorPanel";
+import { TipRow, TOPIC_LABEL, advisorChanged, useAdvisorSync, everyLabel } from "@/components/shell/AdvisorPanel";
 
-const EVERY: [string, number][] = [["2 min", 2], ["5 min", 5], ["10 min", 10], ["30 min", 30], ["1 hour", 60], ["4 hours", 240]];
+const EVERY: [string, number][] = [["30 seconds", 30], ["1 min", 60], ["2 min", 120], ["5 min", 300], ["10 min", 600], ["30 min", 1800], ["1 hour", 3600], ["4 hours", 14_400]];
 const TOPIC_HELP: Record<string, string> = {
   market: "Coins and stocks you hold or watch: big moves, profit to take, losses to protect, targets hit, plus the strongest liquid movers.",
   trades: "Your win rate and P&L, coins that keep losing.",
@@ -19,7 +19,7 @@ const TOPIC_HELP: Record<string, string> = {
 export default function AdvisorPage() {
   usePageTitle({ section: "Insight · Advisor", title: "Your always-on trading advisor", accent: "always-on" });
   const toast = useToast();
-  const { data, refresh } = useApi<any>("/api/advisor?limit=200", { refreshMs: 30_000 });
+  const { data, refresh } = useApi<any>("/api/advisor?limit=200", { refreshMs: 15_000 });
   useRealtime((e) => { if (e.type === "advisor") refresh(); });
   useAdvisorSync(refresh);
   const [filter, setFilter] = useState<string>("all");
@@ -41,7 +41,7 @@ export default function AdvisorPage() {
           <Lightbulb className={cx("size-5", on ? "text-accent-2" : "text-faint")} />
           <div className="min-w-0 flex-1">
             <div className="text-[15px] font-semibold">Advisor is {on ? "on" : "off"}</div>
-            <div className="text-[12.5px] text-muted">{on ? `Analysing every ${s.every_min} min, around the clock, until you turn it off${s.last_run_at ? ` · last check ${ago(s.last_run_at)}` : ""}.` : "Turn it on and Merod keeps analysing coin and stock data and your trades, bots, agents and prompts, and suggests improvements. Nothing changes unless you press Apply."}</div>
+            <div className="text-[12.5px] text-muted">{on ? `Analysing every ${everyLabel(s.every_sec ?? (s.every_min ?? 10) * 60)}, around the clock, until you turn it off${s.last_run_at ? ` · last check ${ago(s.last_run_at)}` : ""}.` : "Turn it on and Merod keeps analysing coin and stock data and your trades, bots, agents and prompts, and suggests improvements. Nothing changes unless you press Apply."}</div>
           </div>
           <button onClick={checkNow} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[12.5px] text-muted hover:text-text disabled:opacity-60">{busy ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}Check now</button>
           <button onClick={() => save({ active: !on }).then(() => { if (!on) void checkNow(); })} className={cx("rounded-lg px-4 py-1.5 text-[13px] font-semibold", on ? "border border-down/50 text-down" : "bg-grad text-bg")}>{on ? "Turn off" : "Turn on"}</button>
@@ -59,7 +59,7 @@ export default function AdvisorPage() {
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-[12.5px]">
           <label className="flex items-center gap-1.5 text-muted">Check every
-            <select value={s?.every_min ?? 10} onChange={(e) => save({ everyMin: Number(e.target.value) })} className="rounded-md border border-line bg-bg-2 px-1.5 py-0.5">{EVERY.map(([l, m]) => <option key={m} value={m}>{l}</option>)}</select>
+            <select value={s?.every_sec ?? 30} onChange={(e) => save({ everySec: Number(e.target.value) })} className="rounded-md border border-line bg-bg-2 px-1.5 py-0.5">{EVERY.map(([l, m]) => <option key={m} value={m}>{l}</option>)}</select>
           </label>
           <label className="flex items-center gap-1.5 text-muted"><input type="checkbox" checked={!!s?.notify} onChange={(e) => save({ notify: e.target.checked })} />Also send important suggestions as notifications</label>
         </div>

@@ -2,13 +2,14 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Plus, Search, CandlestickChart, PieChart, Bot, Settings, Sparkles, Pause, Menu, X, ArrowUpRight } from "lucide-react";
+import { Plus, Search, CandlestickChart, PieChart, Bot, Settings, Sparkles, Pause, Menu, X, ArrowUpRight, SlidersHorizontal } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { Logo } from "@/components/shell/Logo";
 import { ModeSwitch } from "./ModeSwitch";
 import { TalkActivity } from "./TalkActivity";
 import { MapLink } from "@/components/shell/MapLink";
 import { AdvisorPanel } from "@/components/shell/AdvisorPanel";
+import { FloatingPages, openFloat } from "./FloatingPages";
 import { api, useApi } from "@/lib/api";
 import { Button, Modal, cx, useToast } from "@/components/ui";
 
@@ -28,6 +29,7 @@ export function TalkFrame({ children }: { children: React.ReactNode }) {
   useEffect(() => setDrawer(false), [pathname]);
   return (
     <div className="app-glow flex h-[100dvh] overflow-hidden">
+      <FloatingPages />
       <aside className="hidden w-[272px] shrink-0 border-r border-line bg-bg-2 lg:block"><Suspense fallback={null}><Rail /></Suspense></aside>
       {drawer && (
         <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setDrawer(false)}>
@@ -96,11 +98,12 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
         ))}
       </div>
       <div className="shrink-0 border-t border-line px-3 pb-3 pt-2.5">
-        <AdvisorPanel className="mb-2.5" />
-        <div className="flex items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">Classic pages <ArrowUpRight className="size-3" /></div>
+        <AdvisorPanel className="mb-2.5" onOpenAll={() => openFloat("advisor")} />
+        <div className="flex items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">Open in a floating window <ArrowUpRight className="size-3" /></div>
         <div className="mt-1.5 grid grid-cols-2 gap-1">
-          {[["/trade", "Trade", CandlestickChart], ["/analytics", "Portfolio", PieChart], ["/agents", "Agents", Bot], ["/settings", "Settings", Settings]].map(([href, label, I]: any) => (
-            <Link key={href} href={href} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] text-muted hover:bg-panel-2 hover:text-text"><I className="size-3.5" />{label}</Link>
+          {([["trade", "Trade", CandlestickChart], ["portfolio", "Portfolio", PieChart], ["agents", "Agents", Sparkles], ["bots", "Bots", Bot], ["edit", "Edit all", SlidersHorizontal], ["settings", "Settings", Settings]] as const).map(([tab, label, I]) => (
+            <button key={tab} onClick={() => openFloat(tab)} title={tab === "edit" ? "Change $ per trade, stop-loss, take-profit, capital or on/off for many bots and agents at once" : `${label} in a floating window over Talk`}
+              className={cx("flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-panel-2 hover:text-text", tab === "edit" ? "text-accent-2" : "text-muted")}><I className="size-3.5" />{label}</button>
           ))}
         </div>
         <Link href="/settings?tab=interface" className="mt-2 flex items-center gap-2.5 rounded-xl border border-line bg-panel/60 p-2 hover:border-line-2">
@@ -140,7 +143,7 @@ function TalkTopBar({ onMenu }: { onMenu: () => void }) {
         {title?.section && <span className="text-faint"> · {title.section}</span>}
       </div>
       <TalkActivity />
-      <MapLink />
+      <MapLink onOpen={() => openFloat("map")} />
       <ModeSwitch force />
       <span className={cx("rounded-md border px-2 py-1 text-[10px] font-bold tracking-wider", live || user.tradingMode === "live" ? "border-down/40 bg-down-soft text-down" : "border-warn/40 bg-warn-soft text-warn")}
         title="Shown only. Change real-money trading in Classic mode.">{live ? "REAL MONEY ON" : user.tradingMode === "live" ? "LIVE" : "PAPER"}</span>

@@ -5,11 +5,12 @@ import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, Handle, Position, addEdge, applyEdgeChanges, applyNodeChanges, useReactFlow,
   ConnectionMode, MarkerType, type Node, type Edge, type NodeProps, type Connection, type NodeChange, type EdgeChange,
 } from "@xyflow/react";
-import { Bot, Sparkles, MessageSquareText, Wand2, Target, Workflow, Play, Plus, Trash2, Map as MapIcon, Search, X, Loader2 } from "lucide-react";
+import { History, Bot, Sparkles, MessageSquareText, Wand2, Target, Workflow, Play, Plus, Trash2, Map as MapIcon, Search, X, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { usePageTitle } from "@/components/shell/context";
 import { cx, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
+import { MapHistory } from "@/components/MapHistory";
 
 type NType = "bot" | "agent" | "prompt" | "skill" | "point" | "method";
 type NData = { refId?: string; label?: string; text?: string; note?: string; status?: string };
@@ -75,6 +76,8 @@ function MapEditor() {
   const [result, setResult] = useState<{ at: string; lines: string[] } | null>(null);
   const [creating, setCreating] = useState<null | "skill" | "point">(null);
   const loaded = useRef(false);
+  const [history, setHistory] = useState(true);
+  useEffect(() => { try { if (localStorage.getItem("merod-map-history") === "0") setHistory(false); } catch { /* ignore */ } }, []);
 
   const load = useCallback(async (id?: string | null) => {
     const r = await api(`/api/map${id ? `?id=${id}` : ""}`);
@@ -205,7 +208,8 @@ function MapEditor() {
             <button onClick={async () => { const n = prompt("Name the new map", "New map"); if (!n) return; const r = await api("/api/map", { method: "POST", json: { name: n } }); load(r.map.id); }} className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text"><Plus className="size-3.5" />New map</button>
             {maps.length > 1 && <button onClick={async () => { if (!mapId || !confirm(`Delete map “${name}”? Bots, agents, skills and points themselves are not deleted.`)) return; await api(`/api/map/${mapId}`, { method: "DELETE" }); load(); }} className="rounded-lg border border-line p-1.5 text-faint hover:text-down" title="Delete this map"><Trash2 className="size-3.5" /></button>}
             <span className="text-[11px] text-faint">{saved === "saved" ? "Saved" : saved === "saving" ? "Saving…" : "Unsaved changes"}</span>
-            <button onClick={() => run()} disabled={!!running} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-grad px-3 py-1.5 text-[12.5px] font-semibold text-bg disabled:opacity-60">{running === "all" ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}Run map</button>
+            {!history && <button onClick={() => { setHistory(true); try { localStorage.setItem("merod-map-history", "1"); } catch { /* ignore */ } }} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text"><History className="size-3.5" />History & advice</button>}
+            <button onClick={() => run()} disabled={!!running} className={cx("inline-flex items-center gap-1.5 rounded-lg bg-grad px-3 py-1.5 text-[12.5px] font-semibold text-bg disabled:opacity-60", history && "ml-auto")}>{running === "all" ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}Run map</button>
           </div>
           <ReactFlow<MNode, Edge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             connectionMode={ConnectionMode.Loose} colorMode="dark" onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
@@ -213,7 +217,7 @@ function MapEditor() {
             defaultEdgeOptions={{ style: { strokeWidth: 2 } }} className="!bg-transparent">
             <Background gap={22} size={1.2} />
             <Controls position="bottom-left" />
-            <MiniMap position="bottom-right" pannable zoomable nodeColor={(n) => ({ bot: "#38bdf8", agent: "#a78bfa", prompt: "#34d399", skill: "#fcd34d", point: "#fb7185", method: "#d6b37a" } as any)[n.type ?? "prompt"]} className="!bg-panel" />
+            <MiniMap position="bottom-right" pannable zoomable nodeColor={(n) => ({ bot: "#38bdf8", agent: "#a78bfa", prompt: "#34d399", skill: "#fcd34d", point: "#fb7185", method: "#d6b37a" } as any)[n.type ?? "prompt"]} className="!bg-panel max-xl:!hidden" />
           </ReactFlow>
           {!nodes.length && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
@@ -231,6 +235,7 @@ function MapEditor() {
             </div>
           )}
         </div>
+        {history && <MapHistory onClose={() => { setHistory(false); try { localStorage.setItem("merod-map-history", "0"); } catch { /* ignore */ } }} />}
       </div>
       {creating && <NewInstruction kind={creating} onClose={() => setCreating(null)} onCreated={(row) => { setPal((p: any) => ({ ...p, [creating === "skill" ? "skills" : "points"]: [row, ...p[creating === "skill" ? "skills" : "points"]] })); addNode(creating, { refId: row.id, label: row.name }); setCreating(null); }} />}
     </Ctx.Provider>

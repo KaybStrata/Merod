@@ -14,7 +14,7 @@ export const GET = route(async (req) => {
 const T = z.boolean().optional();
 export const POST = route(async (req) => {
   const u = await requireUser();
-  const b = await parse(req, z.object({ active: z.boolean().optional(), everyMin: z.number().int().min(2).max(1440).optional(), notify: z.boolean().optional(),
+  const b = await parse(req, z.object({ active: z.boolean().optional(), everySec: z.number().int().min(30).max(86_400).optional(), everyMin: z.number().int().min(1).max(1440).optional(), notify: z.boolean().optional(),
     topics: z.object({ market: T, trades: T, bots: T, agents: T, prompts: T }).optional() }));
   return ok({ settings: await setAdvisor(u.id, b) });
 });

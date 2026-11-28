@@ -38,7 +38,7 @@ test("prompt box: 'update all my bots/agent by increasing their budget of 10$ to
   assert.match(r3.message.content, /capital \$200 → \$300/, r3.message.content);
 
   const r4: any = await handlePrompt(u, { text: "flibber the jabberwock gently", provider: "merod" } as any);
-  assert.match(r4.message.content, /Modo|Update many bots/, r4.message.content);
+  assert.match(r4.message.content, /closest things I can run/, r4.message.content);
 });
 
 test("one prompt, many bulk tasks: each instruction runs; settings attached to a trade stay with it", async () => {

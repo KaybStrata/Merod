@@ -423,6 +423,14 @@ export async function handlePrompt(userId: string, input: PromptInput) {
     if ((await brains(userId, (await userAI(userId, input)).provider)).length) ins = { ...ins, kind: "research", summary: "Question", clarification_question: null, research_query: text };
 
   }
+  let preAssumed = "";
+  // "buy BTC" / "sell ETH" with no size: don't ask. Use the default size (the card still waits for Approve).
+  if (ins.kind === "clarify" && /^how much/i.test(ins.clarification_question ?? "") && ins.trades[0] && (ins.trades[0].symbol || ins.trades[0].contract_address)) {
+    const l0 = ins.trades[0];
+    if (l0.side === "sell") { l0.amount = 100; l0.amount_type = "percent_position"; preAssumed = "No amount given, so this sells your whole position. "; }
+    else { const { defaultBuyUsd } = await import("./best-effort"); l0.amount = await defaultBuyUsd(userId); l0.amount_type = "usd"; preAssumed = `No amount given, so I used $${l0.amount}. `; }
+    ins = { ...ins, kind: "trade", clarification_question: null, summary: ins.summary || `${l0.side === "sell" ? "Sell" : "Buy"} ${l0.symbol ?? "it"}` };
+  }
   const leg = ins.trades[0];
   switch (ins.kind) {
     case "clarify":
@@ -432,13 +440,23 @@ export async function handlePrompt(userId: string, input: PromptInput) {
         const suggestions = /how much/i.test(q0) ? AMOUNT_CHIPS
           : /^What would you like to do with/.test(q0) && sym ? [`Buy $100 of ${sym}`, `Sell 25% of ${sym}`, `Alert me when ${sym} drops 5%`, `Analyze ${sym}`]
           : /couldn't tell/.test(q0) ? ["Buy $100 of BTC", "Turn off risk flags for my bots", "Open purchase history", "Create 3 agents that trade Solana meme coins", "Mimic the top 20 crypto traders this week"] : [];
-        const help = /couldn't tell/.test(q0) ? "I couldn't match that to something I can do on my own. I can trade, change settings (\"turn off risk flags\", \"max slippage 3%\", \"turn Modo on\"), open pages (\"open purchase history\"), create bots, agents and strategies, mimic traders, set alerts, and answer market questions. For open-ended requests, connect Claude or OpenAI under Broker & AI keys." : q0;
-        return reply(help || "Could you clarify?", { type: "clarify", question: help, suggestions }, "clarify");
+        if (/couldn't tell/.test(q0)) {
+          // No command matched and no outside AI took it: answer from real data and offer the closest runnable commands.
+          const { bestEffort, closestCommands } = await import("./best-effort");
+          const t = await bestEffort(userId, text);
+          return reply(t, { type: "clarify", question: "", suggestions: closestCommands(text) }, "info", { kind: "portfolio_question", summary: "Answer" } as any, { portfolio: true });
+        }
+        return reply(q0 || "What would you like me to do with it?", { type: "clarify", question: q0, suggestions }, "clarify");
       }
 
     case "trade": {
       if (!leg) return reply("I couldn't find a trade in that request.", null, "info");
-      if (!leg.amount || !leg.amount_type) return reply(`How much should I ${leg.side}?`, { type: "clarify", question: `How much should I ${leg.side}?`, suggestions: leg.side === "buy" ? AMOUNT_CHIPS : ["25%", "50%", "100%"] }, "clarify");
+      let assumed = preAssumed;
+      if (!leg.amount || !leg.amount_type) {
+        // No size given: buys use your default $ per trade (Skill, else $100 within your max order); sells close the whole position.
+        if (leg.side === "buy") { const { defaultBuyUsd } = await import("./best-effort"); leg.amount = await defaultBuyUsd(userId); leg.amount_type = "usd"; assumed = `No amount given, so I used $${leg.amount}. `; }
+        else { leg.amount = 100; leg.amount_type = "percent_position"; assumed = "No amount given, so this sells your whole position. "; }
+      }
       const r = await legAsset(leg, input.screenAssetId);
       if (!r.asset) return reply(r.error!, { type: "clarify", question: r.error!, suggestions: [] }, "clarify");
       const intent = legToIntent(leg, r.asset.id, r.asset.last_price);
@@ -463,9 +481,9 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       if (trainingNotes.length) plan.risks = [...trainingNotes, ...plan.risks];
       if (plan.decision === "execute") {
         const { order } = await place(intent, ctx);
-        return reply(`${ins.summary} — ${order.status === "filled" ? "executed" : order.status}. ${plan.decisionReason}.`, { type: "executed", detail: plan.decisionReason, orderId: order.id, status: order.status }, "executed");
+        return reply(`${assumed}${ins.summary} — ${order.status === "filled" ? "executed" : order.status}. ${plan.decisionReason}.`, { type: "executed", detail: plan.decisionReason, orderId: order.id, status: order.status }, "executed");
       }
-      return reply(plan.decision === "rejected" ? `I can't place this: ${plan.decisionReason}` : `${ins.summary}. Review and approve below.`, { type: "order", intent, plan }, plan.decision === "rejected" ? "rejected" : "needs_approval", instruction,
+      return reply(plan.decision === "rejected" ? `I can't place this: ${plan.decisionReason}` : `${assumed}${ins.summary}. Review and approve below (change the amount there if you like).`, { type: "order", intent, plan }, plan.decision === "rejected" ? "rejected" : "needs_approval", instruction,
         plan.decision === "rejected" ? { chartAssetId: r.asset.id, clarify: { question: `Blocked: ${plan.decisionReason}`, options: [{ label: "Try a smaller amount", reply: `${leg.side} $25 of ${r.asset.symbol}` }, { label: "Show my risk limits", reply: "What are my risk limits?" }] } } : undefined);
     }
 
@@ -474,11 +492,13 @@ export async function handlePrompt(userId: string, input: PromptInput) {
     case "conditional_trade": {
       if (!leg) return reply("Which asset should this apply to?", { type: "clarify", question: "Which asset?", suggestions: [] }, "clarify");
       if (ins.kind !== "conditional_trade" && (!leg.amount || leg.amount_type === "percent_position")) {
-        if (ins.kind === "swing_loop" && ins.swing?.scope) { const qn = "How much should the bot spend on each coin it buys?"; return reply(qn, { type: "clarify", question: qn, suggestions: AMOUNT_CHIPS }, "clarify"); }
-        const qn = ins.kind === "swing_loop" ? "How much should each buy cycle spend?" : "How much should each recurring purchase be?";
-        return reply(qn, { type: "clarify", question: qn, suggestions: AMOUNT_CHIPS }, "clarify");
+        const { defaultBuyUsd } = await import("./best-effort");
+        leg.amount = await defaultBuyUsd(userId); leg.amount_type = "usd";
       }
-      if (ins.kind === "conditional_trade" && !leg.amount) return reply(`How much should I ${leg.side}?`, { type: "clarify", question: `How much should I ${leg.side}?`, suggestions: leg.side === "sell" ? ["25%", "50%", "100%"] : AMOUNT_CHIPS }, "clarify");
+      if (ins.kind === "conditional_trade" && !leg.amount) {
+        if (leg.side === "sell") { leg.amount = 100; leg.amount_type = "percent_position"; }
+        else { const { defaultBuyUsd } = await import("./best-effort"); leg.amount = await defaultBuyUsd(userId); leg.amount_type = "usd"; }
+      }
       // A bot over many coins ("every Solana meme coin", "the top 20 gainers"): matching coins with live prices, one buy → sell → repeat cycle per coin.
       if (ins.kind === "swing_loop" && ins.swing?.scope) {
         const sc = ins.swing.scope;
@@ -599,10 +619,10 @@ export async function handlePrompt(userId: string, input: PromptInput) {
         : /401|invalid|incorrect api key|unauthori/i.test(fallbackReason ?? "") ? `Your ${name} key is saved but ${name} says it's invalid. Paste a fresh key under Broker & AI keys.`
         : fallbackReason ? `Your ${name} key is connected, but the request failed: ${fallbackReason.replace(/^Research model failed: /, "").slice(0, 160)}` : "";
       const t = input.attached
-        ? `Here's what Merod read from your attachment${input.attached.names.length > 1 ? "s" : ""}:\n${input.attached.plain}${plain ? `\n\n${plain}${sourcesLine(facts)}` : ""}${why ? `\n\n${why}` : ""}`
+        ? `Here's what Merod read from your attachment${input.attached.names.length > 1 ? "s" : ""}:\n${input.attached.plain}${plain ? `\n\n${plain}${sourcesLine(facts)}` : ""}`
         : plain
-        ? `${plain}${sourcesLine(facts)}${why ? `\n\n${why}` : ""}`
-        : `${MODO_HELP}${why ? `\n\nFor open questions and reasoning beyond these, Merod uses Claude or ChatGPT: ${why}` : ""}`;
+        ? `${plain}${sourcesLine(facts)}`
+        : await (await import("./best-effort")).bestEffort(userId, text);
       return reply(t, { type: "research", text: t }, "info", instruction, { chartSymbol: facts[0]?.symbol ?? null });
     }
   }

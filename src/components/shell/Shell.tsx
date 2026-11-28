@@ -78,6 +78,11 @@ function Frame({ children }: { children: React.ReactNode }) {
   const toast = useToast();
   const me = useApi<any>("/api/auth/me", { refreshMs: 30000 });
   const [railOpen, setRailOpen] = useState(false);
+  // Embedded (shown inside another Merod window): ?embed=1 on first load, or any page opened inside the frame afterwards.
+  const embedParam = useSearchParams()?.get("embed") === "1";
+  const [framed, setFramed] = useState(false);
+  useEffect(() => { try { setFramed(window.self !== window.top); } catch { setFramed(true); } }, []);
+  const embedded = embedParam || framed;
   useEffect(() => { try { setCollapsed(localStorage.getItem("merod-nav") === "1"); setRailOpen(localStorage.getItem("merod-rail2") === "1"); } catch {} }, []);
   const toggleRail = () => setRailOpen((o) => { try { localStorage.setItem("merod-rail2", o ? "0" : "1"); } catch {} return !o; });
   useEffect(() => setMobileOpen(false), [pathname]);
@@ -156,6 +161,10 @@ function Frame({ children }: { children: React.ReactNode }) {
     </nav>
   );
 
+  // Inside Talk's floating window (an iframe): just the page, with a small title, no sidebar / top bar / prompt bar.
+  if (embedded && mode !== "talk") return (
+    <div className="min-h-dvh bg-bg px-3 pb-6 pt-3 text-text sm:px-4"><TitleBlock /><div className="mt-3">{children}</div></div>
+  );
   // Talk mode (/talk, flag-gated): a separate full-screen frame. Classic sidebar, top bar, PromptBar, RightRail and MobileNav are not mounted.
   if (mode === "talk") return <TalkFrame>{children}</TalkFrame>;
 

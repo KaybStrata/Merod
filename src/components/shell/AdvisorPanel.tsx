@@ -13,6 +13,9 @@ import { useRealtime } from "./context";
 import { cx, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
 
+/** "30 sec", "1 min", "2 hours" */
+export const everyLabel = (sec: number) => (sec < 60 ? `${sec} sec` : sec < 3600 ? `${Math.round(sec / 60)} min` : `${Math.round(sec / 3600)} hour${sec >= 7200 ? "s" : ""}`);
+
 export const TOPIC_LABEL: Record<string, string> = { market: "Market", trades: "Trades", bots: "Bots", agents: "Agents", prompts: "Prompts" };
 
 /** One tip row with Apply / Dismiss. */
@@ -49,9 +52,9 @@ export function TipRow({ t, onDone, compact }: { t: any; onDone: () => void; com
 }
 
 /** Left sidebar section: Advisor on/off switch, status and the newest suggestions. */
-export function AdvisorPanel({ className }: { className?: string }) {
+export function AdvisorPanel({ className, onOpenAll }: { className?: string; onOpenAll?: () => void }) {
   const toast = useToast();
-  const { data, refresh } = useApi<any>("/api/advisor?limit=20", { refreshMs: 60_000 });
+  const { data, refresh } = useApi<any>("/api/advisor?limit=20", { refreshMs: 30_000 });
   useRealtime((e) => { if (e.type === "advisor") refresh(); });
   useAdvisorSync(refresh);
   const [open, setOpen] = useState(() => { try { return localStorage.getItem("merod-advisor-open") !== "0"; } catch { return true; } });
@@ -77,10 +80,12 @@ export function AdvisorPanel({ className }: { className?: string }) {
       </div>
       {open && (
         <div className="mt-1.5 space-y-1">
-          <div className="px-0.5 text-[10.5px] text-faint">{on ? `Watching markets + your trading · every ${s.every_min} min${s.last_run_at ? ` · checked ${ago(s.last_run_at)}` : ""}` : "Off. Turn on for continuous suggestions on coins, stocks, trades, bots, agents and prompts."}</div>
+          <div className="px-0.5 text-[10.5px] text-faint">{on ? `Watching markets + your trading · every ${everyLabel(s.every_sec ?? (s.every_min ?? 10) * 60)}${s.last_run_at ? ` · checked ${ago(s.last_run_at)}` : ""}` : "Off. Turn on for continuous suggestions on coins, stocks, trades, bots, agents and prompts."}</div>
           {on && !tips.length && <div className="px-0.5 py-1 text-[11px] text-muted">No suggestions right now. You'll see them here as soon as there's something worth doing.</div>}
           {tips.slice(0, 3).map((t) => <TipRow key={t.id} t={t} onDone={refresh} compact />)}
-          <Link href="/advisor" className="block px-0.5 pt-0.5 text-[11px] text-accent-2 hover:underline">{tips.length > 3 ? `See all ${tips.length} suggestions →` : "Advisor settings & history →"}</Link>
+          {onOpenAll
+            ? <button onClick={onOpenAll} className="block px-0.5 pt-0.5 text-left text-[11px] text-accent-2 hover:underline">{tips.length > 3 ? `See all ${tips.length} suggestions →` : "Advisor settings & history →"}</button>
+            : <Link href="/advisor" className="block px-0.5 pt-0.5 text-[11px] text-accent-2 hover:underline">{tips.length > 3 ? `See all ${tips.length} suggestions →` : "Advisor settings & history →"}</Link>}
         </div>
       )}
     </div>
