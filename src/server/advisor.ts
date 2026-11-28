@@ -55,8 +55,15 @@ async function marketTips(userId: string): Promise<Tip[]> {
     const px = Number(h.last_price), cost = Number(h.cost), value = px * Number(h.qty);
     if (!(cost > 0) || value < 5) continue;
     const g = (px / cost - 1) * 100;
-    if (g >= 15) out.push({ topic: "market", priority: 1, key: `tp:${h.id}:${Math.floor(g / 10)}`, title: `${h.symbol} is ${pct(g)} above your entry`, body: `You hold ${money(value)} of ${h.symbol} bought around ${money(cost)}; it's ${money(px)} now. Locking in part of the gain protects it if the move reverses.`, link: `/terminal/${h.id}`, action: { type: "prompt", text: `sell 50% of my ${h.symbol}` } });
-    else if (g <= -10) out.push({ topic: "market", priority: 1, key: `dd:${h.id}:${Math.floor(-g / 10)}`, title: `${h.symbol} is ${pct(g)} below your entry`, body: `${money(value)} position, entry ${money(cost)}, now ${money(px)}. Set an alert a bit lower so you can decide before it falls further.`, link: `/terminal/${h.id}`, action: { type: "prompt", text: `alert me if ${h.symbol} drops below ${+(px * 0.95).toPrecision(4)}` } });
+    const qty = Number(h.qty), pnl = (px - cost) * qty, d24 = Number(h.change_24h ?? 0);
+    const dayTxt = Number.isFinite(d24) && d24 !== 0 ? ` In the last 24h it moved ${pct(d24)}.` : "";
+    const held_ = `You hold ${+qty.toPrecision(5)} ${h.symbol} worth ${money(value)}, bought at about ${money(cost)}; it's ${money(px)} now`;
+    if (g >= 15) out.push({ topic: "market", priority: 1, key: `tp:${h.id}:${Math.floor(g / 10)}`, title: `${h.symbol} is ${pct(g)} above your entry`,
+      body: `${held_}, an unrealized gain of +${money(pnl)}.${dayTxt} Why act: after a run like this, coins often give back part of the move. Selling half locks in about +${money(pnl / 2)} and leaves the rest to keep riding. "Do it" asks Merod to sell 50% of your ${h.symbol}; you approve the order before anything is sold.`,
+      link: `/terminal/${h.id}`, action: { type: "prompt", text: `sell 50% of my ${h.symbol}` } });
+    else if (g <= -10) out.push({ topic: "market", priority: 1, key: `dd:${h.id}:${Math.floor(-g / 10)}`, title: `${h.symbol} is ${pct(g)} below your entry`,
+      body: `${held_}, an unrealized loss of -${money(-pnl)}.${dayTxt} Why act: without a stop-loss a falling coin can keep sliding, and small coins can go much lower. "Do it" sets a price alert 5% lower, at ${money(px * 0.95)}, so you're told before it falls further; to cut the loss now instead, say "sell my ${h.symbol}".`,
+      link: `/terminal/${h.id}`, action: { type: "prompt", text: `alert me if ${h.symbol} drops below ${+(px * 0.95).toPrecision(4)}` } });
     const ch = Number(h.change_24h ?? 0);
     if (Math.abs(ch) >= 8 && g > -10 && g < 15) out.push({ topic: "market", priority: 2, key: `mv:${h.id}:${day()}:${ch > 0 ? "u" : "d"}`, title: `${h.symbol} ${pct(ch)} in 24h (you hold it)`, body: `A ${Math.abs(ch) >= 15 ? "very " : ""}large move on a coin/stock you own. Check whether your bots' stop-loss and take-profit still fit.`, link: `/terminal/${h.id}` });
   }
@@ -138,6 +145,8 @@ export async function runAdvisor(userId: string) {
     if (fresh.length >= 8) break;
     const seen = await one("SELECT 1 FROM advisor_tips WHERE user_id=$1 AND dedupe_key=$2 AND created_at > now() - interval '12 hours'", [userId, t.key]);
     if (seen) continue;
+    const family = t.key.split(":").slice(0, 2).join(":");
+    await q("UPDATE advisor_tips SET dismissed_at=now() WHERE user_id=$1 AND dismissed_at IS NULL AND applied_at IS NULL AND (dedupe_key = $2 OR dedupe_key LIKE $2 || ':%')", [userId, family]);
     fresh.push(await one<any>("INSERT INTO advisor_tips (user_id, topic, title, body, link, action, priority, dedupe_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
       [userId, t.topic, t.title.slice(0, 200), t.body.slice(0, 1000), t.link ?? null, t.action ? JSON.stringify(t.action) : null, t.priority, t.key.slice(0, 200)]));
   }

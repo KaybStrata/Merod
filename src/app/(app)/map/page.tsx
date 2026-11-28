@@ -76,6 +76,9 @@ function MapEditor() {
   const [result, setResult] = useState<{ at: string; lines: string[] } | null>(null);
   const [creating, setCreating] = useState<null | "skill" | "point">(null);
   const loaded = useRef(false);
+  const lastUpdated = useRef<string | null>(null);
+  const [cmd, setCmd] = useState("");
+  const [cmdBusy, setCmdBusy] = useState(false);
   const [history, setHistory] = useState(true);
   useEffect(() => { try { if (localStorage.getItem("merod-map-history") === "0") setHistory(false); } catch { /* ignore */ } }, []);
 
@@ -86,10 +89,35 @@ function MapEditor() {
     setNodes((r.map.nodes ?? []).map((n: any) => ({ ...n, type: n.type })));
     setEdges((r.map.edges ?? []).map((e: any) => ({ ...e, markerEnd: { type: MarkerType.ArrowClosed } })));
     setResult(r.map.last_run ?? null);
+    lastUpdated.current = r.map.updated_at ?? null;
     setSaved("saved");
     setTimeout(() => { loaded.current = true; if (r.map.viewport) rf.setViewport(r.map.viewport); else rf.fitView({ padding: 0.3, maxZoom: 1 }); }, 50);
   }, [rf]);
   useEffect(() => { load().catch((e) => toast(e.message, "down")); }, [load, toast]);
+  const savedRef = useRef(saved); savedRef.current = saved;
+  useEffect(() => {
+    if (!mapId) return;
+    const t = setInterval(async () => {
+      if (savedRef.current !== "saved" || document.hidden) return;
+      try {
+        const r = await api(`/api/map?id=${mapId}&meta=1`);
+        if (r.updated_at && lastUpdated.current && new Date(r.updated_at).getTime() > new Date(lastUpdated.current).getTime() + 500) load(mapId);
+      } catch { /* try again */ }
+    }, 4000);
+    return () => clearInterval(t);
+  }, [mapId, load]);
+  async function sendCmd() {
+    const text = cmd.trim();
+    if (!text || cmdBusy) return;
+    setCmdBusy(true);
+    try {
+      await flush().catch(() => {});
+      const r = await api("/api/map/command", { method: "POST", json: { text, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } });
+      setResult({ at: new Date().toISOString(), lines: String(r.message).split("\n") });
+      setCmd("");
+      await load(mapId);
+    } catch (e: any) { toast(e.message, "down"); } finally { setCmdBusy(false); }
+  }
 
   // Auto-save shortly after any change.
   useEffect(() => {
@@ -98,12 +126,13 @@ function MapEditor() {
     const t = setTimeout(async () => {
       setSaved("saving");
       try {
-        await api(`/api/map/${mapId}`, { method: "PATCH", json: {
+        const sv = await api(`/api/map/${mapId}`, { method: "PATCH", json: {
           name: name || "My map",
           nodes: nodes.map((n) => ({ id: n.id, type: n.type, position: { x: Math.round(n.position.x), y: Math.round(n.position.y) }, data: { refId: n.data.refId, label: n.data.label?.slice(0, 120), text: n.data.text?.slice(0, 4000) } })),
           edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
           viewport: rf.getViewport(),
         } });
+        lastUpdated.current = sv?.updated_at ?? lastUpdated.current;
         setSaved("saved");
       } catch (e: any) { setSaved("dirty"); toast(`Couldn't save: ${e.message}`, "down"); }
     }, 900);
@@ -211,6 +240,12 @@ function MapEditor() {
             {!history && <button onClick={() => { setHistory(true); try { localStorage.setItem("merod-map-history", "1"); } catch { /* ignore */ } }} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text"><History className="size-3.5" />History & advice</button>}
             <button onClick={() => run()} disabled={!!running} className={cx("inline-flex items-center gap-1.5 rounded-lg bg-grad px-3 py-1.5 text-[12.5px] font-semibold text-bg disabled:opacity-60", history && "ml-auto")}>{running === "all" ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}Run map</button>
           </div>
+          <form onSubmit={(e) => { e.preventDefault(); void sendCmd(); }} className="absolute left-3 right-3 top-12 z-10 flex items-center gap-1.5 rounded-xl border border-line-2 bg-panel/95 p-1 pl-2.5 shadow-lg backdrop-blur focus-within:border-accent/60">
+            <Sparkles className="size-3.5 shrink-0 text-accent-2" />
+            <input value={cmd} onChange={(e) => setCmd(e.target.value)} disabled={cmdBusy} placeholder="Tell the map: “method Safe with stop loss 5%, take profit 10% for all bots” · “rename Safe to Careful” · “change Safe to take profit 12%” · “remove SOL Momentum” · “run Safe”"
+              className="min-w-0 flex-1 bg-transparent py-1 text-[12.5px] outline-none placeholder:text-faint" />
+            <button type="submit" disabled={cmdBusy || !cmd.trim()} className="shrink-0 rounded-lg bg-grad px-2.5 py-1 text-[12px] font-semibold text-bg disabled:opacity-40">{cmdBusy ? <Loader2 className="size-3.5 animate-spin" /> : "Do it"}</button>
+          </form>
           <ReactFlow<MNode, Edge> nodes={nodes} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             connectionMode={ConnectionMode.Loose} colorMode="dark" onDrop={onDrop} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
             onMoveEnd={() => loaded.current && setSaved((s) => s)} deleteKeyCode={["Backspace", "Delete"]} fitView fitViewOptions={{ padding: 0.3, maxZoom: 1 }} minZoom={0.2} maxZoom={2} proOptions={{ hideAttribution: true }}

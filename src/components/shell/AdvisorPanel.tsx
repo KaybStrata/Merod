@@ -30,7 +30,8 @@ export function TipRow({ t, onDone, compact }: { t: any; onDone: () => void; com
   const body = (
     <>
       <div className={cx("font-medium leading-snug", compact ? "text-[12px]" : "text-[13px]")}>{t.priority === 1 && <span className="mr-1 inline-block size-1.5 rounded-full bg-accent-2 align-middle" />}{t.title}</div>
-      {!compact && <div className="mt-0.5 text-[12px] leading-snug text-muted">{t.body}</div>}
+      <div className={cx("mt-0.5 leading-snug text-muted", compact ? "line-clamp-4 text-[11px]" : "text-[12px]")}>{t.body}</div>
+      {t.action && !t.applied_at && <div className={cx("mt-0.5 text-faint", compact ? "text-[10.5px]" : "text-[11px]")}>“Do it” → {t.action.type === "prompt" ? `“${t.action.text}”` : t.action.type === "pause" ? `turn off ${t.action.name}` : t.action.type === "edit" ? `change ${t.action.name}'s settings` : `add a point: ${t.action.text}`}</div>}
     </>
   );
   return (

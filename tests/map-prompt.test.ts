@@ -33,3 +33,23 @@ test("prompt box builds a map method, wires it to all bots and runs it", async (
   const s: any = await handlePrompt(u, { text: "show my map", provider: "merod" } as any);
   assert.match(s.message.content, /2 bots, 0 agents, 1 methods/);
 });
+
+test("map bar edits: rename, change instructions, connect, disconnect, remove, run, clear", async () => {
+  const u = await newUser();
+  const acct = (await one<any>("SELECT id FROM trading_accounts WHERE user_id=$1 AND kind='paper'", [u]))!;
+  const mk = (n: string) => one<any>("INSERT INTO trading_bots (user_id, name, strategy_id, account_id, status, params) VALUES ($1,$2,'dip_rebound_loop',$3,'running','{\"amount_usd\":10}') RETURNING id", [u, n, acct.id]);
+  const a = (await mk("Gamma Dip"))!, b = (await mk("Delta Dip"))!;
+  const { mapCommand } = await import("@/server/map-prompt");
+  const o = { isOwner: false, force: true };
+  await mapCommand(u, "create a method called Safe with stop loss 5% for Gamma Dip", o);
+  assert.match((await mapCommand(u, "rename Safe to Careful", o))!, /Renamed “Safe” to “Careful”/);
+  assert.match((await mapCommand(u, "change Careful to take profit 12%", o))!, /now says: “take profit 12%”/);
+  assert.match((await mapCommand(u, "connect Careful to Delta Dip", o))!, /Connected “Careful” to Delta Dip/);
+  const run = (await mapCommand(u, "run Careful", o))!;
+  assert.match(run, /Ran “Careful”/, run);
+  for (const id of [a.id, b.id]) assert.equal(Number((await one<any>("SELECT params FROM trading_bots WHERE id=$1", [id]))!.params.take_profit_pct), 12);
+  assert.match((await mapCommand(u, "disconnect Careful from Delta Dip", o))!, /Disconnected/);
+  assert.match((await mapCommand(u, "remove Delta Dip", o))!, /Removed “Delta Dip”/);
+  assert.match((await mapCommand(u, "clear the map", o))!, /Cleared your map/);
+  assert.equal((await one<any>("SELECT jsonb_array_length(nodes) AS n FROM strategy_maps WHERE user_id=$1", [u]))!.n, 0);
+});

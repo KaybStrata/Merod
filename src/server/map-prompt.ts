@@ -12,7 +12,7 @@ import { parseTargets, parseEdits, fmtEdit } from "./ai/bulk-edit";
  * saves the map, and runs it when asked ("and run it", "apply it").
  */
 const MAPPY = /\b(map|method)\b/i;
-const VERB = /\b(create|make|build|add|put|connect|attach|link|wire|set ?up|design|new|map)\b/i;
+const VERB = /\b(create|make|build|add|put|connect|attach|link|wire|set ?up|design|new|map|remove|delete|rename|change|update|edit|run|apply|clear|reset|wipe|disconnect|unlink|detach)\b/i;
 
 export function isMapCommand(text: string) {
   const t = text.toLowerCase();
@@ -21,11 +21,92 @@ export function isMapCommand(text: string) {
   return VERB.test(t);
 }
 
-export async function mapCommand(userId: string, text: string, opts: { isOwner: boolean; tz?: string }): Promise<string | null> {
-  if (!isMapCommand(text)) return null;
-  const t = text.trim();
+/** force: the text came from the Map's own prompt bar, so it's about the map even without the word "map". */
+export async function mapCommand(userId: string, text: string, opts: { isOwner: boolean; tz?: string; force?: boolean }): Promise<string | null> {
+  if (!opts.force && !isMapCommand(text)) return null;
+  const t = text.trim().replace(/^(on|in) (the |my )?map[:,]?\s*/i, "");
   const m = await getMap(userId);
-  const nodes: MapNode[] = m.nodes ?? [], edges: MapEdge[] = m.edges ?? [];
+  let nodes: MapNode[] = m.nodes ?? [], edges: MapEdge[] = m.edges ?? [];
+
+  /* ── Editing what's already on the map ── */
+  const clean = (x: string) => x.replace(/["“”']/g, "").replace(/\b(the|my|method|box|prompt|bot|agent|skill|point)\b/gi, " ").replace(/\s+/g, " ").trim().toLowerCase();
+  const find = (name: string) => {
+    const n = clean(name);
+    if (!n) return [] as MapNode[];
+    const exact = nodes.filter((x) => (x.data.label ?? "").toLowerCase() === n);
+    return exact.length ? exact : nodes.filter((x) => (x.data.label ?? "").toLowerCase().includes(n) || (n.length > 3 && n.includes((x.data.label ?? "").toLowerCase()) && (x.data.label ?? "").length > 3));
+  };
+  const linkedTo = (id: string) => edges.filter((e) => e.source === id || e.target === id).map((e) => (e.source === id ? e.target : e.source));
+  const save = async (msg: string) => { await saveMap(userId, m.id, { nodes, edges }); return `${msg} Open the Map to see it.`; };
+
+  if (/\b(clear|empty|reset|wipe)\b/i.test(t) && /\b(map|everything|all)\b/i.test(t) && !/\b(stop|loss|profit)\b/i.test(t)) {
+    const n = nodes.length; nodes = []; edges = [];
+    return save(`Cleared your map “${m.name}” (${n} boxes removed). Your bots, agents, skills and points themselves are untouched.`);
+  }
+  let mm = t.match(/^\s*rename\s+(.+?)\s+(?:to|as)\s+["“']?(.+?)["”']?\s*$/i);
+  if (mm) {
+    const hit = find(mm[1]);
+    if (!hit.length) return `There's nothing called “${mm[1]}” on your map. Boxes: ${nodes.map((x) => x.data.label).filter(Boolean).slice(0, 12).join(", ") || "none"}.`;
+    for (const x of hit) if (x.type === "method" || x.type === "prompt") x.data.label = mm[2].slice(0, 120);
+    return save(`Renamed “${mm[1]}” to “${mm[2]}”.`);
+  }
+  mm = t.match(/^\s*(?:remove|delete|take)\s+(.+?)(?:\s+(?:from|off)\s+(?:the\s+|my\s+)?map)?\s*$/i);
+  if (mm && !/\b(stop.?loss|take.?profit)\b/i.test(mm[1])) {
+    const hit = /^(everything|all)$/i.test(clean(mm[1])) ? [...nodes] : find(mm[1]);
+    if (!hit.length) return `There's nothing called “${mm[1]}” on your map.`;
+    const ids = new Set(hit.map((x) => x.id));
+    nodes = nodes.filter((x) => !ids.has(x.id)); edges = edges.filter((e) => !ids.has(e.source) && !ids.has(e.target));
+    return save(`Removed ${hit.map((x) => `“${x.data.label ?? x.type}”`).join(", ")} from the map (only the boxes; the bots/agents/skills themselves stay).`);
+  }
+  mm = t.match(/^\s*(?:disconnect|unlink|detach)\s+(.+?)\s+from\s+(.+?)\s*$/i);
+  if (mm) {
+    const a = find(mm[1]), b = find(mm[2]);
+    if (!a.length || !b.length) return `I couldn't find ${!a.length ? `“${mm[1]}”` : `“${mm[2]}”`} on your map.`;
+    const A = new Set(a.map((x) => x.id)), B = new Set(b.map((x) => x.id));
+    const before = edges.length;
+    edges = edges.filter((e) => !((A.has(e.source) && B.has(e.target)) || (B.has(e.source) && A.has(e.target))));
+    return save(before === edges.length ? `“${mm[1]}” and “${mm[2]}” weren't connected.` : `Disconnected “${mm[1]}” from “${mm[2]}”.`);
+  }
+  mm = t.match(/^\s*(?:change|update|edit|set)\s+(.+?)\s+(?:to|with|so it|:)\s*([\s\S]+)$/i);
+  if (mm) {
+    const hit = find(mm[1]).filter((x) => x.type === "method" || x.type === "prompt");
+    if (hit.length) {
+      const target = hit[0], instr = mm[2].replace(/,?\s*\b(and )?(then )?(run|apply) (it|them|now)\b.*$/i, "").trim();
+      let promptNode = target.type === "prompt" ? target : nodes.find((x) => x.type === "prompt" && linkedTo(target.id).includes(x.id));
+      if (promptNode) promptNode.data.text = instr;
+      else {
+        promptNode = { id: `prompt-${Math.random().toString(36).slice(2, 10)}`, type: "prompt", position: { x: target.position.x - 300, y: target.position.y }, data: { label: target.data.label, text: instr } };
+        nodes.push(promptNode); edges.push({ id: `e-${Math.random().toString(36).slice(2, 10)}`, source: promptNode.id, target: target.id });
+      }
+      let msg = `“${target.data.label}” now says: “${instr}”.`;
+      if (/\b(run|apply)\b/i.test(mm[2])) { await saveMap(userId, m.id, { nodes, edges }); const r = await runMap(userId, m.id, { nodeId: target.id, isOwner: opts.isOwner, tz: opts.tz }); return `${msg}\nRan it:\n${r.lines.join("\n")}`; }
+      return save(`${msg} Say “run ${target.data.label}” to apply it.`);
+    }
+  }
+  mm = t.match(/^\s*(?:run|apply|execute)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:on|from)\s+the\s+map)?\s*$/i);
+  if (mm) {
+    if (/^(map|it|everything|all)$/i.test(clean(mm[1]) || "map")) { const r = await runMap(userId, m.id, { isOwner: opts.isOwner, tz: opts.tz }); return `Ran your whole map:\n${r.lines.join("\n")}`; }
+    const hit = find(mm[1]);
+    if (hit.length) { const r = await runMap(userId, m.id, { nodeId: hit[0].id, isOwner: opts.isOwner, tz: opts.tz }); return `Ran “${hit[0].data.label}”:\n${r.lines.join("\n")}`; }
+  }
+  // Connect something already on the map to bots/agents: "connect Safe to ETH Accumulation and BTC Dipper".
+  mm = t.match(/^\s*(?:connect|attach|link|wire)\s+(.+?)\s+(?:to|with)\s+(.+?)\s*$/i);
+  if (mm) {
+    const src = find(mm[1]).filter((x) => x.type !== "bot" && x.type !== "agent");
+    if (src.length) {
+      const tg = (await parseTargets(userId, mm[2])) ?? [];
+      if (tg.length) {
+        const maxY = nodes.reduce((a, n) => Math.max(a, n.position.y), 0);
+        let i = 0;
+        for (const x of tg) {
+          let n = nodes.find((y) => y.type === x.kind && y.data.refId === x.id);
+          if (!n) { n = { id: `${x.kind}-${Math.random().toString(36).slice(2, 10)}`, type: x.kind, position: { x: src[0].position.x + 340, y: maxY + 150 * ++i }, data: { refId: x.id, label: x.name } }; nodes.push(n); }
+          if (!edges.some((e) => (e.source === src[0].id && e.target === n!.id) || (e.target === src[0].id && e.source === n!.id))) edges.push({ id: `e-${Math.random().toString(36).slice(2, 10)}`, source: src[0].id, target: n.id });
+        }
+        return save(`Connected “${src[0].data.label}” to ${tg.map((x) => x.name).join(", ")}.`);
+      }
+    }
+  }
 
   if (/^(show|open|view|list)\b/i.test(t)) {
     const count = (k: string) => nodes.filter((n) => n.type === k).length;
