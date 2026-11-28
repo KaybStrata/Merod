@@ -31,7 +31,9 @@ export type DirSizing = { live: boolean; perTrade: string; maxDaily: string };
 export type DirPick = { row: any; group: "wallets" | "merod" | "stocks"; target: string; kind: Tab };
 
 export function TraderDirectory({ compact = false, sizing, onSelect, selected, onData }: { compact?: boolean; sizing?: DirSizing; onSelect?: (p: DirPick) => void; selected?: string | null; onData?: (d: any) => void }) {
-  const [period, setPeriod] = useState<"today" | "1h" | "4h" | "12h" | "24h" | "7d">("today");
+  const [period, setPeriod] = useState<"today" | "1m" | "15m" | "1h" | "4h" | "6h" | "12h" | "24h" | "7d">("today");
+  // Rank wallets by dollars gained ("gainers") or by return % on what they traded ("profitable").
+  const [rank, setRank] = useState<"gainers" | "profitable">("gainers");
   const { data, refresh } = useApi<any>(`/api/traders?period=${period}`, { refreshMs: 60000 });
   const [tab, setTab] = useState<Tab>("gainers");
   // PnL dial: 0 = no minimum; otherwise a log scale from $10 to $1,000,000 accumulated in the window.
@@ -56,6 +58,7 @@ export function TraderDirectory({ compact = false, sizing, onSelect, selected, o
   rows = rows.filter((r: any) => !qs || JSON.stringify([r.address, r.handle, r.name, r.tokens, r.symbol, r.wallet]).toLowerCase().includes(qs.toLowerCase()));
   const gainersTotal = tab === "gainers" ? rows.length : 0;
   if (tab === "gainers" && minPnl > 0) rows = rows.filter((r: any) => (r.value ?? 0) >= minPnl);
+  if (tab === "gainers" && rank === "profitable") rows = [...rows].sort((a: any, b: any) => (b.roi ?? -Infinity) - (a.roi ?? -Infinity));
   const targetOf = (r: any) => (isWallet ? r.address : r.onchain ? r.wallet : r.handle);
   // "Mimic top N": any number from the top of the (filtered) list; blank/0 = the whole list.
   const allEligible = isFeed ? [] : rows.filter((r) => isWallet || r.copyable);
@@ -111,8 +114,13 @@ export function TraderDirectory({ compact = false, sizing, onSelect, selected, o
         <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-line bg-bg-2/50 px-3 py-2.5">
           <div className="flex items-center gap-1 text-[12px]">
             <span className="mr-1 text-muted">Window</span>
-            {([["today", "Today"], ["1h", "1h"], ["4h", "4h"], ["12h", "12h"], ["24h", "24h"], ["7d", "7d"]] as const).map(([k, l]) => (
+            {([["1m", "1m"], ["15m", "15m"], ["1h", "1h"], ["6h", "6h"], ["12h", "12h"], ["24h", "1D"], ["7d", "1W"], ["today", "Today"]] as const).map(([k, l]) => (
               <button key={k} onClick={() => setPeriod(k)} className={cx("rounded-lg px-2.5 py-1", period === k ? "nav-active" : "text-muted hover:text-text")}>{l}</button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 rounded-lg border border-line p-0.5 text-[12px]" role="radiogroup" aria-label="Rank by">
+            {([["gainers", "Top gainers", "Biggest dollar gain in the window"], ["profitable", "Most profitable", "Best return %: gain ÷ money they traded"]] as const).map(([k, l, tip]) => (
+              <button key={k} role="radio" aria-checked={rank === k} title={tip} onClick={() => setRank(k)} className={cx("rounded-md px-2.5 py-1", rank === k ? "bg-up/15 text-up" : "text-muted hover:text-text")}>{l}</button>
             ))}
           </div>
           <div className="flex min-w-[280px] flex-1 items-center gap-3 text-[12px]">
@@ -136,7 +144,7 @@ export function TraderDirectory({ compact = false, sizing, onSelect, selected, o
             {rows.map((r: any, i: number) => tab === "gainers" ? (
               <tr key={r.address} {...rowProps(r, "wallets", r.address)}>
                 <td className="py-2 font-semibold text-accent-2">{i + 1}</td>
-                <td><a href={`https://solscan.io/account/${r.address}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 font-mono hover:underline">{short(r.address)} <ExternalLink className="size-3 text-faint" /></a></td>
+                <td><span className="flex items-center gap-1.5"><a href={`https://solscan.io/account/${r.address}`} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 font-mono hover:underline" title={r.address}>{r.address.slice(0, 6)}…{r.address.slice(-6)} <ExternalLink className="size-3 text-faint" /></a><CopyAddr a={r.address} />{r.roi != null && <span className={cx("num rounded px-1 text-[10px]", r.roi >= 0 ? "bg-up/10 text-up" : "bg-down/10 text-down")} title="Return on what this wallet traded in the window">{r.roi >= 0 ? "+" : ""}{Math.abs(r.roi) >= 100 ? Math.round(r.roi) : r.roi.toFixed(1)}%</span>}</span></td>
                 <td className={cx("num text-right font-semibold", tone(r.value))}>{signed(r.value)}{r.kind === "net_flow" ? "*" : ""}</td>
                 <td className="text-muted">{r.tokens?.length ? [...new Set(r.tokens)].join(", ") : "—"}</td>
                 <td className="num text-right">{r.trades?.toLocaleString() ?? "—"}</td>
@@ -184,5 +192,14 @@ export function TraderDirectory({ compact = false, sizing, onSelect, selected, o
       </div>
       <p className="mt-2 text-[10.5px] text-faint">Stats: gainers = Birdeye 7-day / today PnL; wallets = last 24h on-chain; Merod traders = last 30 days realised P&L; trade feeds = last 7 days. {data?.limits} Mimicked trades run in your paper account through the order engine&apos;s risk checks.</p>
     </section>
+  );
+}
+
+/** Copy a public wallet address. */
+function CopyAddr({ a }: { a: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button onClick={(e) => { e.stopPropagation(); void navigator.clipboard?.writeText(a).then(() => { setDone(true); setTimeout(() => setDone(false), 1200); }); }}
+      className="rounded px-1 text-[10px] text-faint hover:text-text" title={`Copy ${a}`} aria-label="Copy wallet address">{done ? "copied" : "copy"}</button>
   );
 }

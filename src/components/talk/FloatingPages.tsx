@@ -1,18 +1,19 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CandlestickChart, PieChart, Sparkles, Bot, Settings, SlidersHorizontal, Lightbulb, Map as MapIcon, PiggyBank, Trash2, Cpu, ListChecks, Wand2, MessageSquare, X, Minus, ExternalLink, Maximize2, Loader2 } from "lucide-react";
+import { CandlestickChart, PieChart, Sparkles, Bot, Settings, SlidersHorizontal, Lightbulb, Map as MapIcon, PiggyBank, Trash2, Cpu, ListChecks, Wand2, MessageSquare, Repeat, X, Minus, ExternalLink, Maximize2, Loader2 } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { SkillsSection, AutonSection, TradesSection, PromptsSection } from "./EditAllSections";
 import { cx, useToast } from "@/components/ui";
 import { BotTradingSwitch } from "@/components/BotTradingSwitch";
 
-export type FloatTab = "map" | "ewallets" | "trade" | "portfolio" | "agents" | "bots" | "auton" | "edit" | "advisor" | "settings";
+export type FloatTab = "map" | "ewallets" | "trade" | "portfolio" | "agents" | "bots" | "auton" | "mimic" | "edit" | "advisor" | "settings";
 const TABS: { id: FloatTab; label: string; icon: any; href?: string }[] = [
   { id: "map", label: "Map", icon: MapIcon, href: "/map" },
   { id: "trade", label: "Trade", icon: CandlestickChart, href: "/trade" },
   { id: "portfolio", label: "Portfolio", icon: PieChart, href: "/analytics" },
   { id: "bots", label: "Bots", icon: Bot, href: "/bots" },
   { id: "auton", label: "Auton", icon: Cpu },
+  { id: "mimic", label: "Mimic", icon: Repeat, href: "/mimic" },
   { id: "edit", label: "Edit all", icon: SlidersHorizontal },
   { id: "advisor", label: "Momo", icon: Lightbulb, href: "/advisor" },
   { id: "ewallets", label: "E-wallets", icon: PiggyBank, href: "/e-wallets" },

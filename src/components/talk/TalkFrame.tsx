@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Plus, Search, CandlestickChart, PieChart, Bot, Settings, Sparkles, Pause, Menu, X, ArrowUpRight, SlidersHorizontal, Map as MapIcon, PiggyBank, Cpu } from "lucide-react";
+import { Plus, Search, CandlestickChart, PieChart, Bot, Settings, Sparkles, Pause, Menu, X, ArrowUpRight, SlidersHorizontal, Map as MapIcon, PiggyBank, Cpu, Repeat } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { Logo } from "@/components/shell/Logo";
 import { ModeSwitch } from "./ModeSwitch";
@@ -103,7 +103,7 @@ function Rail({ onNavigate }: { onNavigate?: () => void }) {
         <AdvisorPanel className="mb-2.5" onOpenAll={() => openFloat("advisor")} />
         <div className="flex items-center justify-between px-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">Open in a floating window <ArrowUpRight className="size-3" /></div>
         <div className="mt-1.5 grid grid-cols-2 gap-1">
-          {([["map", "Map", MapIcon], ["trade", "Trade", CandlestickChart], ["portfolio", "Portfolio", PieChart], ["bots", "Bots", Bot], ["auton", "Auton", Cpu], ["edit", "Edit all", SlidersHorizontal], ["ewallets", "E-wallets", PiggyBank], ["settings", "Settings", Settings]] as const).map(([tab, label, I]) => (
+          {([["map", "Map", MapIcon], ["trade", "Trade", CandlestickChart], ["portfolio", "Portfolio", PieChart], ["bots", "Bots", Bot], ["auton", "Auton", Cpu], ...(user.role === "super_admin" ? [["mimic", "Mimic", Repeat] as const] : []), ["edit", "Edit all", SlidersHorizontal], ["ewallets", "E-wallets", PiggyBank], ["settings", "Settings", Settings]] as const).map(([tab, label, I]) => (
             <button key={tab} onClick={() => openFloat(tab)} title={tab === "map" ? "Map: organize, connect and run bots, agents, prompts, skills and points (type map changes in its prompt bar)" : tab === "edit" ? "Change $ per trade, stop-loss, take-profit, capital or on/off for many bots and agents at once" : tab === "auton" ? "Auton: turn it on/off, set its budget, speed, $ per trade and goals, and edit or delete every bot and agent it made" : `${label} in a floating window over Talk`}
               className={cx("flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-panel-2 hover:text-text", tab === "edit" || tab === "map" || tab === "auton" ? "text-accent-2" : "text-muted")}><I className="size-3.5" />{label}</button>
           ))}

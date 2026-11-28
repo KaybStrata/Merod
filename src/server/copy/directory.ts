@@ -85,7 +85,8 @@ async function recentTrades(userId: string, stock: boolean) {
       ORDER BY o.updated_at DESC LIMIT 60`, [userId]);
 }
 
-export type GainerPeriod = "today" | "1h" | "4h" | "12h" | "24h" | "7d";
+export type GainerPeriod = "today" | "1m" | "15m" | "1h" | "4h" | "6h" | "12h" | "24h" | "7d";
+export const GAINER_PERIODS: GainerPeriod[] = ["today", "1m", "15m", "1h", "4h", "6h", "12h", "24h", "7d"];
 const TF_ALLOWED: [string, number][] = [["30m", 0.5], ["1h", 1], ["2h", 2], ["4h", 4], ["6h", 6], ["8h", 8], ["12h", 12], ["24h", 24]];
 const flowCache = new Map<string, { at: number; rows: any[] }>();
 
@@ -125,15 +126,16 @@ async function netFlowWallets(userId: string, tf: string) {
 export async function gainersForPeriod(userId: string, period: GainerPeriod) {
   if (period === "today" || period === "7d") {
     const pnl = (await birdeyeGainers(userId)).filter((g) => (period === "today" ? g.pnlToday != null : g.pnl != null))
-      .map((g) => ({ ...g, value: period === "today" ? g.pnlToday : g.pnl, kind: "pnl", window: period === "today" ? "Today" : "7 days" }));
+      .map((g) => ({ ...g, value: period === "today" ? g.pnlToday : g.pnl, kind: "pnl", window: period === "today" ? "Today" : "7 days", roi: g.volume > 0 ? ((period === "today" ? g.pnlToday : g.pnl) ?? 0) / g.volume * 100 : null }));
     if (pnl.length) return pnl.sort((a, b) => b.value - a.value);
   }
   const hoursToday = (Date.now() - new Date().setUTCHours(0, 0, 0, 0)) / 3_600_000;
-  const want = period === "today" ? Math.max(0.5, hoursToday) : period === "7d" ? 24 : Number(period.replace("h", ""));
+  const want = period === "today" ? Math.max(0.5, hoursToday) : period === "7d" ? 24 : period.endsWith("m") ? Number(period.replace("m", "")) / 60 : Number(period.replace("h", ""));
   const [tf, hrs] = TF_ALLOWED.find(([, h]) => h >= want) ?? TF_ALLOWED[TF_ALLOWED.length - 1];
   const rows = await netFlowWallets(userId, tf);
-  const label = period === "today" ? `Today (since 00:00 UTC, ${tf} window)` : period === "7d" ? "Last 24h (7-day flow not available)" : `Last ${hrs}h`;
-  return rows.map((w) => ({ address: w.address, value: w.sellUsd - w.buyUsd, kind: "net_flow", window: label, trades: w.trades, volume: w.volume, tokens: w.tokens, source: "Net flow (not PnL)" }))
+  const label = period === "today" ? `Today (since 00:00 UTC, ${tf} window)` : period === "7d" ? "Last 24h (7-day flow not available)"
+    : want < hrs ? `Last ${tf} (the shortest window Birdeye offers for ${period})` : `Last ${hrs >= 1 ? `${hrs}h` : tf}`;
+  return rows.map((w) => ({ address: w.address, value: w.sellUsd - w.buyUsd, kind: "net_flow", window: label, trades: w.trades, volume: w.volume, tokens: w.tokens, source: "Net flow (not PnL)", roi: w.buyUsd > 0 ? ((w.sellUsd - w.buyUsd) / w.buyUsd) * 100 : null }))
     .filter((w) => w.value > 0).sort((a, b) => b.value - a.value).slice(0, 200);
 }
 
