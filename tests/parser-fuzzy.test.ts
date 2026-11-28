@@ -63,3 +63,11 @@ test("dollar profit targets on a dollar buy become a take-profit %", () => {
   assert.equal(r.trades[0].take_profit_pct, 5);
   assert.equal(parsePrompt("buy $200 of sol and sell at $10 profit").trades[0].take_profit_pct, 5);
 });
+
+test("a bot that buys and sells is a loop bot (not a sell-only order), with or without a dip number", async () => {
+  const { parsePrompt } = await import("@/server/ai/parser");
+  const a = parsePrompt(`make a bot called "Dip buyer" that buys MEME when it dips and sells when it is up 2%`);
+  assert.equal(a.kind, "swing_loop"); assert.equal(a.swing!.dip_pct, 3); assert.equal(a.swing!.take_profit_pct, 2);
+  assert.equal(parsePrompt("make a bot that buys $1000 of MEME and sells at a 2% gain").kind, "swing_loop");
+  assert.equal(parsePrompt("sell half my MEME when it reaches a 20% gain").kind, "conditional_trade");
+});

@@ -202,8 +202,11 @@ export function parsePrompt(raw: string): Instruction {
   const ranked = !!topN || /\b(top|biggest|best)\s+(gainers?|movers?|performers?)\b|\b(gainers|profitable|trending|pumping|hottest)\b/.test(t);
   const coinWords = /\b(meme|memes|memecoins?|coins?|tokens?|gainers?)\b/.test(t);
   // A buy-now loop needs no dip: "buy $10 each and sell at 2% profit, rinse and repeat".
-  if ((dip || (ranked && coinWords) || repeatWords) && rise && /\bbuy(s|ing)?\b/.test(t) && (/\bsell(s|ing)?\b/.test(t) || (isBot && /\b(profit|gain|increase|up)\b/.test(t)))) {
-    const dipPct = dip ? num(dip[1] ?? dip[5]) : 0, tpPct = num(rise[1] ?? rise[5]);
+  // A bot that buys and sells is a loop bot even without "repeat" or a dip number ("make a bot that buys MEME and sells at 2% gain").
+  const dipWord = /\b(buy(s|ing)? (the |a |on (a |the )?)?dips?|dip buy(er|ing)?|dips?)\b/.test(t);
+  if ((dip || (ranked && coinWords) || repeatWords || isBot) && rise && /\bbuy(s|ing|er)?\b/.test(t) && (/\bsell(s|ing)?\b/.test(t) || (isBot && /\b(profit|gain|increase|up)\b/.test(t)))) {
+    // "buy the dip" with no number: wait for a 3% dip.
+    const dipPct = dip ? num(dip[1] ?? dip[5]) : dipWord ? 3 : 0, tpPct = num(rise[1] ?? rise[5]);
     const repeat = isBot || repeatWords;
     // Many coins at once: "every/all (Solana) meme coin(s)" or "the top 20 gainers".
     const many = (ranked && coinWords) || /\b(every|all|each|any)\b[^.]*\b(meme|memes|memecoins?|coins|tokens)\b/.test(t);
