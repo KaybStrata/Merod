@@ -14,6 +14,9 @@ import { BotTradingSwitch } from "@/components/BotTradingSwitch";
 
 const SCHEDULES = [["every_15s", "15 seconds"], ["every_1m", "1 minute"], ["every_5m", "5 minutes"], ["every_15m", "15 minutes"], ["every_1h", "1 hour"]];
 
+/** "AURORA, AI, SEXYANIMAL +18 more" instead of a wall of tickers. */
+const fewSymbols = (syms?: string[] | null) => !syms?.length ? "" : syms.length <= 3 ? syms.join(", ") : `${syms.slice(0, 3).join(", ")} +${syms.length - 3} more`;
+
 export default function BotsPage() {
   const { user } = useShell();
   const { data, refresh } = useApi<any>("/api/bots", { refreshMs: 10000 });
@@ -80,42 +83,42 @@ export default function BotsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-faint"><tr className="border-b border-line">
-                <th className="px-4 py-2 font-medium">Bot</th><th className="px-3 font-medium">Strategy</th><th className="px-3 font-medium">Assets</th><th className="px-3 font-medium">Status</th>
-                <th className="px-3 text-right font-medium">P&L</th><th className="px-3 text-right font-medium">Trades today</th><th className="px-3 font-medium">Last activity</th><th className="px-4" /></tr></thead>
+                <th className="px-3 py-2 font-medium">Bot</th><th className="hidden px-3 font-medium xl:table-cell">Strategy</th><th className="px-2 font-medium">Assets</th><th className="px-2 font-medium">Status</th>
+                <th className="px-2 text-right font-medium">P&L</th><th className="px-2 text-right font-medium" title="Trades today">Today</th><th className="hidden px-3 font-medium xl:table-cell">Last activity</th><th className="px-3" /></tr></thead>
               <tbody>
                 {bots.map((b) => (
                   <tr key={b.id} className="border-b border-line/60 hover:bg-panel-2/40">
-                    <td className="px-4 py-3"><Link href={`/bots/${b.id}`} className="font-medium hover:text-accent-2">{b.name}</Link><div className="mt-0.5 flex items-center gap-1"><Badge>bot</Badge><PaperBadge paper={b.is_paper} /></div></td>
-                    <td className="px-3 text-muted">{b.strategy_name}</td>
-                    <td className="px-3">{(b.symbols ?? []).join(", ") || <span className="text-faint">{b.strategy_id === "watchlist_monitor" ? "Watchlist" : b.strategy_id === "meme_discovery" ? "New launches" : "—"}</span>}</td>
-                    <td className="px-3"><StatusPill status={b.status} /></td>
-                    <td className={cx("num px-3 text-right", tone(b.pnl_usd))}>{usd(b.pnl_usd, { sign: true })}</td>
-                    <td className="num px-3 text-right">{b.trades_today}</td>
-                    <td className="max-w-[260px] truncate px-3 text-xs text-muted" title={b.last_log?.message}>{b.last_log ? `${ago(b.last_log.created_at)} · ${b.last_log.message}` : "—"}</td>
-                    <td className="px-4 text-right">
-                      {b.status === "running" ? <Button size="sm" onClick={() => control(b.id, "pause")}><PauseCircle className="size-3.5" /> Pause</Button>
-                        : ["draft", "paused", "stopped", "error", "halted"].includes(b.status) && <Button size="sm" variant="success" onClick={() => control(b.id, b.status === "paused" ? "resume" : "start")}><PlayCircle className="size-3.5" /> {b.status === "paused" ? "Resume" : "Start"}</Button>}
-                      <Link href={`/bots/${b.id}?tab=config`} className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text" title="Edit this bot" aria-label={`Edit ${b.name}`}><Pencil className="size-3.5" /></Link>
+                    <td className="max-w-[220px] px-3 py-2.5"><Link href={`/bots/${b.id}`} className="line-clamp-2 font-medium hover:text-accent-2">{b.name}</Link><div className="mt-0.5 flex items-center gap-1"><Badge>bot</Badge><PaperBadge paper={b.is_paper} /></div>{b.last_log && <div className="mt-0.5 truncate text-[11px] text-faint xl:hidden" title={b.last_log.message}>{ago(b.last_log.created_at)} · {b.last_log.message}</div>}</td>
+                    <td className="hidden px-3 text-muted xl:table-cell">{b.strategy_name}</td>
+                    <td className="max-w-[160px] px-2 text-[12.5px]" title={(b.symbols ?? []).join(", ")}>{fewSymbols(b.symbols) || <span className="text-faint">{b.strategy_id === "watchlist_monitor" ? "Watchlist" : b.strategy_id === "meme_discovery" ? "New launches" : "—"}</span>}</td>
+                    <td className="px-2"><StatusPill status={b.status} /></td>
+                    <td className={cx("num whitespace-nowrap px-2 text-right", tone(b.pnl_usd))}>{usd(b.pnl_usd, { sign: true })}</td>
+                    <td className="num px-2 text-right">{b.trades_today}</td>
+                    <td className="hidden max-w-[260px] truncate px-3 text-xs text-muted xl:table-cell" title={b.last_log?.message}>{b.last_log ? `${ago(b.last_log.created_at)} · ${b.last_log.message}` : "—"}</td>
+                    <td className="whitespace-nowrap px-3 text-right">
+                      {b.status === "running" ? <Button size="sm" onClick={() => control(b.id, "pause")} title="Turn off (pause)"><PauseCircle className="size-3.5" /><span className="hidden xl:inline"> Pause</span></Button>
+                        : ["draft", "paused", "stopped", "error", "halted"].includes(b.status) && <Button size="sm" variant="success" onClick={() => control(b.id, b.status === "paused" ? "resume" : "start")} title="Turn on"><PlayCircle className="size-3.5" /><span className="hidden xl:inline"> {b.status === "paused" ? "Resume" : "Start"}</span></Button>}
+                      <Link href={`/bots/${b.id}?tab=config`} className="ml-1 inline-flex items-center gap-1 rounded-lg border border-line px-1.5 py-1 text-[12px] text-muted hover:text-text" title="Edit this bot" aria-label={`Edit ${b.name}`}><Pencil className="size-3.5" /></Link>
                       <button onClick={async () => { if (!confirm(`Delete “${b.name}”? It stops and is removed; its past trades stay in your history.`)) return; await bulk("bot", b.id, "delete"); }}
-                        className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:border-down/50 hover:text-down" title="Delete this bot" aria-label={`Delete ${b.name}`}><Trash2 className="size-3.5" /></button>
+                        className="ml-1 inline-flex items-center gap-1 rounded-lg border border-line px-1.5 py-1 text-[12px] text-muted hover:border-down/50 hover:text-down" title="Delete this bot" aria-label={`Delete ${b.name}`}><Trash2 className="size-3.5" /></button>
                     </td>
                   </tr>
                 ))}
                 {agents.map((a) => (
                   <tr key={a.id} className="border-b border-line/60 hover:bg-panel-2/40">
-                    <td className="px-4 py-3"><Link href={`/agents/${a.id}`} className="font-medium hover:text-accent-2">{a.name}</Link><div className="mt-0.5 flex items-center gap-1"><Badge>AI bot</Badge>{a.fleet_name && <span className="text-[11px] text-faint">{a.fleet_name}</span>}</div></td>
-                    <td className="px-3 text-muted">{a.roleName}</td>
-                    <td className="px-3">{(a.symbols ?? []).join(", ") || <span className="text-faint">—</span>}</td>
-                    <td className="px-3"><StatusPill status={a.status} /></td>
-                    <td className={cx("num px-3 text-right", tone(a.metrics?.pnl ?? 0))}>{usd(a.metrics?.pnl ?? 0, { sign: true })}</td>
-                    <td className="num px-3 text-right">{a.metrics?.trades24h ?? 0}</td>
-                    <td className="max-w-[260px] truncate px-3 text-xs text-muted" title={a.last_event}>{a.last_event ?? "—"}</td>
-                    <td className="px-4 text-right">
-                      {a.status === "running" ? <Button size="sm" onClick={() => bulk("agent", a.id, "pause")}><PauseCircle className="size-3.5" /> Pause</Button>
-                        : <Button size="sm" variant="success" onClick={() => bulk("agent", a.id, "resume")}><PlayCircle className="size-3.5" /> Start</Button>}
-                      <Link href={`/agents/${a.id}`} className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text" title="Edit this AI bot" aria-label={`Edit ${a.name}`}><Pencil className="size-3.5" /></Link>
+                    <td className="max-w-[220px] px-3 py-2.5"><Link href={`/agents/${a.id}`} className="line-clamp-2 font-medium hover:text-accent-2">{a.name}</Link><div className="mt-0.5 flex items-center gap-1"><Badge>AI bot</Badge>{a.fleet_name && <span className="text-[11px] text-faint">{a.fleet_name}</span>}</div></td>
+                    <td className="hidden px-3 text-muted xl:table-cell">{a.roleName}</td>
+                    <td className="max-w-[160px] px-2 text-[12.5px]" title={(a.symbols ?? []).join(", ")}>{fewSymbols(a.symbols) || <span className="text-faint">—</span>}</td>
+                    <td className="px-2"><StatusPill status={a.status} /></td>
+                    <td className={cx("num whitespace-nowrap px-2 text-right", tone(a.metrics?.pnl ?? 0))}>{usd(a.metrics?.pnl ?? 0, { sign: true })}</td>
+                    <td className="num px-2 text-right">{a.metrics?.trades24h ?? 0}</td>
+                    <td className="hidden max-w-[260px] truncate px-3 text-xs text-muted xl:table-cell" title={a.last_event}>{a.last_event ?? "—"}</td>
+                    <td className="whitespace-nowrap px-3 text-right">
+                      {a.status === "running" ? <Button size="sm" onClick={() => bulk("agent", a.id, "pause")} title="Turn off (pause)"><PauseCircle className="size-3.5" /><span className="hidden xl:inline"> Pause</span></Button>
+                        : <Button size="sm" variant="success" onClick={() => bulk("agent", a.id, "resume")} title="Turn on"><PlayCircle className="size-3.5" /><span className="hidden xl:inline"> Start</span></Button>}
+                      <Link href={`/agents/${a.id}`} className="ml-1 inline-flex items-center gap-1 rounded-lg border border-line px-1.5 py-1 text-[12px] text-muted hover:text-text" title="Edit this AI bot" aria-label={`Edit ${a.name}`}><Pencil className="size-3.5" /></Link>
                       <button onClick={() => { if (confirm(`Delete “${a.name}”? It stops, open orders are cancelled and it's archived; past trades stay in your history.`)) void bulk("agent", a.id, "delete"); }}
-                        className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:border-down/50 hover:text-down" title="Delete this agent" aria-label={`Delete ${a.name}`}><Trash2 className="size-3.5" /></button>
+                        className="ml-1 inline-flex items-center gap-1 rounded-lg border border-line px-1.5 py-1 text-[12px] text-muted hover:border-down/50 hover:text-down" title="Delete this agent" aria-label={`Delete ${a.name}`}><Trash2 className="size-3.5" /></button>
                     </td>
                   </tr>
                 ))}
