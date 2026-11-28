@@ -174,6 +174,7 @@ const timers = [
   every("auto_training", 60000, runTraining),
   every("ai_learning", 120000, runLearning),
   every("prompt_schedules", 30_000, async () => (await import("@/server/schedules")).runDueSchedules()),
+  every("auton", 20_000, async () => (await import("@/server/auton/engine")).runDueAutons()),
   every("e_wallets", 15_000, async () => (await import("@/server/ewallets")).channelProfits()),
   every("advisor", 10_000, async () => (await import("@/server/advisor")).runDueAdvisors()),
   every("trade_recording", 60_000, async () => (await import("@/server/trade-updates")).runDueRecordings()),

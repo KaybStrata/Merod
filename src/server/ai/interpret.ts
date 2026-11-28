@@ -29,7 +29,7 @@ import { attachWidgets, type WidgetHint } from "../talk/attach";
  *  → 5 engine validation → 6 show price/fees/risks → 7 approval when required → 8 route → 9 confirm → 10 portfolio.
  * The AI never calls the engine directly; this module turns a validated instruction into engine intents.
  */
-export interface PromptInput { text: string; conversationId?: string; screenAssetId?: string | null; provider?: AIProvider; model?: string; /** "2/5" when this is one instruction of a multi-instruction prompt (server-internal) */ part?: string; /** paper or real money for trades/bots from this prompt */ book?: "paper" | "live"; /** files attached in the prompt box */ attachmentIds?: string[]; /** the browser's time zone, for schedules */ tz?: string; /** server-internal: what the AI knows about the attachments */ attached?: { names: string[]; block: string; plain: string } | null }
+export interface PromptInput { text: string; conversationId?: string; screenAssetId?: string | null; provider?: AIProvider; model?: string; /** "2/5" when this is one instruction of a multi-instruction prompt (server-internal) */ part?: string; /** paper or real money for trades/bots from this prompt */ book?: "paper" | "live"; /** files attached in the prompt box */ attachmentIds?: string[]; /** the browser's time zone, for schedules */ tz?: string; /** AI = Auton in the composer: Auton takes the prompt as a goal and acts on its own */ auton?: boolean; /** server-internal: what the AI knows about the attachments */ attached?: { names: string[]; block: string; plain: string } | null }
 export type PlanCard =
   | { type: "order"; intent: OrderIntent; plan: any }
   | { type: "bot"; config: BotConfig; strategyName: string; assetLabel: string }
@@ -182,6 +182,12 @@ export async function handlePrompt(userId: string, input: PromptInput) {
     return { conversationId: convId!, message: row, userMessageId: um!.id, fallbackReason: null, provider: "merod", model: "deterministic" };
   };
   // Skills: "create a skill: always use a 5% stop-loss…", "show my skills", "turn off skill Safe".
+  // Auton (autonomous trader): AI = Auton in the composer, or "start/stop Auton", "auton budget $2000", "auton: focus on solana memes".
+  if (!input.part && (input.auton || /^\s*(?:(?:start|stop|run|turn (?:on|off)|pause|resume|enable|disable)\s+)?auton\b|\bauton\b.{0,40}\b(budget|max|bots?|goal|focus|start|stop|run|every|real money|paper)\b/i.test(text))) {
+    const { autonCommand } = await import("../auton/engine");
+    const msg = await autonCommand(userId, text, convId ?? null).catch((e: any) => `Auton couldn't do that: ${e.message}`);
+    return early(msg, { type: "executed", detail: "Auton" }, "executed", null);
+  }
   const sk = input.part ? null : await skillCommand(userId, text, input.tz || "UTC").catch((e: any) => `Couldn't save that skill: ${e.message}`);
   if (sk) return early(sk, { type: "executed", detail: "Skills updated" }, "executed", null);
   // E-wallets: "create an e-wallet called Savings", "send 20% of all my profits to Savings", "move $100 from Savings to trading".

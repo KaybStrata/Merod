@@ -15,7 +15,7 @@ const KIND: Record<string, [any, string]> = {
   thought: [Brain, "text-[#c9b6ff]"], analysis: [BarChart3, "text-up"], decision: [Target, "text-[#8fbcff]"],
   execution: [CheckCircle2, "text-up"], warning: [AlertTriangle, "text-warn"], state: [Gauge, "text-muted"],
 };
-const SOURCES: [string, string][] = [["all", "All"], ["order", "Trades"], ["bot", "Bots"], ["agent", "Agents"], ["auto", "Auto"], ["modo", "Modo"], ["copy", "Mimic"], ["update", "Updates"], ["buy", "Buys"], ["sell", "Sells"], ["profit", "Profit"], ["loss", "Loss"]];
+const SOURCES: [string, string][] = [["all", "All"], ["order", "Trades"], ["bot", "Bots"], ["agent", "Agents"], ["auto", "Auto"], ["modo", "Modo"], ["copy", "Mimic"], ["auton", "Auton"], ["update", "Updates"], ["buy", "Buys"], ["sell", "Sells"], ["profit", "Profit"], ["loss", "Loss"]];
 /** Profit / Loss: closed trades by realized P&L in $ (or % for theoretical Auto/Modo trades with no order). */
 const pnlOf = (i: Item) => i.pnl ?? i.pnlPct;
 const hms = (t: string) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
@@ -42,11 +42,15 @@ export function TalkActivity() {
   }
   // Any filter other than All is fetched from the server (last 30 days), so busy bots can't crowd trades out of the list.
   const [filtered, setFiltered] = useState<{ key: string; items: Item[] } | null>(null);
+  // Auton tab: everything Auton does, or only what it reports to this Talk tab.
+  const [tabOnly, setTabOnly] = useState(false);
+  const tabRef = useRef(tabOnly); tabRef.current = tabOnly;
   const srcRef = useRef(src); srcRef.current = src;
   async function pullFiltered(key = srcRef.current) {
     if (key === "all") return;
     try {
-      const r: any = await api(`/api/live-stream?filter=${key}&limit=300`);
+      const conv = key === "auton" && tabOnly ? new URLSearchParams(window.location.search).get("c") : null;
+      const r: any = await api(`/api/live-stream?filter=${key}&limit=300${conv ? `&conv=${conv}` : ""}`);
       if (srcRef.current === key) setFiltered({ key, items: r.items as Item[] });
     } catch { /* keep the last list */ }
   }
@@ -56,8 +60,8 @@ export function TalkActivity() {
     pullFiltered(src);
     const t = setInterval(() => pullFiltered(src), 8000);
     return () => clearInterval(t);
-  }, [open, src]); // eslint-disable-line react-hooks/exhaustive-deps
-  useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade", "update", "advisor"].includes(e.type)) { pull(); if (openRef.current) pullFiltered(); } });
+  }, [open, src, tabOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade", "update", "advisor", "auton"].includes(e.type)) { pull(); if (openRef.current) pullFiltered(); } });
   const loadingFilter = src !== "all" && filtered?.key !== src;
   const shown = src === "all" ? items : filtered?.key === src ? filtered.items : [];
   const closed = shown.filter((i) => i.pnl !== undefined);
@@ -86,6 +90,11 @@ export function TalkActivity() {
                 <button key={k} onClick={() => setSrc(k)} className={cx("rounded-md px-2 py-0.5 text-[11.5px]", src === k ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>{l}</button>
               ))}
             </div>
+            {src === "auton" && (
+              <label className="flex items-center gap-2 border-b border-line px-4 py-1.5 text-[11.5px] text-muted">
+                <input type="checkbox" checked={tabOnly} onChange={(e) => setTabOnly(e.target.checked)} />Only what Auton reports to this tab
+              </label>
+            )}
             {(src === "profit" || src === "loss" || src === "sell") && closed.length > 0 && (
               <div className="flex items-center justify-between border-b border-line px-4 py-1.5 text-[11.5px]">
                 <span className="text-muted">{closed.length} closed trade{closed.length === 1 ? "" : "s"} shown</span>

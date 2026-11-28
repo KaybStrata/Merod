@@ -5,14 +5,14 @@ import {
   ReactFlow, ReactFlowProvider, Background, Controls, MiniMap, Handle, Position, addEdge, applyEdgeChanges, applyNodeChanges, useReactFlow,
   ConnectionMode, MarkerType, type Node, type Edge, type NodeProps, type Connection, type NodeChange, type EdgeChange,
 } from "@xyflow/react";
-import { History, Bot, Sparkles, MessageSquareText, Wand2, Target, Workflow, Play, Plus, Trash2, Map as MapIcon, Search, X, Loader2 } from "lucide-react";
+import { Cpu, History, Bot, Sparkles, MessageSquareText, Wand2, Target, Workflow, Play, Plus, Trash2, Map as MapIcon, Search, X, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { usePageTitle } from "@/components/shell/context";
 import { cx, useToast } from "@/components/ui";
 import { ago } from "@/lib/format";
 import { MapHistory } from "@/components/MapHistory";
 
-type NType = "bot" | "agent" | "prompt" | "skill" | "point" | "method";
+type NType = "bot" | "agent" | "prompt" | "skill" | "point" | "method" | "auton";
 type NData = { refId?: string; label?: string; text?: string; note?: string; status?: string };
 type MNode = Node<NData, NType>;
 
@@ -23,6 +23,7 @@ const META: Record<NType, { label: string; icon: any; ring: string; chip: string
   skill: { label: "Skill", icon: Wand2, ring: "border-amber-300/50", chip: "bg-amber-300/15 text-amber-200" },
   point: { label: "Point", icon: Target, ring: "border-rose-400/50", chip: "bg-rose-400/15 text-rose-300" },
   method: { label: "Method", icon: Workflow, ring: "border-accent/70", chip: "bg-accent/20 text-accent-2" },
+  auton: { label: "Auton", icon: Cpu, ring: "border-orange-400/60", chip: "bg-orange-400/15 text-orange-300" },
 };
 
 /** Lets node components edit their own text and run themselves without prop-drilling through React Flow. */
@@ -52,6 +53,7 @@ function MapNodeView({ id, data, type, selected }: NodeProps<MNode>) {
         className="nodrag nowheel mt-1 w-full resize-y rounded-md border border-line bg-bg-2 px-2 py-1.5 text-[11.5px] leading-snug outline-none focus:border-accent/60" />}
       {!editableText && c.info({ id, data, type: t } as MNode) && <div className="mt-1 line-clamp-3 px-1 text-[11px] text-muted">{c.info({ id, data, type: t } as MNode)}</div>}
       {t === "method" && <div className="mt-1 px-1 text-[10.5px] text-faint">Attach prompts, skills and points on one side and bots/agents on the other. ▶ applies them all.</div>}
+      {t === "auton" && <div className="mt-1 px-1 text-[10.5px] text-faint">Autonomous trader. Prompts/skills attached = its goals; bots attached = it manages them. ▶ runs a cycle now.</div>}
     </div>
   );
 }
@@ -211,6 +213,7 @@ function MapEditor() {
         {showPal && <aside className="surface flex w-60 shrink-0 flex-col rounded-2xl p-2.5">
           <div className="grid grid-cols-2 gap-1.5">
             <button onClick={() => addNode("prompt", { label: "", text: "" })} className="inline-flex items-center justify-center gap-1 rounded-lg border border-emerald-400/40 px-2 py-1.5 text-[12px] text-emerald-300 hover:bg-emerald-400/10"><Plus className="size-3.5" />Prompt</button>
+            <button onClick={() => { if (nodes.some((n) => n.type === "auton")) { toast("Auton is already on this map", "down"); return; } addNode("auton", { label: "Auton" }); }} className="col-span-2 inline-flex items-center justify-center gap-1 rounded-lg border border-orange-400/40 px-2 py-1.5 text-[12px] text-orange-300 hover:bg-orange-400/10" title="Add Auton, the autonomous trader: attach prompts/skills to give it goals, attach bots to hand them to it, press ▶ to run it"><Cpu className="size-3.5" />Auton</button>
             <button onClick={() => addNode("method", { label: "New method" })} className="inline-flex items-center justify-center gap-1 rounded-lg border border-accent/50 px-2 py-1.5 text-[12px] text-accent-2 hover:bg-accent/10"><Plus className="size-3.5" />Method</button>
             <button onClick={() => setCreating("skill")} className="inline-flex items-center justify-center gap-1 rounded-lg border border-amber-300/40 px-2 py-1.5 text-[12px] text-amber-200 hover:bg-amber-300/10"><Plus className="size-3.5" />New skill</button>
             <button onClick={() => setCreating("point")} className="inline-flex items-center justify-center gap-1 rounded-lg border border-rose-400/40 px-2 py-1.5 text-[12px] text-rose-300 hover:bg-rose-400/10"><Plus className="size-3.5" />New point</button>
@@ -257,7 +260,7 @@ function MapEditor() {
             defaultEdgeOptions={{ style: { strokeWidth: 2 } }} className="!bg-transparent">
             <Background gap={22} size={1.2} />
             <Controls position="bottom-left" className="!bottom-[7.5rem]" />
-            <MiniMap position="bottom-right" pannable zoomable nodeColor={(n) => ({ bot: "#38bdf8", agent: "#a78bfa", prompt: "#34d399", skill: "#fcd34d", point: "#fb7185", method: "#d6b37a" } as any)[n.type ?? "prompt"]} className="!bg-panel max-xl:!hidden" />
+            <MiniMap position="bottom-right" pannable zoomable nodeColor={(n) => ({ bot: "#38bdf8", agent: "#a78bfa", prompt: "#34d399", skill: "#fcd34d", point: "#fb7185", method: "#d6b37a", auton: "#fb923c" } as any)[n.type ?? "prompt"]} className="!bg-panel max-xl:!hidden" />
           </ReactFlow>
           {!nodes.length && (
             <div className="pointer-events-none absolute inset-x-0 bottom-32 top-12 flex items-center justify-center p-6">

@@ -28,6 +28,21 @@ export async function mapCommand(userId: string, text: string, opts: { isOwner: 
   const m = await getMap(userId);
   let nodes: MapNode[] = m.nodes ?? [], edges: MapEdge[] = m.edges ?? [];
 
+  /* ── Auton on the map: "add Auton to the map", "connect Auton to SOL Momentum" ── */
+  if (/\bauton\b/i.test(t) && /\b(add|put|place|drop|connect|attach|link)\b/i.test(t)) {
+    let an = nodes.find((n) => n.type === "auton");
+    const maxX = nodes.reduce((a, n) => Math.max(a, n.position.x), -320);
+    if (!an) { an = { id: `auton-${Math.random().toString(36).slice(2, 10)}`, type: "auton", position: { x: maxX + 360, y: 0 }, data: { label: "Auton" } }; nodes.push(an); }
+    const tg = (await parseTargets(userId, t.replace(/\bauton\b/gi, " "))) ?? [];
+    tg.forEach((x, i) => {
+      let n = nodes.find((y) => y.type === x.kind && y.data.refId === x.id);
+      if (!n) { n = { id: `${x.kind}-${Math.random().toString(36).slice(2, 10)}`, type: x.kind, position: { x: an!.position.x + 340, y: i * 150 }, data: { refId: x.id, label: x.name } }; nodes.push(n); }
+      if (!edges.some((e) => (e.source === an!.id && e.target === n!.id) || (e.target === an!.id && e.source === n!.id))) edges.push({ id: `e-${Math.random().toString(36).slice(2, 10)}`, source: an!.id, target: n.id });
+    });
+    await saveMap(userId, m.id, { nodes, edges });
+    return `Auton is on your map${tg.length ? ` and connected to ${tg.map((x) => x.name).join(", ")} (it will manage them)` : ""}. Attach prompts or skills to it to give it goals, then press ▶ on it (or say “run Auton”). Open the Map to see it.`;
+  }
+
   /* ── Editing what's already on the map ── */
   const clean = (x: string) => x.replace(/["“”']/g, "").replace(/\b(the|my|method|box|prompt|bot|agent|skill|point)\b/gi, " ").replace(/\s+/g, " ").trim().toLowerCase();
   const find = (name: string) => {

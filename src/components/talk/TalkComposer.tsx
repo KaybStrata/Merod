@@ -1,7 +1,7 @@
 "use client";
 import { usePopSide } from "@/lib/usePopSide";
 import { Children, cloneElement, isValidElement, useEffect, useRef, useState } from "react";
-import { ArrowUp, AtSign, Mic, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb, MessageSquare, Wand2, Crosshair, Megaphone, BellOff } from "lucide-react";
+import { Cpu, ArrowUp, AtSign, Mic, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb, MessageSquare, Wand2, Crosshair, Megaphone, BellOff } from "lucide-react";
 import { useShell } from "@/components/shell/context";
 import { useApi } from "@/lib/api";
 import { cx } from "@/components/ui";
@@ -12,7 +12,7 @@ import { UpdateRecord } from "./UpdateRecord";
 import { MicButton } from "@/components/shell/MicButton";
 
 /** Talk composer: text (and optional browser speech-to-text), Attach, Paper badge, @Agents, suggestion pills. Sends via the existing prompt API. */
-export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi, narrate = false, onNarrate }: { onSend: (t: string, attachmentIds?: string[]) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic"; onAi?: (a: "merod" | "openai" | "anthropic") => void; narrate?: boolean; onNarrate?: (on: boolean) => void }) {
+export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi, narrate = false, onNarrate }: { onSend: (t: string, attachmentIds?: string[]) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic" | "auton"; onAi?: (a: "merod" | "openai" | "anthropic" | "auton") => void; narrate?: boolean; onNarrate?: (on: boolean) => void }) {
   const { user } = useShell();
   const [text, setText] = useState("");
   const [listening, setListening] = useState(false);
@@ -82,6 +82,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
             <Seg on={ai === "merod"} onClick={() => onAi?.("merod")} icon={Sparkles} title="Merod's built-in rules: trades, bots, settings, mimic and market data. No key needed.">Modo</Seg>
             <Seg on={ai === "openai"} onClick={() => onAi?.("openai")} icon={Bot} title="Answers and plans from OpenAI, using your own OpenAI key (Broker & AI keys).">OpenAI</Seg>
             <Seg on={ai === "anthropic"} onClick={() => onAi?.("anthropic")} icon={Brain} title="Answers and plans from Claude, using your own Claude key (Broker & AI keys).">Claude</Seg>
+            <Seg on={ai === "auton"} onClick={() => onAi?.("auton")} icon={Cpu} title="Auton: Merod's autonomous trader. Tell it a goal (or just “start”) and it studies all your trades, bots, agents, skills, prompts and the whole market, then creates and runs its own bots, agents, skills, e-wallets, map and prompts within its budget (paper by default). Everything it does shows in Activity → Auton.">Auton</Seg>
           </ControlGroup>
           {/* Talk: every bot, agent and trade (current and future) reports to you in this conversation as it happens */}
           {onNarrate && (
@@ -96,7 +97,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
             <Seg on={sendAs === "skill"} onClick={() => setSendAs("skill")} icon={Wand2} title="Save as a Skill: a lasting rule for overall decision making (Modo, OpenAI, Claude, bots, agents)">Skill</Seg>
             <Seg on={sendAs === "point"} onClick={() => setSendAs("point")} icon={Crosshair} title="Save as a Point: a specific instruction to follow now; add 'today', 'for 2 hours' or 'until Friday' to make it expire">Point</Seg>
           </ControlGroup>
-          {ai !== "merod" && <a href={ai === "openai" ? "https://platform.openai.com/settings/organization/billing/" : "https://console.anthropic.com/settings/billing"} target="_blank" rel="noreferrer noopener" className="text-[11px] text-accent-2 underline underline-offset-2 hover:text-text">{ai === "openai" ? "OpenAI" : "Claude"} credits →</a>}
+          {(ai === "openai" || ai === "anthropic") && <a href={ai === "openai" ? "https://platform.openai.com/settings/organization/billing/" : "https://console.anthropic.com/settings/billing"} target="_blank" rel="noreferrer noopener" className="text-[11px] text-accent-2 underline underline-offset-2 hover:text-text">{ai === "openai" ? "OpenAI" : "Claude"} credits →</a>}
           <span className="hidden h-6 w-px bg-line sm:block" aria-hidden />
           {/* Tools */}
           <UpdateRecord />

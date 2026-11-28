@@ -9,14 +9,14 @@ import { getSettings } from "@/server/auto/engine";
  * your orders and fills, copy/mimic trades, and Merod itself (platform trades, worker/system events for admins).
  * Newest first; `since` (ms) returns only newer items for live polling.
  */
-type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod" | "update"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: Coin; /** agent decision with a Why card */ eventId?: number };
+type Item = { id: string; at: string; source: "agent" | "bot" | "auto" | "modo" | "order" | "copy" | "merod" | "update" | "auton"; kind: "thought" | "analysis" | "decision" | "execution" | "warning" | "state"; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: Coin; /** agent decision with a Why card */ eventId?: number };
 /** The coin a bot line is about, with its live price and move (since the bot bought it, or 24h). */
 type Coin = { symbol: string; price?: number; move?: number | null; basis?: string };
 const BOT_KIND: Record<string, Item["kind"]> = { observation: "analysis", trigger: "decision", instruction: "decision", order: "execution", result: "execution", warning: "warning", error: "warning", control: "state" };
 const AGENT_KIND: Record<string, Item["kind"]> = { thought: "thought", analysis: "analysis", decision: "decision", execution: "execution", warning: "warning", approval: "decision", training: "analysis", state: "state", message: "analysis", system: "state" };
 
 /** trades = your orders + Mimic copies; automation = Auto + Modo. */
-type Filter = "all" | "order" | "bot" | "agent" | "auto" | "modo" | "copy" | "update" | "buy" | "sell" | "profit" | "loss" | "trades" | "automation";
+type Filter = "all" | "order" | "bot" | "agent" | "auto" | "modo" | "copy" | "update" | "auton" | "buy" | "sell" | "profit" | "loss" | "trades" | "automation";
 const GROUP: Partial<Record<Filter, string[]>> = { trades: ["order", "copy"], automation: ["auto", "modo"] };
 const TRADE_FILTERS = new Set(["buy", "sell", "profit", "loss"]);
 /** Same predicate the panel uses: Buys/Sells by side across sources; Profit/Loss by realized $ (or % for theoretical trades). */
@@ -100,6 +100,13 @@ export const GET = route(async (req) => {
       const at = new Date(th.at);
       if (at > since) items.push({ id: `mt${at.getTime()}${i}`, at: at.toISOString(), source: "modo", kind: th.kind === "idea" ? "decision" : "thought", actor: "Modo", title: th.text, link: "/auto" });
     }
+  }
+  // Auton: every thought, analysis, decision and action. ?conv= limits it to the Talk tab (conversation) Auton reports to.
+  const conv = sp.get("conv");
+  if (want("auton") && !TRADE_FILTERS.has(filter)) {
+    const ev = await q<any>(`SELECT id, created_at, kind, title, body FROM auton_events WHERE user_id=$1 AND created_at > $2 ${conv ? "AND conversation_id=$4" : ""} ORDER BY id DESC LIMIT $3`,
+      conv ? [u.id, since, lim, conv] : [u.id, since, lim]).catch(() => []);
+    for (const e of ev) items.push({ id: `au${e.id}`, at: e.created_at, source: "auton", kind: e.kind, actor: "Auton", title: e.title, body: e.body ?? undefined, link: "/map" });
   }
   // Update / Recording (Talk) and the Advisor: what was analysed, what it suggested, what got applied.
   if (want("update") && !TRADE_FILTERS.has(filter)) {

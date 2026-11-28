@@ -7,7 +7,7 @@ const Body = z.object({
   text: z.string().max(2000),
   conversationId: z.string().uuid().nullable().optional(),
   screenAssetId: z.string().uuid().nullable().optional(),
-  provider: z.enum(["anthropic", "openai", "merod"]).optional(),
+  provider: z.enum(["anthropic", "openai", "merod", "auton"]).optional(),
   model: z.string().max(60).optional(),
   /** Paper or real money for trades and bots from this prompt (Talk composer switch). */
   book: z.enum(["paper", "live"]).optional(),
@@ -21,7 +21,7 @@ export const POST = route(async (req) => {
   const u = await requireUser();
   await rateLimit(`prompt:${u.id}`, 30, 60);
   const b = await parse(req, Body);
-  const r = await handlePrompt(u.id, { text: b.text, conversationId: b.conversationId ?? undefined, screenAssetId: b.screenAssetId, provider: b.provider, model: b.model, book: b.book, attachmentIds: b.attachmentIds, tz: b.tz });
+  const r = await handlePrompt(u.id, { text: b.text, conversationId: b.conversationId ?? undefined, screenAssetId: b.screenAssetId, provider: b.provider === "auton" ? undefined : b.provider, auton: b.provider === "auton", model: b.model, book: b.book, attachmentIds: b.attachmentIds, tz: b.tz });
   return ok(r);
 });
 

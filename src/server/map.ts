@@ -15,7 +15,7 @@ import { parseEdits, applyEdits, fmtEdit } from "./ai/bulk-edit";
  * Running applies instructions the same way the prompt box does: stop-loss / take-profit / amount / dip settings are
  * written to the bot or agent; "turn off"/"turn on" pauses or resumes it; anything else is sent to Merod addressed to it.
  */
-export type NodeType = "bot" | "agent" | "prompt" | "skill" | "point" | "method";
+export type NodeType = "bot" | "agent" | "prompt" | "skill" | "point" | "method" | "auton";
 export type MapNode = { id: string; type: NodeType; position: { x: number; y: number }; data: { refId?: string; label?: string; text?: string; color?: string; note?: string } };
 export type MapEdge = { id: string; source: string; target: string; label?: string };
 
@@ -125,6 +125,24 @@ export async function runMap(userId: string, mapId: string, opts: { nodeId?: str
       loose = targets.length ? [] : nodes.filter((n) => n.type === "prompt" && group.has(n.id) && n.data.text?.trim());
     }
   }
+  // Auton boxes: instructions attached to Auton become its goals; bots/agents attached to it are handed to Auton to manage.
+  const autons = nodes.filter((n) => n.type === "auton" && (!opts.nodeId || n.id === opts.nodeId || reach(n.id).some((x) => x.id === opts.nodeId)));
+  const autonLines: string[] = [];
+  for (const an of autons) {
+    const texts: string[] = [];
+    for (const i of reach(an.id)) {
+      if (i.type === "prompt" && i.data.text?.trim()) texts.push(i.data.text.trim());
+      if ((i.type === "skill" || i.type === "point") && i.data.refId) { const sk = await one<any>("SELECT instructions FROM skills WHERE id=$1 AND user_id=$2", [i.data.refId, userId]); if (sk) texts.push(sk.instructions); }
+    }
+    const managed = [...(adj.get(an.id) ?? [])].map((id) => byId.get(id)!).filter((n) => n && n.type === "bot" && n.data.refId).map((n) => n.data.refId!);
+    for (const id of managed) await q("INSERT INTO auton_assets (user_id, kind, ref_id, label) VALUES ($1,'managed_bot',$2,'from map') ON CONFLICT DO NOTHING", [userId, id]).catch(() => {});
+    const { runAuton } = await import("./auton/engine");
+    const r = await runAuton(userId, { instructions: texts, managedBotIds: managed });
+    autonLines.push(`Auton${texts.length ? ` (with ${texts.length} instruction${texts.length === 1 ? "" : "s"} from the map)` : ""}:`, ...r.actions.map((l) => `  ${l}`));
+    if (!r.actions.length) autonLines.push("  nothing needed changing");
+  }
+  if (autons.length && opts.nodeId && autons.some((a) => a.id === opts.nodeId)) { const res = { at: new Date().toISOString(), lines: autonLines, ran: autons.length }; await q("UPDATE strategy_maps SET last_run=$3 WHERE id=$1 AND user_id=$2", [mapId, userId, JSON.stringify(res)]); return res; }
+  if (!targets.length && !loose.length && autons.length) { const res = { at: new Date().toISOString(), lines: autonLines, ran: autons.length }; await q("UPDATE strategy_maps SET last_run=$3 WHERE id=$1 AND user_id=$2", [mapId, userId, JSON.stringify(res)]); return res; }
   if (!targets.length && !loose.length) return { lines: ["Nothing to run: attach a prompt, skill, point or method to a bot or agent (or write a prompt) first."], ran: 0 };
 
   // Load the skills/points referenced on the map once.
@@ -173,7 +191,8 @@ export async function runMap(userId: string, mapId: string, opts: { nodeId?: str
     const r: any = await handlePrompt(userId, { text: p.data.text!.trim(), tz: opts.tz });
     lines.push(`Prompt “${p.data.text!.trim().slice(0, 80)}” → ${String(r?.message?.content ?? "sent to Merod").split("\n")[0].slice(0, 220)}`); ran++;
   }
-  const result = { at: new Date().toISOString(), lines, ran };
+  if (autonLines.length) lines.push(...autonLines);
+  const result = { at: new Date().toISOString(), lines, ran: ran + autons.length };
   await q("UPDATE strategy_maps SET last_run=$3 WHERE id=$1 AND user_id=$2", [mapId, userId, JSON.stringify(result)]);
   return result;
 }

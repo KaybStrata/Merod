@@ -10,6 +10,7 @@ import { TalkActivity } from "./TalkActivity";
 import { MapLink } from "@/components/shell/MapLink";
 import { AdvisorPanel } from "@/components/shell/AdvisorPanel";
 import { FloatingPages, openFloat } from "./FloatingPages";
+import { TalkTabs } from "./TalkTabs";
 import { api, useApi } from "@/lib/api";
 import { Button, Modal, cx, useToast } from "@/components/ui";
 
@@ -38,6 +39,7 @@ export function TalkFrame({ children }: { children: React.ReactNode }) {
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <TalkTopBar onMenu={() => setDrawer(true)} />
+        <Suspense fallback={null}><TalkTabs /></Suspense>
         <main className="min-h-0 flex-1">{children}</main>
       </div>
     </div>

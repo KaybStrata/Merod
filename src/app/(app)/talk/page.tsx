@@ -66,9 +66,9 @@ function Talk() {
     return () => { live = false; clearInterval(t); };
   }, [narrate]); // eslint-disable-line react-hooks/exhaustive-deps
   // Which AI answers Talk prompts (remembered in this browser). Modo = built-in rules, no key needed.
-  const [ai, setAiState] = useState<"merod" | "openai" | "anthropic">("merod");
-  useEffect(() => { try { const v = localStorage.getItem("merod-talk-ai"); if (v === "openai" || v === "anthropic" || v === "merod") setAiState(v); } catch { /* ignore */ } }, []);
-  const setAi = (v: "merod" | "openai" | "anthropic") => { setAiState(v); try { localStorage.setItem("merod-talk-ai", v); } catch { /* ignore */ } };
+  const [ai, setAiState] = useState<"merod" | "openai" | "anthropic" | "auton">("merod");
+  useEffect(() => { try { const v = localStorage.getItem("merod-talk-ai"); if (v === "openai" || v === "anthropic" || v === "merod" || v === "auton") setAiState(v); } catch { /* ignore */ } }, []);
+  const setAi = (v: "merod" | "openai" | "anthropic" | "auton") => { setAiState(v); try { localStorage.setItem("merod-talk-ai", v); } catch { /* ignore */ } };
   const held = useRef<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   usePageTitle({ title: title ?? (convId ? "Conversation" : "New conversation"), section: new Date().toLocaleDateString([], { weekday: "long" }) }, [title, convId]);
