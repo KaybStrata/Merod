@@ -202,7 +202,8 @@ export async function runScanner(row: any) {
 
 /** Worker entry: every switched-on gainer/adjuster/scanner, once per ~30 s (trainer runs in the trainer's own loop). */
 export async function runAutoModes() {
-  const rows = await q<any>("SELECT * FROM auto_modes WHERE active AND mode <> 'trainer' AND (last_run_at IS NULL OR last_run_at < now() - interval '25 seconds') LIMIT 500");
+  const rows = await q<any>(`SELECT * FROM auto_modes m WHERE active AND mode <> 'trainer' AND (last_run_at IS NULL OR last_run_at < now() - interval '25 seconds')
+                              AND NOT EXISTS (SELECT 1 FROM risk_settings r WHERE r.user_id=m.user_id AND r.bot_trading = false) LIMIT 500`);
   let n = 0;
   for (const row of rows) {
     try {

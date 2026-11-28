@@ -30,7 +30,7 @@ import { computeFee, describeFee, getFeeConfig } from "../fees";
  */
 
 interface AccountRow { id: string; user_id: string; kind: "paper" | "brokerage" | "wallet"; provider_id: string; label: string; external_ref: string | null; network: string | null; status: string; cash_balance: number; metadata: any }
-interface RiskRow { never_block?: boolean; max_order_usd: number; max_daily_spend_usd: number; max_daily_loss_usd: number; max_slippage_bps: number; min_liquidity_usd: number; max_price_age_sec: number; block_risky_tokens: boolean; trading_halted: boolean }
+interface RiskRow { never_block?: boolean; bot_trading?: boolean; max_order_usd: number; max_daily_spend_usd: number; max_daily_loss_usd: number; max_slippage_bps: number; min_liquidity_usd: number; max_price_age_sec: number; block_risky_tokens: boolean; trading_halted: boolean }
 interface PermRow { mode: "manual" | "auto_within_limits" | "auto_until_approval"; auto_max_order_usd: number; auto_daily_cap_usd: number; allow_ai_prompts: boolean; allow_bots: boolean; allow_shortcuts: boolean; allowed_asset_classes: string[] }
 
 export interface Plan {
@@ -178,6 +178,7 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
   // ── Eligibility, flags, permissions
   add("account_active", user.status === "active" && account.status === "active", "Account active");
   add("global_halt", !flags.global_trading_halt, flags.global_trading_halt ? "Platform-wide trading halt is active" : "No platform halt");
+  if (["bot", "agent", "auto"].includes(ctx.source) && risk.bot_trading === false) add("bot_trading_off", false, "Bot trading is turned off (your master switch) — turn it on to let bots trade");
   add("user_halt", !risk.trading_halted, risk.trading_halted ? "Your emergency stop is engaged (Settings → Risk)" : "Emergency stop not engaged");
   if (isPaper) add("paper_enabled", flags.paper_trading, "Paper trading enabled");
   else {

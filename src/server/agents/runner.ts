@@ -50,6 +50,7 @@ export async function runAgents(workerId: string, max = 40) {
   const due = await q<any>(
     `UPDATE agents SET lease_owner=$1, lease_expires_at=now() + interval '90 seconds'
       WHERE id IN (SELECT id FROM agents WHERE status IN ('running','risk_blocked') AND (lease_expires_at IS NULL OR lease_expires_at < now())
+                     AND NOT EXISTS (SELECT 1 FROM risk_settings r WHERE r.user_id=agents.user_id AND r.bot_trading = false)
                      AND (last_tick_at IS NULL OR last_tick_at < now() - make_interval(secs => GREATEST(15, COALESCE((schedule->>'everySec')::int, 60))))
                    ORDER BY last_tick_at NULLS FIRST LIMIT $2 FOR UPDATE SKIP LOCKED)
       RETURNING *`, [workerId, max]);

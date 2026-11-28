@@ -247,7 +247,8 @@ async function ensureExtras(userId: string, s: AutonSettings, conv: string | nul
 
 /** Worker: run every active Auton that's due. */
 export async function runDueAutons() {
-  const due = await q<any>("UPDATE auton_settings SET next_run_at = now() + make_interval(secs => every_sec) WHERE active AND next_run_at <= now() RETURNING user_id");
+  const due = await q<any>(`UPDATE auton_settings SET next_run_at = now() + make_interval(secs => every_sec) WHERE active AND next_run_at <= now()
+                              AND NOT EXISTS (SELECT 1 FROM risk_settings r WHERE r.user_id=auton_settings.user_id AND r.bot_trading = false) RETURNING user_id`);
   for (const d of due) await runAuton(d.user_id).catch((e) => log(d.user_id, null, "warning", "Cycle failed", String(e?.message ?? e).slice(0, 300)));
   return due.length;
 }

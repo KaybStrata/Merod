@@ -39,6 +39,7 @@ export async function tickDueBots(workerId: string, max = 50) {
       WHERE id IN (
         SELECT id FROM trading_bots
          WHERE status='running' AND (lease_expires_at IS NULL OR lease_expires_at < now())
+           AND NOT EXISTS (SELECT 1 FROM risk_settings r WHERE r.user_id=trading_bots.user_id AND r.bot_trading = false)
            AND (last_tick_at IS NULL OR last_tick_at < now() - make_interval(secs => CASE schedule
                  WHEN 'every_15s' THEN 15 WHEN 'every_5m' THEN 300 WHEN 'every_15m' THEN 900 WHEN 'every_1h' THEN 3600 ELSE 60 END))
          ORDER BY last_tick_at NULLS FIRST LIMIT $2 FOR UPDATE SKIP LOCKED)

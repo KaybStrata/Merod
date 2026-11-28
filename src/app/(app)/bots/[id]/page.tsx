@@ -9,6 +9,7 @@ import { useRealtime } from "@/components/shell/context";
 import { usd, pct, price, qty, ago, tone } from "@/lib/format";
 import { AutoModesBar } from "@/components/AutoModesBar";
 import { ScopePnlCard } from "@/components/ScopePnl";
+import { BotTradingSwitch } from "@/components/BotTradingSwitch";
 
 const LEVEL_TONE: Record<string, string> = { observation: "text-muted", trigger: "text-accent-2", instruction: "text-[#4aa8ff]", order: "text-warn", result: "text-up", warning: "text-warn", error: "text-down", control: "text-text" };
 
@@ -19,7 +20,7 @@ export default function BotDetail({ params }: { params: Promise<{ id: string }> 
   const { data, refresh, error } = useApi<any>(`/api/bots/${id}`, { refreshMs: 8000 });
   const [logs, setLogs] = useState<any[]>([]);
   const [level, setLevel] = useState("all");
-  const [tab, setTab] = useState<"activity" | "orders" | "config" | "backtest">("activity");
+  const [tab, setTab] = useState<"activity" | "orders" | "config" | "backtest">(() => { try { const t = new URLSearchParams(window.location.search).get("tab"); return t === "config" || t === "orders" || t === "backtest" ? t : "activity"; } catch { return "activity"; } });
   const [busy, setBusy] = useState<string | null>(null);
 
   const loadLogs = async () => {
@@ -53,6 +54,7 @@ export default function BotDetail({ params }: { params: Promise<{ id: string }> 
       <Link href="/bots" className="inline-flex items-center gap-1 text-sm text-muted hover:text-text"><ArrowLeft className="size-4" /> Agents & Bots</Link>
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-line bg-panel/80 p-5">
         <div>
+          <div className="mb-2"><BotTradingSwitch compact /></div>
           <div className="flex flex-wrap items-center gap-2"><h1 className="page-title">{bot.name}</h1><StatusPill status={bot.status} /><PaperBadge paper={bot.is_paper} /></div>
           <p className="mt-1 text-sm text-muted">{bot.strategy_name} · {bot.account_label} · checks every {bot.schedule.replace("every_", "")}{bot.last_tick_at ? ` · last check ${ago(bot.last_tick_at)}` : ""}</p>
           {bot.description && <p className="mt-1 text-sm">{bot.description}</p>}
@@ -180,7 +182,7 @@ function Box({ children }: { children: React.ReactNode }) { return <div classNam
 
 function ConfigEditor({ bot, strategy, onSaved }: { bot: any; strategy: any; onSaved: () => void }) {
   const toast = useToast();
-  const locked = bot.status === "running";
+  const locked = false; // editable while it runs: changes apply from its next check
   const [p, setP] = useState<Record<string, any>>(bot.params ?? {});
   const [f, setF] = useState({ name: bot.name, budgetUsd: bot.budget_usd, maxPositionUsd: bot.max_position_usd, maxDailySpendUsd: bot.max_daily_spend_usd, maxDailyLossUsd: bot.max_daily_loss_usd,
     minLiquidityUsd: bot.min_liquidity_usd, maxSlippageBps: bot.max_slippage_bps, schedule: bot.schedule, approvalRequired: bot.approval_required });
@@ -197,7 +199,7 @@ function ConfigEditor({ bot, strategy, onSaved }: { bot: any; strategy: any; onS
   const n = (k: keyof typeof f, label: string) => <Input label={label} type="number" step="any" disabled={locked} value={f[k] as any} onChange={(e) => setF({ ...f, [k]: e.target.value })} />;
   return (
     <Card title="Configuration" icon={<Settings2 className="size-4 text-accent-2" />}>
-      {locked && <p className="mb-3 rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">Pause the bot to edit its configuration.</p>}
+      {bot.status === "running" && <p className="mb-3 rounded-lg bg-panel-2/60 px-3 py-2 text-xs text-muted">This bot is running. Changes you save apply from its next check.</p>}
       <div className="space-y-4">
         <Input label="Name" disabled={locked} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
         {strategy?.params?.length > 0 && (

@@ -194,6 +194,25 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       }
     }
   }
+  // Master switch: "turn off bot trading", "bot trading on".
+  if (!input.part) {
+    const { botTradingCommand } = await import("../bots/master");
+    const m = await botTradingCommand(userId, text).catch((e: any) => `Couldn't change bot trading: ${e.message}`);
+    if (m) return early(m, { type: "executed", detail: "Bot trading" }, "executed", null);
+  }
+  // Delete specific bots: "delete bot Dip buyer", "remove the MEME bot", "delete all my bots".
+  if (!input.part && /^\s*(please\s+)?(delete|remove|get rid of|trash|erase)\b/i.test(text) && /\b(bots?|agents?|ai bots?)\b/i.test(text) && !/\b(skill|point|schedule|wallet|map|alert|order)s?\b/i.test(text)) {
+    const { parseTargets } = await import("./bulk-edit");
+    const rest = text.replace(/^\s*(please\s+)?(delete|remove|get rid of|trash|erase)\s+/i, "");
+    const all = /\b(all|every)\b/i.test(rest);
+    const targets = await parseTargets(userId, all ? "all bots and agents" : rest).catch(() => null);
+    if (!targets?.length) return early(`I couldn't tell which bot to delete. Say its name, e.g. “delete bot Dip buyer”, or “delete all my bots”.`, null, "clarify", null);
+    const rows = await q<any>(`SELECT 'bot' AS kind, id, name, status FROM trading_bots WHERE user_id=$1 AND id = ANY($2::uuid[])
+                               UNION ALL SELECT 'agent', id, name, status FROM agents WHERE user_id=$1 AND id = ANY($2::uuid[])`, [userId, targets.map((x) => x.id)]);
+    const { deleteTargets } = await import("../bots/delete");
+    const lines = await deleteTargets(userId, rows);
+    return early(`Deleted ${lines.filter((l) => /deleted/.test(l)).length} of ${rows.length}:\n${lines.join("\n")}\nTheir past trades stay in your history.`, { type: "executed", detail: "Bots deleted" }, "executed", null);
+  }
   // Auto switches: "turn on auto gainer", "auto scanner off", "turn on all auto switches", "auto gainer 25% for Dip A".
   if (!input.part && !/\bmap\b/i.test(text) && /\bauto[\s-]?(?:train(?:er|ing)?|gain(?:er)?|adjust(?:er|ing)?|scan(?:ner|ning)?|switches|modes|toggles)\b|\ball autos\b/i.test(text)) {
     const { autoModeCommand } = await import("../auto-modes");

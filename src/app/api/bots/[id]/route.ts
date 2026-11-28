@@ -73,15 +73,12 @@ const Patch = z.object({
 const COLS: Record<string, string> = { allowRisky: "allow_risky", name: "name", description: "description", maxPositionUsd: "max_position_usd", 
   maxTradesPerDay: "max_trades_per_day", minLiquidityUsd: "min_liquidity_usd", maxSlippageBps: "max_slippage_bps", schedule: "schedule", approvalRequired: "approval_required" };
 
-/** PATCH — edit configuration; only while the bot is not running. */
+/** PATCH — edit configuration (also while it runs: changes apply from its next check). */
 export const PATCH = route<Ctx>(async (req, { params }) => {
   const u = await requireUser();
   const { id } = await params;
   const bot = await own(u.id, id);
   const b = await parse(req, Patch);
-  // The "never reject trades" switch can be flipped while the bot runs; everything else needs a pause.
-  const toggleOnly = Object.keys(b).every((k) => k === "allowRisky");
-  if (bot.status === "running" && !toggleOnly) throw new HttpError(409, "Pause the bot before editing its configuration");
   const sets: string[] = []; const vals: unknown[] = [id];
   for (const [k, col] of Object.entries(COLS)) if ((b as any)[k] !== undefined) { vals.push((b as any)[k]); sets.push(`${col}=$${vals.length}`); }
   if (b.params) {
@@ -101,8 +98,8 @@ export const DELETE = route<Ctx>(async (_req, { params }) => {
   const u = await requireUser();
   const { id } = await params;
   const bot = await own(u.id, id);
-  if (bot.status === "running") throw new HttpError(409, "Stop the bot before deleting it");
-  await q("DELETE FROM trading_bots WHERE id=$1 AND user_id=$2", [id, u.id]);
-  await audit({ actorType: "user", actorId: u.id, userId: u.id, action: "bot.delete", target: id });
+  const { deleteTargets } = await import("@/server/bots/delete");
+  const lines = await deleteTargets(u.id, [{ kind: "bot", id, name: bot.name, status: bot.status }]);
+  if (lines.some((l) => /couldn't/.test(l))) throw new HttpError(400, lines.join(" "));
   return ok({ ok: true });
 });

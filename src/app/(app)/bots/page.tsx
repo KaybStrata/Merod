@@ -2,7 +2,7 @@
 import { SectionTabs } from "@/components/SectionTabs";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bot, Plus, OctagonX, PauseCircle, PlayCircle, Sparkles, Loader2, X, LayoutTemplate, Zap, Trash2 } from "lucide-react";
+import { Bot, Plus, OctagonX, PauseCircle, PlayCircle, Sparkles, Loader2, X, LayoutTemplate, Zap, Trash2, Pencil } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { Badge, Button, Card, Empty, Input, Modal, PaperBadge, Select, StatusPill, Toggle, cx, useToast } from "@/components/ui";
 import { PlanCard } from "@/components/shell/PlanCard";
@@ -10,6 +10,7 @@ import { CopyBotsPanel } from "@/components/CopyBots";
 import { useShell } from "@/components/shell/context";
 import { usd, ago, tone } from "@/lib/format";
 import { AutoModesBar } from "@/components/AutoModesBar";
+import { BotTradingSwitch } from "@/components/BotTradingSwitch";
 
 const SCHEDULES = [["every_15s", "15 seconds"], ["every_1m", "1 minute"], ["every_5m", "5 minutes"], ["every_15m", "15 minutes"], ["every_1h", "1 hour"]];
 
@@ -53,7 +54,8 @@ export default function BotsPage() {
           <h1 className="page-title">Bots</h1>
           <p className="text-sm text-muted">Every bot in one list (AI bots included) — automated strategies running on Merod's servers that keep working when your browser is closed. Profit is never guaranteed.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <BotTradingSwitch />
           <Button onClick={() => emergency("pause_all")} loading={busy === "pause_all"}><PauseCircle className="size-4" /> Pause all</Button>
           <Button variant="danger" onClick={() => emergency("stop")} loading={busy === "stop"}><OctagonX className="size-4" /> Emergency stop</Button>
           <Button variant="outline" onClick={() => setPromptOpen(true)}><Sparkles className="size-4" /> Create with prompt</Button>
@@ -93,6 +95,7 @@ export default function BotsPage() {
                     <td className="px-4 text-right">
                       {b.status === "running" ? <Button size="sm" onClick={() => control(b.id, "pause")}><PauseCircle className="size-3.5" /> Pause</Button>
                         : ["draft", "paused", "stopped", "error", "halted"].includes(b.status) && <Button size="sm" variant="success" onClick={() => control(b.id, b.status === "paused" ? "resume" : "start")}><PlayCircle className="size-3.5" /> {b.status === "paused" ? "Resume" : "Start"}</Button>}
+                      <Link href={`/bots/${b.id}?tab=config`} className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text" title="Edit this bot" aria-label={`Edit ${b.name}`}><Pencil className="size-3.5" /></Link>
                       <button onClick={async () => { if (!confirm(`Delete “${b.name}”? It stops and is removed; its past trades stay in your history.`)) return; await bulk("bot", b.id, "delete"); }}
                         className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:border-down/50 hover:text-down" title="Delete this bot" aria-label={`Delete ${b.name}`}><Trash2 className="size-3.5" /></button>
                     </td>
@@ -110,6 +113,7 @@ export default function BotsPage() {
                     <td className="px-4 text-right">
                       {a.status === "running" ? <Button size="sm" onClick={() => bulk("agent", a.id, "pause")}><PauseCircle className="size-3.5" /> Pause</Button>
                         : <Button size="sm" variant="success" onClick={() => bulk("agent", a.id, "resume")}><PlayCircle className="size-3.5" /> Start</Button>}
+                      <Link href={`/agents/${a.id}`} className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text" title="Edit this AI bot" aria-label={`Edit ${a.name}`}><Pencil className="size-3.5" /></Link>
                       <button onClick={() => { if (confirm(`Delete “${a.name}”? It stops, open orders are cancelled and it's archived; past trades stay in your history.`)) void bulk("agent", a.id, "delete"); }}
                         className="ml-1.5 inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:border-down/50 hover:text-down" title="Delete this agent" aria-label={`Delete ${a.name}`}><Trash2 className="size-3.5" /></button>
                     </td>

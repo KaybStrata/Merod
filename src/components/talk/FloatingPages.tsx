@@ -4,6 +4,7 @@ import { CandlestickChart, PieChart, Sparkles, Bot, Settings, SlidersHorizontal,
 import { api, useApi } from "@/lib/api";
 import { SkillsSection, AutonSection, TradesSection, PromptsSection } from "./EditAllSections";
 import { cx, useToast } from "@/components/ui";
+import { BotTradingSwitch } from "@/components/BotTradingSwitch";
 
 export type FloatTab = "map" | "ewallets" | "trade" | "portfolio" | "agents" | "bots" | "auton" | "edit" | "advisor" | "settings";
 const TABS: { id: FloatTab; label: string; icon: any; href?: string }[] = [
@@ -209,6 +210,7 @@ function EditAll() {
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {sec === "bots" && <div className="flex items-center gap-2 border-b border-line px-3 py-2"><BotTradingSwitch compact /><span className="text-[11px] text-faint">Master switch for every bot, AI bot, Auton and auto switch. Each bot below keeps its own on/off.</span></div>}
         {sec === "bots" && <BulkEditor />}
         {sec === "skills" && <SkillsSection />}
         {sec === "auton" && <AutonSection />}

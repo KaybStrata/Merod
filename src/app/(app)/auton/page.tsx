@@ -12,6 +12,7 @@ import { explainActivity } from "@/lib/explainActivity";
 import { openFloat } from "@/components/talk/FloatingPages";
 import { cx, useToast } from "@/components/ui";
 import { usd, ago } from "@/lib/format";
+import { BotTradingSwitch } from "@/components/BotTradingSwitch";
 
 export default function AutonPage() {
   return <Suspense fallback={null}><AutonMode /></Suspense>;
@@ -104,7 +105,7 @@ function AutonMode() {
             <button onClick={runNow} disabled={running} className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text disabled:opacity-60">{running ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}Run now</button>
             <button onClick={() => openFloat("auton")} className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-[12px] text-muted hover:text-text" title="Edit Auton's settings and every bot/agent it made"><Settings2 className="size-3.5" />Edit Auton</button>
             <button onClick={() => setSide((v) => !v)} className="ml-auto rounded-lg border border-line p-1.5 text-muted hover:text-text" title={side ? "Hide activity" : "Show activity"}>{side ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}</button>
-            <AutoModesBar compact className="w-full" />
+            <div className="flex w-full flex-wrap items-center gap-2"><BotTradingSwitch compact /><AutoModesBar compact /></div>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
