@@ -434,7 +434,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   }
   if (!instruction) ({ instruction, usedProvider, usedModel, fallbackReason } = await interpret(userId, { ...input, text }, screen?.symbol ?? null));
   if (input.attached && instruction.kind === "clarify") instruction = { ...instruction, kind: "research", research_query: text } as Instruction;
-  if (!perms?.allow_ai_prompts && !["research", "portfolio_question", "clarify", "pause_all_bots"].includes(instruction.kind))
+  if (!perms?.allow_ai_prompts && !(await one<any>("SELECT never_block FROM risk_settings WHERE user_id=$1", [userId]).catch(() => null))?.never_block && !["research", "portfolio_question", "clarify", "pause_all_bots"].includes(instruction.kind))
     return reply("AI prompt trading is disabled in your automation permissions (Settings → Automation).", { type: "clarify", question: "Enable AI prompt trading in Settings to continue.", suggestions: [] }, "info");
 
   async function reply(message: string, card: PlanCard | null, status: string, interp: Instruction | null = instruction, hint?: WidgetHint) {

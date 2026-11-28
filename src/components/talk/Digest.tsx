@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { PortfolioSpark } from "./PortfolioSpark";
 import { Clock } from "lucide-react";
 import { cx } from "@/components/ui";
@@ -16,6 +17,8 @@ const hm = (t: string) => new Date(t).toLocaleTimeString([], { hour: "numeric", 
 export function Digest({ d }: { d: DigestT }) {
   const p = d.portfolio;
   const up = p.overnight >= 0;
+  // The tile's number follows the chart's chosen range (30m, 1H, 1D…), so they always agree.
+  const [win, setWin] = useState<{ change: number; pct: string; label: string; ready: boolean } | null>(null);
   const n = d.events.length;
   return (
     <section className="fade-up">
@@ -31,7 +34,8 @@ export function Digest({ d }: { d: DigestT }) {
           </h2>
           <div className="mt-4 grid grid-cols-2 gap-2.5 md:grid-cols-4">
             <Tile label="Portfolio" value={usd(p.total, 0)} />
-            <Tile label="Today" value={`${up ? "+" : ""}${usd(p.overnight, 0)}`} tone={up ? "up" : "down"} sub={p.total ? `${((p.overnight / Math.max(1, p.total - p.overnight)) * 100).toFixed(2)}%` : undefined}><PortfolioSpark compact height={34} className="mt-1" /></Tile>
+            <Tile label={win?.ready ? `Last ${win.label}` : "Today"} value={win?.ready ? `${win.change >= 0 ? "+" : "−"}${usd(Math.abs(win.change), Math.abs(win.change) < 100 ? 2 : 0)}` : `${up ? "+" : ""}${usd(p.overnight, 0)}`} tone={(win?.ready ? win.change >= 0 : up) ? "up" : "down"}
+              sub={win?.ready ? win.pct : p.total ? `${((p.overnight / Math.max(1, p.total - p.overnight)) * 100).toFixed(2)}%` : undefined}><PortfolioSpark compact height={34} className="mt-1" onChange={setWin} /></Tile>
             <Tile label="Cash" value={usd(p.cash, 0)} />
             <div className="rounded-xl border border-line bg-panel/60 px-3 py-2.5">
               <div className="text-[11.5px] text-muted">Risk used</div>

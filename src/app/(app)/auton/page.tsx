@@ -1,12 +1,14 @@
 "use client";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { Cpu, Play, Loader2, PanelRightOpen, PanelRightClose, Settings2, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Cpu, Play, Loader2, Trash2, PanelRightOpen, PanelRightClose, Settings2, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { useRealtime, usePageTitle } from "@/components/shell/context";
 import { TalkThread } from "@/components/talk/TalkThread";
 import { TalkComposer } from "@/components/talk/TalkComposer";
-import { PnlLine } from "@/components/talk/TabPnl";
+import { AutonPnlCard } from "@/components/auton/AutonPnl";
 import { AutoModesBar } from "@/components/AutoModesBar";
+import { SkillText } from "@/components/SkillText";
+import { explainActivity } from "@/lib/explainActivity";
 import { openFloat } from "@/components/talk/FloatingPages";
 import { cx, useToast } from "@/components/ui";
 import { usd, ago } from "@/lib/format";
@@ -124,57 +126,18 @@ function AutonMode() {
           </div>
         </div>
       </div>
-      {side && <AutonActivity bots={data?.bots ?? []} />}
+      {side && <AutonActivity bots={data?.bots ?? []} onAuton={send} />}
     </div>
   );
 }
 
-const RANGES: [string, number | null, string][] = [["1H", 3600, "previous hour"], ["24H", 86_400, "previous 24h"], ["7D", 7 * 86_400, "previous 7 days"], ["30D", 30 * 86_400, "previous 30 days"], ["All", null, ""]];
-
 /** Auton's own activity bar: its P&L (separate from everything else) with period comparison, its feed and its bots. */
-function AutonActivity({ bots }: { bots: any[] }) {
-  const [ri, setRi] = useState(1);
-  const [, label, prevLabel] = [null, RANGES[ri][0], RANGES[ri][2]];
-  const range = RANGES[ri][1];
-  const pnl = useApi<any>(`/api/auton/pnl${range ? `?range=${range}` : ""}`, { refreshMs: 10_000 });
+function AutonActivity({ bots, onAuton }: { bots: any[]; onAuton: (t: string) => void }) {
   const feed = useApi<any>("/api/live-stream?filter=auton&limit=60", { refreshMs: 5_000 });
-  useRealtime((e) => { if (e.type === "fill" || e.type === "order") pnl.refresh(); });
-  const d = pnl.data;
-  const p = d?.period?.pnl ?? 0, prev = d?.previous?.pnl ?? null, up = p >= 0;
-  const color = up ? "var(--color-up, #22c55e)" : "var(--color-down, #f0506e)";
-  const delta = prev == null ? null : p - prev;
   return (
-    <aside className="hidden w-[340px] shrink-0 flex-col border-l border-line bg-panel/30 md:flex">
-      <div className="border-b border-line p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-faint">Auton P&L</span>
-          <div className="flex rounded-md border border-line p-0.5">
-            {RANGES.map(([l], i) => <button key={l} onClick={() => setRi(i)} className={cx("rounded px-1.5 py-0.5 text-[10.5px]", ri === i ? "bg-panel-2 text-text" : "text-muted hover:text-text")}>{l}</button>)}
-          </div>
-        </div>
-        {!d ? <div className="h-[150px] text-[11px] text-faint">Loading…</div> : (
-          <>
-            <div className="mt-1.5 flex items-baseline gap-2">
-              <span className={cx("num text-[22px] font-semibold", up ? "text-up" : "text-down")}>{up ? "+" : "−"}{usd(Math.abs(p))}</span>
-              <span className="text-[11px] text-muted">{range ? `this ${label === "1H" ? "hour" : label === "24H" ? "24h" : label === "7D" ? "week" : "month"}` : "all time"}</span>
-            </div>
-            {prev != null && (
-              <div className="mt-0.5 flex items-center gap-1.5 text-[11px]">
-                {delta! >= 0 ? <ArrowUpRight className="size-3.5 text-up" /> : <ArrowDownRight className="size-3.5 text-down" />}
-                <span className={cx("num", delta! >= 0 ? "text-up" : "text-down")}>{delta! >= 0 ? "+" : "−"}{usd(Math.abs(delta!))}</span>
-                <span className="text-muted">vs {prevLabel} ({prev >= 0 ? "+" : "−"}{usd(Math.abs(prev))})</span>
-              </div>
-            )}
-            <PnlLine pts={d.points ?? []} color={color} height={110} nowLabel={range ? "this period, now (incl. open)" : "now (incl. open)"} />
-            <div className="mt-1 grid grid-cols-3 gap-1 text-center text-[10.5px]">
-              <div className="rounded-md bg-panel/60 py-1"><div className="text-faint">Closed</div><div className="num text-text">{d.period.closed}{prev != null ? <span className="text-faint"> / {d.previous.closed}</span> : null}</div></div>
-              <div className="rounded-md bg-panel/60 py-1"><div className="text-faint">Won</div><div className="num text-text">{d.period.closed ? Math.round((d.period.wins / d.period.closed) * 100) : 0}%{prev != null && d.previous.closed ? <span className="text-faint"> / {Math.round((d.previous.wins / d.previous.closed) * 100)}%</span> : null}</div></div>
-              <div className="rounded-md bg-panel/60 py-1"><div className="text-faint">Open</div><div className={cx("num", d.unrealized >= 0 ? "text-up" : "text-down")}>{d.unrealized >= 0 ? "+" : "−"}{usd(Math.abs(d.unrealized))}</div></div>
-            </div>
-            <div className="mt-1 text-[10.5px] text-faint">All time {d.total >= 0 ? "+" : "−"}{usd(Math.abs(d.total))} · {d.bots} bot{d.bots === 1 ? "" : "s"} · {d.agents} agent{d.agents === 1 ? "" : "s"} · {usd(d.invested)} traded{d.open?.length ? ` · holding ${d.open.slice(0, 3).map((o: any) => o.symbol).join(", ")}` : ""}</div>
-          </>
-        )}
-      </div>
+    <aside className="hidden w-[340px] shrink-0 flex-col overflow-y-auto border-l border-line bg-panel/30 md:flex">
+      <AutonControls onAuton={onAuton} />
+      <AutonPnlCard className="border-b border-line p-3" />
       <div className="border-b border-line p-3">
         <div className="mb-1 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-faint">Auton's bots ({bots.length})<button onClick={() => openFloat("auton")} className="normal-case text-accent-2 hover:underline">Edit all</button></div>
         <div className="max-h-[120px] space-y-0.5 overflow-y-auto">
@@ -184,11 +147,11 @@ function AutonActivity({ bots }: { bots: any[] }) {
           {!bots.length && <p className="text-[11px] text-muted">None yet — Auton makes them while it's on.</p>}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="p-3">
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Auton activity</div>
         <ul className="space-y-1.5">
           {(feed.data?.items ?? []).map((i: any) => (
-            <li key={i.id} className="rounded-lg border border-line/70 px-2 py-1.5 text-[11.5px]">
+            <li key={i.id} title={(() => { const e = explainActivity(i); return [e.headline, ...e.lines].join("\n\n"); })()} className="cursor-help rounded-lg border border-line/70 px-2 py-1.5 text-[11.5px]">
               <div className="flex items-center gap-1.5"><span className={cx("rounded px-1 text-[9px] font-bold uppercase", i.kind === "execution" ? "bg-up/15 text-up" : i.kind === "warning" ? "bg-down/15 text-down" : i.kind === "decision" ? "bg-accent/15 text-accent-2" : "bg-panel-2 text-muted")}>{i.kind}</span><span className="ml-auto text-[10px] text-faint">{new Date(i.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}</span></div>
               <div className="mt-0.5 leading-snug">{i.title}</div>
               {i.body && <div className="line-clamp-2 text-[10.5px] text-muted">{i.body}</div>}
@@ -198,5 +161,65 @@ function AutonActivity({ bots }: { bots: any[] }) {
         </ul>
       </div>
     </aside>
+  );
+}
+
+/**
+ * Auton controls (top of the right bar): the four auto switches, a mini prompt box that talks to Auton or adds a
+ * skill/point, and your skills & points (on/off, edit, delete). Skills and points only exist when you add them.
+ */
+function AutonControls({ onAuton }: { onAuton: (t: string) => void }) {
+  const toast = useToast();
+  const [mode, setMode] = useState<"auton" | "skill" | "point">("auton");
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const sk = useApi<any>("/api/skills", { refreshMs: 30_000 });
+  const rows: any[] = sk.data?.skills ?? [];
+  async function submit() {
+    const t = text.trim();
+    if (!t) return;
+    if (mode === "auton") { onAuton(t); setText(""); return; }
+    setBusy(true);
+    try {
+      const r: any = await api("/api/skills", { method: "POST", json: { instructions: t, kind: mode, tz: Intl.DateTimeFormat().resolvedOptions().timeZone } });
+      toast(`${mode === "point" ? "Point" : "Skill"} “${r.skill.name}” added and on${r.enforced?.length ? ` · enforces: ${r.enforced.join("; ")}` : ""}`, "up");
+      setText(""); sk.refresh();
+    } catch (e: any) { toast(e.message, "down"); } finally { setBusy(false); }
+  }
+  const act = async (f: () => Promise<any>) => { try { await f(); sk.refresh(); } catch (e: any) { toast(e.message, "down"); } };
+  return (
+    <div className="space-y-2 border-b border-line p-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-faint">Auto switches</div>
+      <AutoModesBar compact />
+      <div className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Quick prompt</div>
+      <div className="flex rounded-md border border-line p-0.5 text-[11px]">
+        {([["auton", "Auton"], ["skill", "Skill"], ["point", "Point"]] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setMode(k)} className={cx("flex-1 rounded py-0.5", mode === k ? "bg-panel-2 text-text" : "text-muted hover:text-text")}>{l}</button>
+        ))}
+      </div>
+      <form onSubmit={(e) => { e.preventDefault(); void submit(); }} className="flex items-end gap-1">
+        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={2}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submit(); } }}
+          placeholder={mode === "auton" ? "Customize Auton: “budget $500”, “every 10 seconds”, “focus on SOL memes”, “$50 per trade”…" : mode === "skill" ? "New skill, e.g. “always use a 5% stop loss”" : "New point, e.g. “no buys until Friday”"}
+          className="min-w-0 flex-1 resize-none rounded-md border border-line bg-bg-2 px-2 py-1 text-[11.5px] outline-none focus:border-accent/60" />
+        <button disabled={busy || !text.trim()} className="shrink-0 rounded-md bg-grad px-2 py-1.5 text-[11px] font-semibold text-bg disabled:opacity-50">{busy ? <Loader2 className="size-3 animate-spin" /> : mode === "auton" ? "Send" : "Add"}</button>
+      </form>
+      <div className="flex items-center pt-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Skills & points ({rows.length})
+        {rows.some((r) => r.active) && <button onClick={() => act(() => Promise.all(rows.filter((r) => r.active).map((r) => api("/api/skills", { method: "PATCH", json: { kind: "skill", id: r.id, active: false } }))))} className="ml-auto normal-case text-muted hover:text-down">All off</button>}
+      </div>
+      {!rows.length && <p className="text-[11px] text-muted">None. Add one above when you want one — nothing is added on its own.</p>}
+      <div className="max-h-[200px] space-y-1 overflow-y-auto">
+        {rows.map((r) => (
+          <div key={r.id} className="flex items-start gap-1.5 rounded-md border border-line/70 px-1.5 py-1">
+            <button role="switch" aria-checked={r.active} aria-label={`${r.name} on/off`} onClick={() => act(() => api("/api/skills", { method: "PATCH", json: { kind: "skill", id: r.id, active: !r.active } }))}
+              className={cx("relative mt-0.5 h-3.5 w-6 shrink-0 rounded-full transition", r.active ? "bg-accent" : "bg-panel-2 ring-1 ring-line")}>
+              <span className={cx("absolute top-[2px] size-2.5 rounded-full bg-white transition-all", r.active ? "left-[12px]" : "left-[2px]")} />
+            </button>
+            <SkillText s={r} onSaved={sk.refresh} title={<><span className={cx("mr-1 rounded px-1 text-[9px] font-bold uppercase", r.kind === "point" ? "bg-rose-400/15 text-rose-300" : "bg-amber-300/15 text-amber-200")}>{r.kind ?? "skill"}</span>{r.name}</>} />
+            <button onClick={() => { if (confirm(`Delete “${r.name}”?`)) void act(() => api(`/api/skills?id=${r.id}`, { method: "DELETE" })); }} className="mt-0.5 text-faint hover:text-down" aria-label="Delete"><Trash2 className="size-3" /></button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -131,7 +131,8 @@ async function tickBot(b: any) {
 async function executeDecision(b: any, a: any, d: Exclude<Decision, { action: "none" | "complete" | "alert" }>) {
   await log(b.id, "trigger", `${d.action.toUpperCase()} ${a.symbol}: ${d.reason}`, { coin: { symbol: a.symbol, assetId: a.id, price: Number(a.last_price), source: a.price_source, move: a.change_24h != null ? Number(a.change_24h) : null, basis: "24h" } });
   // Bot-level limits (account-level limits are enforced again by the engine).
-  if (b.max_trades_per_day != null && b.trades_today >= b.max_trades_per_day) { await log(b.id, "warning", `Max trades per day (${b.max_trades_per_day}) reached`); return { ok: false }; }
+  const nb = (await one<any>("SELECT never_block FROM risk_settings WHERE user_id=$1", [b.user_id]).catch(() => null))?.never_block;
+  if (!nb && b.max_trades_per_day != null && b.trades_today >= b.max_trades_per_day) { await log(b.id, "warning", `Max trades per day (${b.max_trades_per_day}) reached`); return { ok: false }; }
   // No bot budget, daily spend or daily loss caps (removed at the owner's request); the engine still checks real buying power.
   const cap = (x: unknown) => (Number(x) > 0 ? Number(x) : Infinity);
   const notional = d.action === "buy" ? (d.notionalUsd ?? (d.quantity ?? 0) * a.last_price) : 0;
@@ -243,8 +244,8 @@ export async function setBotStatus(userId: string, botId: string, action: "start
   if (!b) throw new Error("Bot not found");
   const next = action === "pause" ? "paused" : action === "stop" ? "stopped" : "running";
   if (next === "running") {
-    const perms = await one<any>("SELECT allow_bots FROM trading_permissions WHERE user_id=$1", [userId]);
-    if (!perms?.allow_bots) throw new Error("Bots are disabled in your automation permissions");
+    const perms = await one<any>("SELECT p.allow_bots, r.never_block FROM trading_permissions p LEFT JOIN risk_settings r ON r.user_id=p.user_id WHERE p.user_id=$1", [userId]);
+    if (!perms?.allow_bots && !perms?.never_block) throw new Error("Bots are disabled in your automation permissions");
     if (!b.is_paper && !(await getFlags()).automated_real_money) throw new Error("Real-money bots are disabled until automated real-money trading is approved. Run this bot in paper mode.");
   }
   await q("UPDATE trading_bots SET status=$2, updated_at=now() WHERE id=$1", [botId, next]);

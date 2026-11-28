@@ -32,7 +32,7 @@ const Sections = z.discriminatedUnion("section", [
     // 0 = no limit
     max_order_usd: z.number().min(0).max(1e12), max_daily_spend_usd: z.number().min(0).max(1e12),
     max_daily_loss_usd: z.number().min(0).max(1e12), max_slippage_bps: z.number().int().min(1).max(5000),
-    min_liquidity_usd: z.number().min(0), max_price_age_sec: z.number().int().min(5).max(3600), block_risky_tokens: z.boolean(), trading_halted: z.boolean(),
+    min_liquidity_usd: z.number().min(0), max_price_age_sec: z.number().int().min(5).max(3600), block_risky_tokens: z.boolean(), trading_halted: z.boolean(), never_block: z.boolean().optional(),
     /** Bots and agents only sell when the price is at least min_profit_pct above what they paid. */
     sell_only_in_profit: z.boolean().optional(), min_profit_pct: z.number().min(0).max(1000).optional(),
   }) }),
@@ -69,8 +69,8 @@ export const PATCH = route(async (req) => {
       break;
     case "risk":
       await q(`UPDATE risk_settings SET max_order_usd=$2, max_daily_spend_usd=$3, max_daily_loss_usd=$4, max_slippage_bps=$5, min_liquidity_usd=$6,
-                 max_price_age_sec=$7, block_risky_tokens=$8, trading_halted=$9, updated_at=now() WHERE user_id=$1`,
-        [u.id, v.max_order_usd, v.max_daily_spend_usd, v.max_daily_loss_usd, v.max_slippage_bps, v.min_liquidity_usd, v.max_price_age_sec, v.block_risky_tokens, v.trading_halted]);
+                 max_price_age_sec=$7, block_risky_tokens=$8, trading_halted=$9, never_block=COALESCE($10, never_block), updated_at=now() WHERE user_id=$1`,
+        [u.id, v.max_order_usd, v.max_daily_spend_usd, v.max_daily_loss_usd, v.max_slippage_bps, v.min_liquidity_usd, v.max_price_age_sec, v.block_risky_tokens, v.trading_halted, v.never_block ?? null]);
       if (v.sell_only_in_profit !== undefined || v.min_profit_pct !== undefined)
         await q("UPDATE risk_settings SET sell_only_in_profit=COALESCE($2, sell_only_in_profit), min_profit_pct=COALESCE($3, min_profit_pct) WHERE user_id=$1", [u.id, v.sell_only_in_profit ?? null, v.min_profit_pct ?? null]);
       if (!v.trading_halted) await q("UPDATE trading_bots SET status='paused' WHERE user_id=$1 AND status='halted'", [u.id]);

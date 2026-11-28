@@ -92,7 +92,7 @@ export async function tickAgent(a: any) {
   }
   if (a.fleet_id) {
     const f = await one<any>("SELECT status FROM agent_fleets WHERE id=$1", [a.fleet_id]);
-    if (f?.status === "risk_blocked" && a.status !== "risk_blocked") { a.status = "risk_blocked"; await q("UPDATE agents SET status='risk_blocked', stop_reason='Fleet daily loss limit reached' WHERE id=$1", [a.id]); }
+    if (f?.status === "risk_blocked" && a.status !== "risk_blocked" && !(await neverBlock(a.user_id))) { a.status = "risk_blocked"; await q("UPDATE agents SET status='risk_blocked', stop_reason='Fleet daily loss limit reached' WHERE id=$1", [a.id]); }
   }
   if (!(await conditionMet(a))) return;
   const role = roleById(a.role);
@@ -141,7 +141,13 @@ async function conditionMet(a: any) {
 }
 
 /* ───────────────────────── Policy checks ───────────────────────── */
+/** The user's "never block" setting: loss limits can't stop their AI bots. */
+async function neverBlock(userId: string) {
+  return !!(await one<any>("SELECT never_block FROM risk_settings WHERE user_id=$1", [userId]).catch(() => null))?.never_block;
+}
+
 async function blockedForNewRisk(a: any): Promise<string | null> {
+  if (await neverBlock(a.user_id)) return a.mode !== "paper" ? "live execution is locked" : null;
   if (a.status === "risk_blocked") return "risk-blocked by the fleet loss limit";
   if (a.mode !== "paper") return "live execution is locked";
   const lossCap = Number(a.risk?.dailyLossUsd ?? 0);
@@ -443,7 +449,7 @@ async function supervisorTick(a: any) {
   const conc = top && invested > 0 ? (top[1] / invested) * 100 : 0;
   const failed = ms.filter((r) => r.m.status === "failed").map((r) => r.m.name);
   a.metrics = { ...a.metrics, portfolioRiskPct: capital > 0 ? +((invested / capital) * 100).toFixed(1) : 0, maxDrawdownPct: +Math.max(0, lossPct).toFixed(2), dailyLimitPct: limit, concentrationPct: +conc.toFixed(1), withinLimits: lossPct < limit };
-  if (fleet && lossPct >= limit && fleet.status === "running") {
+  if (fleet && lossPct >= limit && fleet.status === "running" && !(await neverBlock(a.user_id))) {
     await q("UPDATE agent_fleets SET status='risk_blocked', risk_blocked_at=now(), stop_reason=$2 WHERE id=$1", [fleet.id, `Combined daily loss ${lossPct.toFixed(2)}% ≥ ${limit}%`]);
     await q("UPDATE agents SET status='risk_blocked', stop_reason='Fleet daily loss limit reached' WHERE fleet_id=$1 AND status IN ('running','queued')", [fleet.id]);
     await emit(a.user_id, { agentId: a.id, fleetId: fleet.id, kind: "warning", title: `Loss limit reached: new orders stopped for "${fleet.name}"`, body: `Combined daily P&L ${fmt(day)} (${lossPct.toFixed(2)}% of ${fmt(capital)}) reached the ${limit}% limit. New risk-increasing orders are blocked; exits still run. Losses can exceed the limit because of gaps and slippage.` });

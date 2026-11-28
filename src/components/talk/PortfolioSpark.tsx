@@ -28,7 +28,7 @@ const pctLabel = (change: number, base: number) => {
  * Shows the change for the chosen range and draws an area chart, green when up and red when down.
  */
 /** `seconds`: lock the chart to a window that ends now (the Review uses this); the range buttons are hidden. */
-export function PortfolioSpark({ height = 56, compact = false, className, seconds }: { height?: number; compact?: boolean; className?: string; seconds?: number }) {
+export function PortfolioSpark({ height = 56, compact = false, className, seconds, onChange }: { height?: number; compact?: boolean; className?: string; seconds?: number; /** the change for the chosen range, so a parent can show the same number */ onChange?: (c: { change: number; pct: string; label: string; ready: boolean }) => void }) {
   const [range, setRange] = useState<(typeof RANGES)[number]>("1D");
   // Break even: measure against what you put in (starting balance + deposits − withdrawals) instead of the range's start.
   const [beOn, setBeOn] = useState(() => { try { return localStorage.getItem("merod-pnl-breakeven") === "1"; } catch { return false; } });
@@ -64,6 +64,9 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
   const useBe = beOn && !!breakEven;
   const first = useBe ? breakEven! : pts[0]?.value ?? 0, last = pts[pts.length - 1]?.value ?? 0, change = last - first;
   const up = change >= 0;
+  const rangeLabel = seconds ? secLabel(seconds) : range === "Custom" ? secLabel(dialSec) : range;
+  const ready = pts.length > 1;
+  useEffect(() => { onChange?.({ change, pct: `${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%`, label: rangeLabel, ready }); }, [change, first, rangeLabel, ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const trades: Trade[] = useMemo(() => {
     const src: Trade[] = (zoom && zData?.trades ? zData.trades : data?.trades) ?? [];
     return src.filter((t: Trade) => Number.isFinite(t.time) && (!zoom || (t.time >= zoom.a && t.time <= zoom.b)));

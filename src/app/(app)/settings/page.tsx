@@ -188,7 +188,7 @@ function TradingTab({ data }: any) {
 function RiskTab({ data, refresh }: any) {
   const r = data.risk;
   const [v, setV] = useState({ max_order_usd: +r.max_order_usd, max_daily_spend_usd: +r.max_daily_spend_usd, max_daily_loss_usd: +r.max_daily_loss_usd, max_slippage_bps: +r.max_slippage_bps,
-    min_liquidity_usd: +r.min_liquidity_usd, max_price_age_sec: +r.max_price_age_sec, block_risky_tokens: r.block_risky_tokens, trading_halted: r.trading_halted,
+    min_liquidity_usd: +r.min_liquidity_usd, max_price_age_sec: +r.max_price_age_sec, block_risky_tokens: r.block_risky_tokens, trading_halted: r.trading_halted, never_block: !!r.never_block,
     sell_only_in_profit: !!r.sell_only_in_profit, min_profit_pct: Number(r.min_profit_pct ?? 0.5) });
   const { save, busy } = useSave(refresh);
   const num = (k: keyof typeof v) => (e: React.ChangeEvent<HTMLInputElement>) => setV({ ...v, [k]: Number(e.target.value) });
@@ -210,6 +210,7 @@ function RiskTab({ data, refresh }: any) {
           <Input label="Min token liquidity (USD)" type="number" value={v.min_liquidity_usd} onChange={num("min_liquidity_usd")} />
           <Input label="Reject prices older than (seconds)" type="number" value={v.max_price_age_sec} onChange={num("max_price_age_sec")} />
         </div>
+        <div className="mt-4"><Toggle checked={!!v.never_block} onChange={(b) => setV({ ...v, never_block: b })} label="Never block bots and prompts: limits, risk screening and approval waits can't stop them from buying and selling (paper orders bigger than your cash are resized to what you have). Manual orders, your emergency stop, your own skills and real-money legal checks still apply." /></div>
         <div className="mt-4"><Toggle checked={v.block_risky_tokens} onChange={(b) => setV({ ...v, block_risky_tokens: b })} label="Block or require approval for tokens with risk flags (new, unverified, low liquidity)" /></div>
         <div className="mt-4 flex flex-wrap items-end gap-3">
           <Toggle checked={v.sell_only_in_profit} onChange={(b) => setV({ ...v, sell_only_in_profit: b })} label="Bots and agents only sell in profit (stop-losses are held while this is on)" />

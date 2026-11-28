@@ -30,7 +30,7 @@ import { computeFee, describeFee, getFeeConfig } from "../fees";
  */
 
 interface AccountRow { id: string; user_id: string; kind: "paper" | "brokerage" | "wallet"; provider_id: string; label: string; external_ref: string | null; network: string | null; status: string; cash_balance: number; metadata: any }
-interface RiskRow { max_order_usd: number; max_daily_spend_usd: number; max_daily_loss_usd: number; max_slippage_bps: number; min_liquidity_usd: number; max_price_age_sec: number; block_risky_tokens: boolean; trading_halted: boolean }
+interface RiskRow { never_block?: boolean; max_order_usd: number; max_daily_spend_usd: number; max_daily_loss_usd: number; max_slippage_bps: number; min_liquidity_usd: number; max_price_age_sec: number; block_risky_tokens: boolean; trading_halted: boolean }
 interface PermRow { mode: "manual" | "auto_within_limits" | "auto_until_approval"; auto_max_order_usd: number; auto_daily_cap_usd: number; allow_ai_prompts: boolean; allow_bots: boolean; allow_shortcuts: boolean; allowed_asset_classes: string[] }
 
 export interface Plan {
@@ -132,7 +132,7 @@ export async function candidateProviders(asset: AssetRow, account: AccountRow): 
 /** Tradability shown in the UI: discoverable ≠ tradable. */
 export async function effectiveTradability(asset: AssetRow): Promise<{ paper: boolean; live: boolean; providers: string[]; reason: string }> {
   const flags = await getFlags();
-  const paper = ["paper_tradable", "live_tradable"].includes(asset.tradability) && flags.paper_trading;
+  const paper = !["restricted", "unsupported"].includes(asset.tradability) && flags.paper_trading;
   const providers: string[] = [];
   for (const ad of EXECUTION_ADAPTERS) if (ad.supports(asset) && ((await providerUsable(ad.id, "production")) || (await providerUsable(ad.id, "sandbox")))) providers.push(ad.id);
   const isStock = ["stock", "etf"].includes(asset.asset_class);
@@ -145,6 +145,14 @@ export async function effectiveTradability(asset: AssetRow): Promise<{ paper: bo
     : "Live tradable";
   return { paper, live, providers, reason };
 }
+
+/**
+ * Checks that "never block" turns into notes. Not overridable: no price or zero size (nothing to trade), not enough
+ * cash/coins even after resizing, your own emergency stop and paused bots, real-money legal checks (live flag,
+ * jurisdiction, real-money switch, demo data, real price, broker), and your own skills/points (you add those).
+ */
+const NEVER_BLOCK_OVERRIDES = new Set(["global_halt", "paper_enabled", "asset_class_permitted", "source_permitted", "tradable", "price_fresh",
+  "max_order", "daily_spend", "daily_loss", "slippage", "liquidity", "token_screening", "account_active"]);
 
 /* ───────────────────────── Preview (steps 1–10) ───────────────────────── */
 export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<Plan> {
@@ -164,6 +172,8 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
     getFlags(),
   ]);
   if (!risk || !perms) throw new HttpError(500, "Risk settings missing");
+  // Never block: the owner's bots and prompts (and every automation) trade whatever happens; manual orders still confirm.
+  const free = !!risk.never_block && ctx.source !== "manual";
 
   // ── Eligibility, flags, permissions
   add("account_active", user.status === "active" && account.status === "active", "Account active");
@@ -181,7 +191,9 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
   add("asset_class_permitted", perms.allowed_asset_classes.includes(asset.asset_class), `${asset.asset_class} trading permitted by your settings`);
   const sourcePerm = ctx.source === "prompt" ? perms.allow_ai_prompts : ctx.source === "bot" || ctx.source === "copy" || ctx.source === "auto" || ctx.source === "agent" || ctx.source === "signal" ? perms.allow_bots : ctx.source === "shortcut" ? perms.allow_shortcuts : true;
   add("source_permitted", sourcePerm, `${ctx.source} trading permitted`);
-  add("tradable", simulated ? ["paper_tradable", "live_tradable"].includes(asset.tradability) : asset.tradability !== "restricted" && asset.tradability !== "unsupported" && asset.tradability !== "view_only",
+  // Paper trades only need a price (simulated fill), so view-only and discoverable assets can be paper traded too;
+  // real money still needs an execution provider.
+  add("tradable", simulated ? !["restricted", "unsupported"].includes(asset.tradability) : asset.tradability !== "restricted" && asset.tradability !== "unsupported" && asset.tradability !== "view_only",
     `Asset is ${asset.tradability.replace("_", " ")}`);
 
   // ── Price freshness
@@ -232,8 +244,20 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
     const known = simulated || account.metadata?.balance_synced;
     const held = known ? await reservedCash(account.id) : 0;
     const avail = Number(account.cash_balance) - held;
-    add("funds", !known || avail >= need, known ? `Need $${need.toFixed(2)}, available $${avail.toFixed(2)}${held > 0 ? ` (after $${held.toFixed(2)} reserved by open orders)` : ""}` : "Balance verified by provider at execution");
+    if (known && avail < need && free && simulated && avail >= 1 && quantity > 0) {
+      // Never block: buy as much as the cash allows instead of rejecting.
+      const f = (avail * 0.99) / need;
+      quantity *= f; notional *= f;
+      if (quote && ref > 0) quote = await paperAdapter.quote(adapterContext("paper", "production"), { asset, side: intent.side, quantity, notionalUsd: undefined, refPrice: ref, slippageBps: Math.max(slippageBps, 5000), account });
+      if (quote) { quantity = quote.quantity; notional = quote.notionalUsd; }
+      add("funds", true, `Not enough cash for the full order: buying $${notional.toFixed(2)} (all that's available) instead`);
+    } else add("funds", !known || avail >= need, known ? `Need $${need.toFixed(2)}, available $${avail.toFixed(2)}${held > 0 ? ` (after $${held.toFixed(2)} reserved by open orders)` : ""}` : "Balance verified by provider at execution");
   } else {
+    if (free && simulated && (pos?.quantity ?? 0) > 1e-12 && (pos?.quantity ?? 0) + 1e-12 < quantity) {
+      quantity = Number(pos!.quantity); notional = quantity * ref;
+      if (quote && ref > 0) quote = await paperAdapter.quote(adapterContext("paper", "production"), { asset, side: intent.side, quantity, notionalUsd: undefined, refPrice: ref, slippageBps: Math.max(slippageBps, 5000), account });
+      if (quote) { quantity = quote.quantity; notional = quote.notionalUsd; }
+    }
     add("position", (pos?.quantity ?? 0) + 1e-12 >= quantity, `Holding ${fmtQty(pos?.quantity ?? 0)}, selling ${fmtQty(quantity)}`);
   }
 
@@ -287,12 +311,18 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
   if (intent.takeProfit && ref && intent.side === "buy") add("take_profit_sane", intent.takeProfit > ref, "Take-profit above entry", "warn");
   if (intent.stopLoss && ref && intent.side === "buy") add("stop_loss_sane", intent.stopLoss < ref, "Stop-loss below entry", "warn");
 
+  // ── Never block (owner setting): limits, screening and permission checks can't stop bots or prompts.
+  if (free) for (const c of checks) {
+    if (c.ok || !NEVER_BLOCK_OVERRIDES.has(c.name) || (!isPaper && ["tradable", "global_halt", "account_active"].includes(c.name))) continue;
+    c.ok = true; c.severity = undefined; c.message = `${c.message} (allowed: nothing blocks your bots and prompts)`;
+  }
   // ── Approval decision
   const blocking = checks.filter((c) => !c.ok && c.severity === "block");
   const needsApproval = checks.filter((c) => !c.ok && c.severity === "approval");
   let decision: Plan["decision"] = "execute", reason = "All checks passed";
   if (blocking.length) { decision = "rejected"; reason = blocking.map((c) => c.message).join("; "); }
   else if (ctx.userConfirmed) { decision = "execute"; reason = "Approved by you"; }
+  else if (free) { decision = "execute"; reason = "Executed: nothing blocks your bots and prompts"; }
   else if (ctx.source === "manual") { decision = "pending_approval"; reason = "Confirm to place this order"; }
   else if (needsApproval.length) { decision = "pending_approval"; reason = needsApproval.map((c) => c.message).join("; "); }
   else if (ctx.botLimits?.approvalRequired) { decision = "pending_approval"; reason = "Bot is configured to require approval"; }
