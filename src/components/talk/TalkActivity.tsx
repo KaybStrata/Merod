@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Activity, X, Brain, Target, CheckCircle2, AlertTriangle, BarChart3, Gauge } from "lucide-react";
 import { api } from "@/lib/api";
@@ -9,6 +10,7 @@ import { WhyLine } from "@/components/agents/Why";
 import { useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 import { PortfolioSpark } from "./PortfolioSpark";
+import { TabPnl } from "./TabPnl";
 
 type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: FeedCoin; eventId?: number };
 const KIND: Record<string, [any, string]> = {
@@ -23,6 +25,12 @@ const hms = (t: string) => new Date(t).toLocaleTimeString([], { hour: "numeric",
 /** "Activity" button in the Talk top bar: opens a live side panel of everything trading for you, without leaving Talk. */
 export function TalkActivity() {
   const [open, setOpen] = useState(false);
+  // Each Talk tab (conversation) has its own Activity and P&L: only what that tab started. "Everything" = all of Merod.
+  const sp = useSearchParams(), pathname = usePathname();
+  const conv = pathname === "/talk" ? sp.get("c") : null;
+  const [scope, setScope] = useState<"tab" | "all">("tab");
+  const effConv = scope === "tab" ? conv : null;
+  const convRef = useRef(effConv); convRef.current = effConv;
   const [items, setItems] = useState<Item[]>([]);
   const [src, setSrc] = useState("all");
   const [fresh, setFresh] = useState(0);
@@ -30,7 +38,9 @@ export function TalkActivity() {
   const openRef = useRef(false); openRef.current = open;
   async function pull(initial = false) {
     try {
-      const r: any = await api(`/api/live-stream${initial || !last.current ? "" : `?since=${last.current - 2000}`}`);
+      const c = convRef.current, qs = [initial || !last.current ? null : `since=${last.current - 2000}`, c ? `conv=${c}` : null].filter(Boolean).join("&");
+      const r: any = await api(`/api/live-stream${qs ? `?${qs}` : ""}`);
+      if (convRef.current !== c) return; // switched tabs while loading
       last.current = r.now;
       setItems((cur) => {
         const seen = new Set(cur.map((i) => i.id));
@@ -42,15 +52,12 @@ export function TalkActivity() {
   }
   // Any filter other than All is fetched from the server (last 30 days), so busy bots can't crowd trades out of the list.
   const [filtered, setFiltered] = useState<{ key: string; items: Item[] } | null>(null);
-  // Auton tab: everything Auton does, or only what it reports to this Talk tab.
-  const [tabOnly, setTabOnly] = useState(false);
-  const tabRef = useRef(tabOnly); tabRef.current = tabOnly;
   const srcRef = useRef(src); srcRef.current = src;
   async function pullFiltered(key = srcRef.current) {
     if (key === "all") return;
     try {
-      const conv = key === "auton" && tabOnly ? new URLSearchParams(window.location.search).get("c") : null;
-      const r: any = await api(`/api/live-stream?filter=${key}&limit=300${conv ? `&conv=${conv}` : ""}`);
+      const c = convRef.current;
+      const r: any = await api(`/api/live-stream?filter=${key}&limit=300${c ? `&conv=${c}` : ""}`);
       if (srcRef.current === key) setFiltered({ key, items: r.items as Item[] });
     } catch { /* keep the last list */ }
   }
@@ -60,7 +67,9 @@ export function TalkActivity() {
     pullFiltered(src);
     const t = setInterval(() => pullFiltered(src), 8000);
     return () => clearInterval(t);
-  }, [open, src, tabOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, src, effConv]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Switching tab (or scope): start this tab's own feed fresh.
+  useEffect(() => { last.current = 0; setItems([]); setFiltered(null); pull(true); }, [effConv]); // eslint-disable-line react-hooks/exhaustive-deps
   useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade", "update", "advisor", "auton"].includes(e.type)) { pull(); if (openRef.current) pullFiltered(); } });
   const loadingFilter = src !== "all" && filtered?.key !== src;
   const shown = src === "all" ? items : filtered?.key === src ? filtered.items : [];
@@ -84,17 +93,21 @@ export function TalkActivity() {
                 <button onClick={() => setOpen(false)} className="rounded-md p-1 text-muted hover:text-text" aria-label="Close"><X className="size-4" /></button>
               </div>
             </div>
-            <div className="border-b border-line px-4 py-3"><div className="mb-1 text-[11px] font-semibold text-muted">Portfolio · P&L</div><PortfolioSpark height={70} /></div>
+            {conv && (
+              <div className="flex items-center gap-1 border-b border-line px-3 py-1.5 text-[11.5px]">
+                <span className="mr-1 text-faint">Showing</span>
+                <button onClick={() => setScope("tab")} className={cx("rounded-md px-2 py-0.5", scope === "tab" ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>This tab only</button>
+                <button onClick={() => setScope("all")} className={cx("rounded-md px-2 py-0.5", scope === "all" ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>Everything</button>
+              </div>
+            )}
+            {effConv
+              ? <div className="border-b border-line px-4 py-3"><div className="mb-1 text-[11px] font-semibold text-muted">This tab · P&L</div><TabPnl conv={effConv} /></div>
+              : <div className="border-b border-line px-4 py-3"><div className="mb-1 text-[11px] font-semibold text-muted">Portfolio · P&L</div><PortfolioSpark height={70} /></div>}
             <div className="flex flex-wrap gap-1 border-b border-line px-3 py-2">
               {SOURCES.map(([k, l]) => (
                 <button key={k} onClick={() => setSrc(k)} className={cx("rounded-md px-2 py-0.5 text-[11.5px]", src === k ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>{l}</button>
               ))}
             </div>
-            {src === "auton" && (
-              <label className="flex items-center gap-2 border-b border-line px-4 py-1.5 text-[11.5px] text-muted">
-                <input type="checkbox" checked={tabOnly} onChange={(e) => setTabOnly(e.target.checked)} />Only what Auton reports to this tab
-              </label>
-            )}
             {(src === "profit" || src === "loss" || src === "sell") && closed.length > 0 && (
               <div className="flex items-center justify-between border-b border-line px-4 py-1.5 text-[11.5px]">
                 <span className="text-muted">{closed.length} closed trade{closed.length === 1 ? "" : "s"} shown</span>

@@ -44,16 +44,23 @@ export const GET = route(async (req) => {
   const orderCond = filter === "buy" ? " AND o.side='buy'" : filter === "sell" ? " AND o.side='sell'"
     : filter === "profit" ? " AND o.side='sell' AND o.realized_pnl > 0" : filter === "loss" ? " AND o.side='sell' AND o.realized_pnl < 0" : "";
   const pnlOnly = filter === "profit" || filter === "loss";
-  const [agents, bots, orders, copies, platform, system] = await Promise.all([
+  // A Talk tab's own activity: only what that conversation started (its prompts' orders, its bots, its agents, its Auton).
+  const tab = sp.get("conv");
+  const scope = tab ? await (await import("@/server/talk/tab-scope")).tabScope(u.id, tab) : null;
+  const tabCond = scope ? (await import("@/server/talk/tab-scope")).tabOrderCond(4) : "";
+  const tabArgs = scope ? [scope.msgIds, scope.botIds, scope.agentIds] : [];
+  const [agentsAll, botsAll, orders, copies, platform, system] = await Promise.all([
     want("agent") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT e.id, e.created_at, e.kind, e.title, e.body, e.agent_id, a.name, (e.data ? 'orderId' OR (e.data ? 'signal' AND e.data ? 'inputs')) AS explainable FROM agent_events e LEFT JOIN agents a ON a.id=e.agent_id WHERE e.user_id=$1 AND e.created_at > $2 ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]) : none,
     want("bot") && !TRADE_FILTERS.has(filter) ? q<any>(`SELECT l.id, l.created_at, l.level, l.message, l.data, b.id AS bot_id, b.name FROM bot_activity_logs l JOIN trading_bots b ON b.id=l.bot_id WHERE b.user_id=$1 AND l.created_at > $2 ORDER BY l.id DESC LIMIT $3`, [u.id, since, lim]) : none,
     want("order") ? q<any>(`SELECT o.id, o.updated_at, o.side, o.status, o.source, o.is_paper, o.filled_quantity, o.avg_fill_price, o.notional_usd, o.status_reason, o.realized_pnl, a.symbol, a.id AS asset_id
-              FROM orders o JOIN assets a ON a.id=o.asset_id WHERE o.user_id=$1 AND o.updated_at > $2${orderCond} ORDER BY o.updated_at DESC LIMIT $3`, [u.id, since, lim]) : none,
-    want("copy") && !pnlOnly ? q<any>(`SELECT e.id, e.created_at, e.side, e.symbol, e.status, e.reason, e.venue, f.label FROM copy_trade_events e JOIN copy_follows f ON f.id=e.follow_id WHERE f.follower_id=$1 AND e.created_at > $2${filter === "buy" || filter === "sell" ? ` AND e.side='${filter}'` : ""} ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]) : none,
-    want("merod") && !pnlOnly && filter !== "order" ? q<any>(`SELECT x.id, x.executed_at, o.side, x.quantity, x.price, o.is_paper, o.source, a.symbol, a.id AS asset_id FROM executions x JOIN orders o ON o.id=x.order_id JOIN assets a ON a.id=o.asset_id
+              FROM orders o JOIN assets a ON a.id=o.asset_id WHERE o.user_id=$1 AND o.updated_at > $2${orderCond}${tabCond} ORDER BY o.updated_at DESC LIMIT $3`, [u.id, since, lim, ...tabArgs]) : none,
+    want("copy") && !pnlOnly && !scope ? q<any>(`SELECT e.id, e.created_at, e.side, e.symbol, e.status, e.reason, e.venue, f.label FROM copy_trade_events e JOIN copy_follows f ON f.id=e.follow_id WHERE f.follower_id=$1 AND e.created_at > $2${filter === "buy" || filter === "sell" ? ` AND e.side='${filter}'` : ""} ORDER BY e.id DESC LIMIT $3`, [u.id, since, lim]) : none,
+    want("merod") && !pnlOnly && filter !== "order" && !scope ? q<any>(`SELECT x.id, x.executed_at, o.side, x.quantity, x.price, o.is_paper, o.source, a.symbol, a.id AS asset_id FROM executions x JOIN orders o ON o.id=x.order_id JOIN assets a ON a.id=o.asset_id
              WHERE x.executed_at > $1 AND o.user_id <> $2${filter === "buy" || filter === "sell" ? ` AND o.side='${filter}'` : ""} ORDER BY x.executed_at DESC LIMIT 60`, [since, u.id]) : none,
-    isAdminRole(u.role) && filter === "all" ? q<any>(`SELECT id, created_at, source, level, message FROM system_events WHERE created_at > $1 ORDER BY id DESC LIMIT 40`, [since]) : none,
+    isAdminRole(u.role) && filter === "all" && !scope ? q<any>(`SELECT id, created_at, source, level, message FROM system_events WHERE created_at > $1 ORDER BY id DESC LIMIT 40`, [since]) : none,
   ]);
+  const agents = scope ? agentsAll.filter((e: any) => scope.agentIds.includes(String(e.agent_id))) : agentsAll;
+  const bots = scope ? botsAll.filter((l: any) => scope.botIds.includes(String(l.bot_id))) : botsAll;
   const items: Item[] = [];
   for (const e of agents) items.push({ id: `ag${e.id}`, eventId: e.explainable ? Number(e.id) : undefined, at: e.created_at, source: "agent", kind: AGENT_KIND[e.kind] ?? "state", actor: e.name ?? "Agent", title: e.title, body: e.body || undefined, link: e.agent_id ? `/agents/${e.agent_id}` : "/agents" });
   for (const l of bots) {
@@ -77,7 +84,7 @@ export const GET = route(async (req) => {
       actor: `${o.is_paper ? "Paper" : "Real money"} · ${o.source}`, title: what, body: o.status_reason || undefined, link: `/terminal/${o.asset_id}` });
   }
   // New mimics / watches show up in Activity → Mimic right away, before the first copied trade.
-  if (filter === "all" || filter === "copy") {
+  if (!scope && (filter === "all" || filter === "copy")) {
     const follows = await q<any>(`SELECT id, created_at, label, kind, mode, wallet_address, status FROM copy_follows WHERE follower_id=$1 AND created_at > $2 ORDER BY created_at DESC LIMIT 200`, [u.id, since]);
     const n = follows.length;
     for (const f of n > 25 ? follows.slice(0, 1) : follows) items.push({ id: `cf${f.id}`, at: f.created_at, source: "copy", kind: "decision", actor: `Mimic · ${f.label}`,
@@ -87,7 +94,7 @@ export const GET = route(async (req) => {
   for (const c of copies) items.push({ id: `cp${c.id}`, at: c.created_at, source: "copy", side: c.side, kind: c.status === "copied" ? "execution" : c.status === "failed" ? "warning" : "decision", actor: `Mimic · ${c.label}`, title: `${c.label} ${c.side === "buy" ? "bought" : "sold"} ${c.symbol ?? "a token"} on ${c.venue ?? "?"} → ${c.status.replace("_", " ")}`, body: c.reason || undefined, link: "/mimic" });
   for (const p of platform) items.push({ id: `pl${p.id}`, at: p.executed_at, source: "merod", side: p.side, kind: "execution", actor: `Merod trader${p.is_paper ? " (paper)" : ""}`, title: `${p.side === "buy" ? "Bought" : "Sold"} ${Number(p.quantity).toPrecision(4)} ${p.symbol} @ $${Number(p.price).toPrecision(6)} · via ${p.source}`, link: `/terminal/${p.asset_id}` });
   for (const s of system) items.push({ id: `sy${s.id}`, at: s.created_at, source: "merod", kind: s.level === "info" ? "state" : "warning", actor: `Merod · ${s.source}`, title: s.message });
-  if (owner && (want("auto") || want("modo"))) {
+  if (!scope && owner && (want("auto") || want("modo"))) {
     const auto = await q<any>(`SELECT t.id, t.created_at, t.closed_at, t.symbol, t.mode, t.origin, t.confidence, t.return_pct, t.explain_during, eo.realized_pnl AS exit_pnl FROM auto_trades t LEFT JOIN orders eo ON eo.id=t.exit_order_id WHERE t.user_id=$1 AND greatest(t.created_at, COALESCE(t.closed_at, t.created_at)) > $2 ORDER BY t.created_at DESC LIMIT 60`, [u.id, since]);
     for (const t of auto) {
       const who = t.origin === "modo" ? "modo" : "auto";
@@ -102,14 +109,14 @@ export const GET = route(async (req) => {
     }
   }
   // Auton: every thought, analysis, decision and action. ?conv= limits it to the Talk tab (conversation) Auton reports to.
-  const conv = sp.get("conv");
+  const conv = tab;
   if (want("auton") && !TRADE_FILTERS.has(filter)) {
     const ev = await q<any>(`SELECT id, created_at, kind, title, body FROM auton_events WHERE user_id=$1 AND created_at > $2 ${conv ? "AND conversation_id=$4" : ""} ORDER BY id DESC LIMIT $3`,
       conv ? [u.id, since, lim, conv] : [u.id, since, lim]).catch(() => []);
     for (const e of ev) items.push({ id: `au${e.id}`, at: e.created_at, source: "auton", kind: e.kind, actor: "Auton", title: e.title, body: e.body ?? undefined, link: "/map" });
   }
   // Update / Recording (Talk) and the Advisor: what was analysed, what it suggested, what got applied.
-  if (want("update") && !TRADE_FILTERS.has(filter)) {
+  if (!scope && want("update") && !TRADE_FILTERS.has(filter)) {
     const [ups, tips] = await Promise.all([
       q<any>("SELECT * FROM trade_updates WHERE user_id=$1 AND created_at > $2 ORDER BY id DESC LIMIT 60", [u.id, since]).catch(() => []),
       q<any>("SELECT * FROM advisor_tips WHERE user_id=$1 AND (created_at > $2 OR applied_at > $2) ORDER BY id DESC LIMIT 60", [u.id, since]).catch(() => []),

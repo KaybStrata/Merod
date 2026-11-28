@@ -148,7 +148,7 @@ export async function runAuton(userId: string, opts: { goal?: string; conversati
           params: { amount_usd: perBot, dip_pct: dip, take_profit_pct: tp, stop_loss_pct: sl, repeat: true } });
         const bot: any = await createBot(userId, cfg, "ai");
         const id = bot?.id ?? bot?.bot?.id;
-        if (id) { await remember(userId, "bot", id, name); await remember(userId, "prompt", `${id}:p`, `buy ${c.symbol} on a ${dip}% dip, take profit ${tp}%, stop loss ${sl}%, $${perBot} per trade`); }
+        if (id) { await (await import("../talk/tab-scope")).linkToConversation(userId, conv, "bot", id); await remember(userId, "bot", id, name); await remember(userId, "prompt", `${id}:p`, `buy ${c.symbol} on a ${dip}% dip, take profit ${tp}%, stop loss ${sl}%, $${perBot} per trade`); }
         await L("execution", `Created and started ${name} (${s.real_money ? "real money" : "paper"})`);
       } catch (e: any) { await L("warning", `Couldn't open ${name}`, String(e?.message ?? e).slice(0, 300)); }
     }

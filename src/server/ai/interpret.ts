@@ -356,6 +356,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       if (auto) for (const ag of draft.agents) if (ag.autonomy === 4) ag.autonomy = 5;
       const fleet: any = await createFleet(userId, draft as any, { isOwner: role === "super_admin" });
       const id = fleet?.fleet?.id ?? fleet?.id;
+      await (await import("../talk/tab-scope")).linkToConversation(userId, convId, "fleet", id);
       let started = false;
       if (auto && id) { try { await fleetAction(userId, id, "approve", { isOwner: role === "super_admin" }); started = true; } catch { /* stays waiting for approval */ } }
       const names = `${draft.agents.slice(0, 6).map((a) => a.name).join(", ")}${draft.agents.length > 6 ? ", …" : ""}`;
@@ -675,6 +676,7 @@ export async function approvePlan(userId: string, messageId: string, overrides?:
   } else if (card.type === "bot") {
     const edited: any = overrides?.config ?? {};
     const bot = await createBot(userId, { ...card.config, ...edited, params: { ...(card.config.params ?? {}), ...(edited.params ?? {}) } } as BotConfig, "ai");
+    await (await import("../talk/tab-scope")).linkToConversation(userId, m.conversation_id, "bot", bot.id);
     result = { botId: bot.id, status: bot.status };
   } else if (card.type === "mimic") {
     if ((await one<{ role: string }>("SELECT role FROM users WHERE id=$1", [userId]))?.role !== "super_admin") throw new HttpError(403, "Mimic trading is only available on the platform owner's account");
