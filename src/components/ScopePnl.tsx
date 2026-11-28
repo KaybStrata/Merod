@@ -14,16 +14,16 @@ const RANGES: [string, number | null, string, string][] = [
 ];
 export const SCOPE_TITLE: Record<PnlScope, string> = { trades: "All trades", bot: "Bots", auto: "Auto trading", modo: "Modo", copy: "Mimic", auton: "Auton", prompt: "Prompts", manual: "Your orders" };
 
-/** Shared "Profit" toggle (remembered): the line shows profit/loss from closed trades only, without open positions. */
+/** Shared "Profit line" toggle (remembered): a neon green line on top of the graph with profit from closed trades only. */
 export function useProfitOnly(): [boolean, (v: boolean) => void] {
   const [on, setOn] = useState(() => { try { return localStorage.getItem("merod-pnl-profit") === "1"; } catch { return false; } });
   return [on, (v: boolean) => { setOn(v); try { localStorage.setItem("merod-pnl-profit", v ? "1" : "0"); } catch { /* ignore */ } }];
 }
 export function ProfitToggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button role="switch" aria-checked={on} onClick={() => onChange(!on)} title={on ? "Showing profit/loss from closed trades only. Click to include open positions." : "Show only profit/loss from closed (sold) trades"}
-      className={cx("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px]", on ? "border-up/50 bg-up/10 text-up" : "border-line text-muted hover:text-text")}>
-      <span className={cx("relative h-2.5 w-4 rounded-full", on ? "bg-up" : "bg-panel-2 ring-1 ring-line")}><span className={cx("absolute top-[1px] size-2 rounded-full bg-white transition-all", on ? "left-[7px]" : "left-[1px]")} /></span>Profit
+    <button role="switch" aria-checked={on} onClick={() => onChange(!on)} title={on ? "Neon profit line on: profit from closed (sold) trades only. Click to hide it." : "Show a neon green line with profit from closed (sold) trades only"}
+      className={cx("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] transition", on ? "border-[#39ff14]/70 bg-[#39ff14]/10 text-[#39ff14] shadow-[0_0_10px_#39ff1466]" : "border-line text-muted hover:text-text")}>
+      <span className={cx("relative h-2.5 w-4 rounded-full", on ? "bg-[#39ff14]" : "bg-panel-2 ring-1 ring-line")}><span className={cx("absolute top-[1px] size-2 rounded-full bg-white transition-all", on ? "left-[7px]" : "left-[1px]")} /></span>Profit line
     </button>
   );
 }
@@ -39,10 +39,12 @@ export function ScopePnlCard({ scope, conv, refId, title, className }: { scope: 
   const pnl = useApi<any>(`/api/pnl/scope?scope=${scope}${range ? `&range=${range}` : ""}${conv ? `&conv=${conv}` : ""}${refId ? `&ref=${refId}` : ""}`, { refreshMs: 10_000 });
   useRealtime((e) => { if (e.type === "fill" || e.type === "order") pnl.refresh(); });
   const d = pnl.data;
-  const p = profitOnly ? (d?.period?.realized ?? 0) : (d?.period?.pnl ?? 0), prev = d?.previous?.pnl ?? null, up = p >= 0;
+  const p = d?.period?.pnl ?? 0, prev = d?.previous?.pnl ?? null, up = p >= 0;
   const color = up ? "var(--color-up, #22c55e)" : "var(--color-down, #f0506e)";
   const delta = prev == null ? null : p - prev;
-  const pts = !d ? [] : profitOnly ? [...d.points.slice(0, -1), { ...d.points[d.points.length - 1], value: d.period.realized }] : d.points;
+  const pts = !d ? [] : d.points;
+  // Neon profit line: the same trades, closed-trade profit only (no open positions).
+  const profitPts = !d || !profitOnly ? undefined : [...d.points.slice(0, -1).map((x: any) => ({ time: x.time, value: x.value })), { time: d.points[d.points.length - 1].time, value: d.period.realized }];
   return (
     <div className={className}>
       <div className="flex flex-wrap items-center justify-between gap-1">
@@ -58,7 +60,8 @@ export function ScopePnlCard({ scope, conv, refId, title, className }: { scope: 
         <>
           <div className="mt-1.5 flex items-baseline gap-2">
             <span className={cx("num text-[22px] font-semibold", up ? "text-up" : "text-down")}>{up ? "+" : "−"}{usd(Math.abs(p))}</span>
-            <span className="text-[11px] text-muted">{nowLabel}{profitOnly ? " · closed trades" : ""}</span>
+            <span className="text-[11px] text-muted">{nowLabel}</span>
+            {profitOnly && <span className="num text-[11.5px] font-semibold text-[#39ff14] [text-shadow:0_0_8px_#39ff14]" title="Profit from closed (sold) trades in this period">profit {d.period.realized >= 0 ? "+" : "−"}{usd(Math.abs(d.period.realized))}</span>}
           </div>
           {prev != null && (
             <div className="mt-0.5 flex items-center gap-1.5 text-[11px]">
@@ -67,7 +70,7 @@ export function ScopePnlCard({ scope, conv, refId, title, className }: { scope: 
               <span className="text-muted">vs {prevLabel} ({prev >= 0 ? "+" : "−"}{usd(Math.abs(prev))})</span>
             </div>
           )}
-          <PnlLine pts={pts} color={color} height={100} nowLabel={profitOnly ? "closed-trade profit so far" : range ? "this period, now (incl. open)" : "now (incl. open)"} />
+          <PnlLine pts={pts} color={color} height={100} overlay={profitPts} nowLabel={range ? "this period, now (incl. open)" : "now (incl. open)"} />
           {!d.orders && <div className="mt-0.5 text-[10.5px] text-faint">No trades {conv ? "from this tab" : `from ${SCOPE_TITLE[scope].toLowerCase()}`} yet — the line starts at $0 and moves with the first trade.</div>}
           <div className="mt-1 grid grid-cols-3 gap-1 text-center text-[10.5px]">
             <div className="rounded-md bg-panel/60 py-1"><div className="text-faint">Closed</div><div className="num text-text">{d.period.closed}{prev != null ? <span className="text-faint"> / {d.previous.closed}</span> : null}</div></div>

@@ -7,7 +7,6 @@ import { usd } from "@/lib/format";
 import { dialToSec, secLabel } from "@/lib/timeDial";
 import { TimeDial } from "@/components/TimeDial";
 import { ProfitToggle, useProfitOnly } from "@/components/ScopePnl";
-import { PnlLine } from "./TabPnl";
 
 type Pt = { time: number; value: number };
 type Trade = { id: string; time: number; side: "buy" | "sell"; source: string; symbol: string; quantity: number; price: number; usd: number; feeUsd: number; realizedPnl: number | null };
@@ -71,7 +70,7 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
   const windowSec: number | null = seconds ?? (range === "Custom" ? dialSec : SHORT[range] ?? ({ "1D": 86_400, "1W": 604_800, "1M": 2_592_000 } as Record<string, number>)[range] ?? null);
   const rangeLabel = seconds ? secLabel(seconds) : range === "Custom" ? secLabel(dialSec) : range;
   const ready = pts.length > 1;
-  useEffect(() => { if (profitOnly) return; onChange?.({ change, pct: `${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%`, label: rangeLabel, ready }); }, [change, first, rangeLabel, ready, profitOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onChange?.({ change, pct: `${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%`, label: rangeLabel, ready }); }, [change, first, rangeLabel, ready]); // eslint-disable-line react-hooks/exhaustive-deps
   const trades: Trade[] = useMemo(() => {
     const src: Trade[] = (zoom && zData?.trades ? zData.trades : data?.trades) ?? [];
     return src.filter((t: Trade) => Number.isFinite(t.time) && (!zoom || (t.time >= zoom.a && t.time <= zoom.b)));
@@ -212,7 +211,7 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
         );
       })()}
       {range === "Custom" && !seconds && <TimeDial value={dialSec} onChange={setDialSec} className="mt-1.5" />}
-      {profitOnly ? <ProfitLine seconds={windowSec} height={height} compact={compact} onValue={(v) => onChange?.({ change: v, pct: "closed trades", label: rangeLabel, ready: true })} /> : path ? (
+      {path ? (
         <div ref={boxRef} className="relative mt-1 cursor-crosshair touch-none select-none" style={{ height }}
           onPointerMove={onMove} onPointerDown={onDown} onPointerUp={() => { drag.current = null; }} onPointerLeave={() => { setHover(null); drag.current = null; }}
           onDoubleClick={(e) => { e.stopPropagation(); setZoom(null); }} onClick={(e) => e.stopPropagation()}
@@ -233,6 +232,7 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
             })}
             {useBe && <line x1="0" x2="300" y1={path.fy(breakEven!) * 100} y2={path.fy(breakEven!) * 100} stroke="currentColor" className="text-muted" strokeWidth="1" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />}
           </svg>
+          {profitOnly && <NeonProfit seconds={windowSec} t0={path.t0} t1={path.t1} compact={compact} />}
           {/* Trade dots: green = buy, red = sell. */}
           {!compact && trades.map((x) => (
             <span key={x.id} className={cx("pointer-events-none absolute size-[7px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-bg-2", x.side === "buy" ? "bg-up" : "bg-down")}
@@ -288,18 +288,24 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
   );
 }
 
-/** Profit view of the portfolio chart: closed-trade profit/loss over the window, from every source. */
-function ProfitLine({ seconds, height, compact, onValue }: { seconds: number | null; height: number; compact?: boolean; onValue?: (v: number) => void }) {
+/**
+ * Neon green profit line over the portfolio chart: closed-trade profit from every source over the same window,
+ * drawn on its own scale (0 = no profit yet) so it reads clearly on top of the value line.
+ */
+function NeonProfit({ seconds, t0, t1, compact }: { seconds: number | null; t0: number; t1: number; compact?: boolean }) {
   const { data } = useApi<any>(`/api/pnl/scope?scope=trades${seconds ? `&range=${Math.max(60, Math.round(seconds))}` : ""}`, { refreshMs: 15_000 });
-  const realized = data?.period?.realized;
-  useEffect(() => { if (realized != null) onValue?.(realized); }, [realized]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (!data) return <div style={{ height }} className="mt-1 text-[11px] text-faint">Loading…</div>;
-  const v = data.period.realized, up = v >= 0, color = up ? "var(--color-up, #22c55e)" : "var(--color-down, #f0506e)";
-  const pts = [...data.points.slice(0, -1), { ...data.points[data.points.length - 1], value: v }];
+  if (!data) return null;
+  const pts: { time: number; value: number }[] = [...data.points.slice(0, -1), { time: data.points[data.points.length - 1].time, value: data.period.realized }];
+  const vals = [0, ...pts.map((p) => p.value)], min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+  const fx = (t: number) => Math.min(1, Math.max(0, (t - t0) / (t1 - t0 || 1))), fy = (v: number) => (100 - ((v - min) / span) * 84 - 8) / 100;
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${(fx(p.time) * 300).toFixed(1)},${(fy(p.value) * 100).toFixed(1)}`).join(" ");
+  const v = data.period.realized;
   return (
-    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
-      {!compact && <div className="text-[11px]"><span className={cx("num font-semibold", up ? "text-up" : "text-down")}>{up ? "+" : "−"}{usd(Math.abs(v))}</span> <span className="text-muted">profit from {data.period.closed} closed trade{data.period.closed === 1 ? "" : "s"}{data.previous ? ` · previous period ${data.previous.pnl >= 0 ? "+" : "−"}${usd(Math.abs(data.previous.pnl))}` : ""}</span></div>}
-      <PnlLine pts={pts} color={color} height={height} nowLabel="closed-trade profit so far" />
-    </div>
+    <>
+      <svg viewBox="0 0 300 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full [filter:drop-shadow(0_0_3px_#39ff14)_drop-shadow(0_0_9px_#39ff14)]" aria-label="Profit line (closed trades)">
+        <path d={d} fill="none" stroke="#39ff14" strokeWidth="2.4" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      </svg>
+      {!compact && <span className="num pointer-events-none absolute left-1 top-0.5 rounded bg-bg-2/80 px-1 text-[10.5px] font-semibold text-[#39ff14] [text-shadow:0_0_8px_#39ff14]">profit {v >= 0 ? "+" : "−"}{usd(Math.abs(v))} · {data.period.closed} closed</span>}
+    </>
   );
 }

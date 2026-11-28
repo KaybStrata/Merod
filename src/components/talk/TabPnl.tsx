@@ -40,17 +40,18 @@ export function TabPnl({ conv }: { conv: string }) {
 }
 
 /** A running P&L line: zero line, buy/sell dots, and a hover readout (time, running P&L, the trade at that point). */
-export function PnlLine({ pts, color, height = 64, nowLabel = "now (incl. open)" }: { pts: Pt[]; color: string; height?: number; nowLabel?: string }) {
+export function PnlLine({ pts, color, height = 64, nowLabel = "now (incl. open)", overlay }: { pts: Pt[]; color: string; height?: number; nowLabel?: string; /** neon profit-only line, same $ scale */ overlay?: { time: number; value: number }[] }) {
   const box = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null); // 0..1 across the chart
   const g = useMemo(() => {
     if (pts.length < 2) return null;
-    const vals = [0, ...pts.map((p) => p.value)], min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+    const vals = [0, ...pts.map((p) => p.value), ...(overlay ?? []).map((p) => p.value)], min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
     const t0 = pts[0].time, t1 = pts[pts.length - 1].time || t0 + 1;
     const fx = (t: number) => (t - t0) / (t1 - t0 || 1), fy = (v: number) => (100 - ((v - min) / span) * 92 - 4) / 100;
     const line = pts.map((p, i) => `${i ? "L" : "M"}${(fx(p.time) * 300).toFixed(1)},${(fy(p.value) * 100).toFixed(1)}`).join(" ");
-    return { line, zero: fy(0) * 100, fx, fy, t0, t1 };
-  }, [pts]);
+    const neon = overlay?.length ? overlay.map((p, i) => `${i ? "L" : "M"}${(fx(p.time) * 300).toFixed(1)},${(fy(p.value) * 100).toFixed(1)}`).join(" ") : null;
+    return { line, zero: fy(0) * 100, fx, fy, t0, t1, neon };
+  }, [pts, overlay]);
   // The point nearest the cursor (trades snap the readout to them).
   const hv = useMemo(() => {
     if (hover == null || !g) return null;
@@ -71,6 +72,11 @@ export function PnlLine({ pts, color, height = 64, nowLabel = "now (incl. open)"
             <line x1="0" x2="300" y1={g.zero} y2={g.zero} stroke="currentColor" className="text-line-2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
             <path d={g.line} fill="none" stroke={color} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
           </svg>
+          {g.neon && (
+            <svg viewBox="0 0 300 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full [filter:drop-shadow(0_0_3px_#39ff14)_drop-shadow(0_0_8px_#39ff14)]" aria-label="Profit line (closed trades)">
+              <path d={g.neon} fill="none" stroke="#39ff14" strokeWidth="2.2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+            </svg>
+          )}
           {/* trade dots: green = buy, red = sell */}
           {pts.filter((p) => p.trade).map((p, i) => (
             <span key={i} className={cx("pointer-events-none absolute size-[6px] -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-bg-2", p.trade!.side === "buy" ? "bg-up" : "bg-down")}
