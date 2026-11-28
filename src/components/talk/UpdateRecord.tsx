@@ -1,4 +1,5 @@
 "use client";
+import { usePopSide } from "@/lib/usePopSide";
 import { useEffect, useState } from "react";
 import { RefreshCw, Circle, Check, Loader2, ShieldCheck, TrendingUp, X } from "lucide-react";
 import { api, useApi } from "@/lib/api";
@@ -15,6 +16,7 @@ const EVERY: [string, number][] = [["15 min", 15], ["30 min", 30], ["1 hour", 60
 export function UpdateRecord() {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const pop = usePopSide(open, 460);
   const { data, refresh } = useApi<any>("/api/talk/update", { refreshMs: 30_000 });
   const [hours, setHours] = useState(24);
   const [busy, setBusy] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function UpdateRecord() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={pop.ref}>
       <div className="flex items-center">
         <button onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Update: analyse recent trades and get changes that help your bots and agents"
           className={cx("flex h-8 items-center gap-1.5 rounded-l-lg border px-2.5 text-[12.5px]", open ? "border-accent/50 text-accent-2" : "border-line text-muted hover:text-text")}>
@@ -56,7 +58,7 @@ export function UpdateRecord() {
         </button>
       </div>
       {open && (
-        <div className="absolute bottom-10 left-0 z-30 w-[min(460px,90vw)] rounded-xl border border-line bg-panel p-3 shadow-2xl">
+        <div className={cx("absolute bottom-10 z-30 max-h-[min(78vh,720px)] w-[min(460px,90vw)] overflow-y-auto rounded-xl border border-line bg-panel p-3 shadow-2xl", pop.cls)}>
           <div className="flex items-center gap-2 text-[13px] font-semibold"><TrendingUp className="size-4 text-accent-2" />Trading update<button onClick={() => setOpen(false)} className="ml-auto text-faint hover:text-text"><X className="size-4" /></button></div>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {WINDOWS.map(([l, h]) => <button key={l} onClick={() => setHours(h)} className={cx("rounded-md px-2 py-0.5 text-[11.5px]", hours === h ? "bg-accent/20 text-accent-2" : "text-muted hover:text-text")}>{l}</button>)}

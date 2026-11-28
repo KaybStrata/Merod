@@ -1,4 +1,5 @@
 "use client";
+import { usePopSide } from "@/lib/usePopSide";
 import { useState } from "react";
 import { Wand2, Trash2, CalendarClock, Plus, Crosshair } from "lucide-react";
 import { api, useApi } from "@/lib/api";
@@ -12,6 +13,7 @@ import { cx, useToast } from "@/components/ui";
 export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) => void; compact?: boolean }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const pop = usePopSide(open, 360);
   const [tab, setTab] = useState<"skills" | "points" | "schedules">("skills");
   const [name, setName] = useState(""), [text, setText] = useState(""), [busy, setBusy] = useState(false);
   const data = useApi<any>(open ? "/api/skills" : null);
@@ -35,13 +37,13 @@ export function SkillsMenu({ onInsert, compact }: { onInsert?: (text: string) =>
   );
 
   return (
-    <div className="relative">
+    <div className="relative" ref={pop.ref}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Skills: standing instructions that change how Modo, OpenAI, Claude, bots and agents think, decide and trade"
         className={cx("flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px]", open ? "border-accent/50 text-accent-2" : "border-line text-muted hover:text-text", compact && "size-9 justify-center rounded-xl border-transparent px-0")}>
         <Wand2 className="size-3.5" />{!compact && <span>Skills</span>}{!compact && activeCount > 0 && <span className="rounded-full bg-accent-soft px-1.5 text-[10px] text-accent-2">{activeCount}</span>}
       </button>
       {open && (
-        <div className="absolute bottom-10 left-0 z-40 w-[360px] max-w-[90vw] rounded-xl border border-line bg-panel p-2 shadow-2xl">
+        <div className={cx("absolute bottom-10 z-40 max-h-[min(72vh,640px)] w-[360px] max-w-[90vw] overflow-y-auto rounded-xl border border-line bg-panel p-2 shadow-2xl", pop.cls)}>
           <div className="mb-2 flex gap-1 text-[12px]">
             {(["skills", "points", "schedules"] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} className={cx("flex items-center gap-1 rounded-md px-2 py-1 capitalize", tab === t ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>

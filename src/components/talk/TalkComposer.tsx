@@ -1,4 +1,5 @@
 "use client";
+import { usePopSide } from "@/lib/usePopSide";
 import { Children, cloneElement, isValidElement, useEffect, useRef, useState } from "react";
 import { ArrowUp, AtSign, Mic, Loader2, Zap, Sparkles, Bot, Brain, FlaskConical, Lightbulb, MessageSquare, Wand2, Crosshair, Megaphone, BellOff } from "lucide-react";
 import { useShell } from "@/components/shell/context";
@@ -17,6 +18,7 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
   const [listening, setListening] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [suggOpen, setSuggOpen] = useState(false);
+  const suggPop = usePopSide(suggOpen, 320);
   const rec = useRef<any>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
   const agents = useApi<any>(agentsOpen ? "/api/agents" : null);
@@ -98,10 +100,10 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
           <span className="hidden h-6 w-px bg-line sm:block" aria-hidden />
           {/* Tools */}
           <UpdateRecord />
-          <div className="relative">
+          <div className="relative" ref={suggPop.ref}>
             <button onClick={() => setSuggOpen((o) => !o)} aria-expanded={suggOpen} className={cx("flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[12.5px]", suggOpen ? "border-accent/50 text-accent-2" : "border-line text-muted hover:text-text")}><Lightbulb className="size-3.5" /> Suggestions</button>
             {suggOpen && (
-              <div className="absolute bottom-10 left-0 z-30 max-h-72 w-80 overflow-y-auto rounded-xl border border-line bg-panel p-1 shadow-2xl" onMouseLeave={() => setSuggOpen(false)}>
+              <div className={cx("absolute bottom-10 z-30 max-h-72 w-80 overflow-y-auto rounded-xl border border-line bg-panel p-1 shadow-2xl", suggPop.cls)} onMouseLeave={() => setSuggOpen(false)}>
                 {SUGGESTION_GROUPS.map(([group, items]) => (
                   <div key={group} className="mb-1">
                     <div className="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-faint">{group}</div>
