@@ -173,7 +173,14 @@ export async function skillCommand(userId: string, raw: string, tz = "UTC"): Pro
   if (!act) return null;
   const n = t.match(/\b(?:skills?|points?)\s*#?(\d+)/i)?.[1];
   const pick = /\ball\b/i.test(t) ? rows : n ? rows.filter((_, i) => i === Number(n) - 1) : rows.filter((r) => t.toLowerCase().includes(String(r.name).toLowerCase()));
-  if (!pick.length) return rows.length ? `Which ${kindWord}?\n${rows.map(line).join("\n")}` : `You have no ${kindWord}s.`;
+  if (!pick.length) {
+    if (rows.length) return `Which ${kindWord}?\n${rows.map(line).join("\n")}`;
+    // No skills, but points exist (they live in the same Skills menu and can block coins too): say so instead of "no skills".
+    const other = (await listSkills(userId)).filter((r) => r.kind !== kindWord && r.active);
+    return other.length
+      ? `You have no ${kindWord}s, but ${other.length} ${kindWord === "skill" ? "point" : "skill"}${other.length === 1 ? " is" : "s are"} on (Skills menu → ${kindWord === "skill" ? "Points" : "Skills"} tab)${other.some((r) => r.rules?.neverBuy?.length) ? `, including never-buy rules for ${[...new Set(other.flatMap((r) => r.rules?.neverBuy ?? []))].slice(0, 8).join(", ")}` : ""}. Say “turn off all skills” to turn those off too.`
+      : `You have no ${kindWord}s.`;
+  }
   for (const r of pick) act === "delete" ? await deleteSkill(userId, r.id) : await setSkillActive(userId, r.id, act === "on");
   return `${act === "delete" ? "Deleted" : act === "on" ? "Turned on" : "Turned off"} ${pick.map((r) => `“${r.kind === "point" ? String(r.instructions).slice(0, 60) : r.name}”`).join(", ")}.${act !== "on" ? " Settings it already changed on bots and agents stay as they are." : ""}`;
 }

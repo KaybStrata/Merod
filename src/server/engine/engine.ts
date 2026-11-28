@@ -256,7 +256,15 @@ export async function preview(intent: OrderIntent, ctx: EngineContext): Promise<
     const { activeRules } = await import("../skills");
     const sk = await activeRules(ctx.userId).catch(() => ({} as any));
     const sym = String(asset.symbol).toUpperCase();
-    if (sk.neverBuy?.length) add("skill_never_buy", !sk.neverBuy.includes(sym), sk.neverBuy.includes(sym) ? `Your skill says never buy ${sym}` : `Not on your never-buy list`);
+    if (sk.neverBuy?.length) {
+      let why = `Not on your never-buy list`;
+      if (sk.neverBuy.includes(sym)) {
+        // Say exactly which skill or point blocks it, and where to turn it off.
+        const src = await one<any>("SELECT kind, name, instructions FROM skills WHERE user_id=$1 AND active AND (expires_at IS NULL OR expires_at > now()) AND rules->'neverBuy' ? $2 ORDER BY created_at DESC LIMIT 1", [ctx.userId, sym]).catch(() => null);
+        why = src ? `Your ${src.kind === "point" ? "point" : "skill"} “${String(src.kind === "point" ? src.instructions : src.name).slice(0, 80)}” blocks buying ${sym} (turn it off in Skills → ${src.kind === "point" ? "Points" : "Skills"}, or say “turn off all skills”)` : `Your skills/points say never buy ${sym}`;
+      }
+      add("skill_never_buy", !sk.neverBuy.includes(sym), why);
+    }
     if (sk.onlyTrade?.length) add("skill_only_trade", sk.onlyTrade.includes(sym), sk.onlyTrade.includes(sym) ? `${sym} is on your only-trade list` : `Your skill only allows buying ${sk.onlyTrade.join(", ")}`);
     if (sk.maxTradeUsd) add("skill_max_trade", notional <= sk.maxTradeUsd + 1e-9, `Order $${notional.toFixed(2)} vs your skill's max $${sk.maxTradeUsd} per trade`);
   }

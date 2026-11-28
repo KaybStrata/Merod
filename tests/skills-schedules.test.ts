@@ -51,7 +51,7 @@ test("skills: rules are extracted and enforced; the AI gets the text", async () 
   const { handlePrompt } = await import("@/server/ai/interpret");
   const r: any = await handlePrompt(u, { text: "create a skill called Safe: always use a 4% stop loss and never buy BTC", provider: "merod" } as any);
   assert.match(r.message.content, /Skill “Safe” is on/, r.message.content);
-  assert.match(r.message.content, /never buy BTC/);
+  assert.match(r.message.content, /blocks buying BTC/);
   assert.equal((await one<any>("SELECT params FROM trading_bots WHERE id=$1", [bot.id]))!.params.stop_loss_pct, 4, "applied to existing bots");
   const { skillNotes } = await import("@/server/skills");
   assert.match((await skillNotes(u))!, /Safe: always use a 4% stop loss/);
@@ -64,7 +64,7 @@ test("skills: rules are extracted and enforced; the AI gets the text", async () 
     { userId: u, source: "manual", idempotencyKey: `sk${Date.now()}`, actor: { type: "user", id: u } } as any);
   const chk = plan.checks.find((c: any) => c.name === "skill_never_buy");
   assert.ok(chk && !chk.ok, JSON.stringify(plan.checks.map((c: any) => c.name)));
-  assert.match(chk.message, /never buy BTC/);
+  assert.match(chk.message, /blocks buying BTC/);
   const off: any = await handlePrompt(u, { text: "turn off skill Safe", provider: "merod" } as any);
   assert.match(off.message.content, /Turned off “Safe”/);
   assert.equal(await skillNotes(u), null);
