@@ -6,6 +6,8 @@ import { cx } from "@/components/ui";
 import { usd } from "@/lib/format";
 import { dialToSec, secLabel } from "@/lib/timeDial";
 import { TimeDial } from "@/components/TimeDial";
+import { ProfitToggle, useProfitOnly } from "@/components/ScopePnl";
+import { PnlLine } from "./TabPnl";
 
 type Pt = { time: number; value: number };
 type Trade = { id: string; time: number; side: "buy" | "sell"; source: string; symbol: string; quantity: number; price: number; usd: number; feeUsd: number; realizedPnl: number | null };
@@ -30,6 +32,8 @@ const pctLabel = (change: number, base: number) => {
 /** `seconds`: lock the chart to a window that ends now (the Review uses this); the range buttons are hidden. */
 export function PortfolioSpark({ height = 56, compact = false, className, seconds, onChange }: { height?: number; compact?: boolean; className?: string; seconds?: number; /** the change for the chosen range, so a parent can show the same number */ onChange?: (c: { change: number; pct: string; label: string; ready: boolean }) => void }) {
   const [range, setRange] = useState<(typeof RANGES)[number]>("1D");
+  // "Profit": show only profit/loss from closed trades in this window (shared switch with every other P&L graph).
+  const [profitOnly, setProfitOnly] = useProfitOnly();
   // Break even: measure against what you put in (starting balance + deposits − withdrawals) instead of the range's start.
   const [beOn, setBeOn] = useState(() => { try { return localStorage.getItem("merod-pnl-breakeven") === "1"; } catch { return false; } });
   const toggleBe = () => setBeOn((v) => { try { localStorage.setItem("merod-pnl-breakeven", v ? "0" : "1"); } catch { /* ignore */ } return !v; });
@@ -64,9 +68,10 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
   const useBe = beOn && !!breakEven;
   const first = useBe ? breakEven! : pts[0]?.value ?? 0, last = pts[pts.length - 1]?.value ?? 0, change = last - first;
   const up = change >= 0;
+  const windowSec: number | null = seconds ?? (range === "Custom" ? dialSec : SHORT[range] ?? ({ "1D": 86_400, "1W": 604_800, "1M": 2_592_000 } as Record<string, number>)[range] ?? null);
   const rangeLabel = seconds ? secLabel(seconds) : range === "Custom" ? secLabel(dialSec) : range;
   const ready = pts.length > 1;
-  useEffect(() => { onChange?.({ change, pct: `${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%`, label: rangeLabel, ready }); }, [change, first, rangeLabel, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (profitOnly) return; onChange?.({ change, pct: `${up ? "" : "−"}${pctLabel(Math.abs(change), first)}%`, label: rangeLabel, ready }); }, [change, first, rangeLabel, ready, profitOnly]); // eslint-disable-line react-hooks/exhaustive-deps
   const trades: Trade[] = useMemo(() => {
     const src: Trade[] = (zoom && zData?.trades ? zData.trades : data?.trades) ?? [];
     return src.filter((t: Trade) => Number.isFinite(t.time) && (!zoom || (t.time >= zoom.a && t.time <= zoom.b)));
@@ -177,6 +182,7 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
             Break-even P&L
           </button>
         )}
+        <span onClick={(e) => e.stopPropagation()}><ProfitToggle on={profitOnly} onChange={setProfitOnly} /></span>
         {seconds ? <span className="ml-auto text-[10px] text-faint">last {secLabel(seconds)}</span> : compact ? (
           <select value={range} aria-label="Time range" onClick={(e) => e.stopPropagation()} onChange={(e) => setRange(e.target.value as (typeof RANGES)[number])}
             className="ml-auto rounded border border-line bg-bg-2 px-1 py-px text-[10px] text-muted outline-none">
@@ -206,7 +212,7 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
         );
       })()}
       {range === "Custom" && !seconds && <TimeDial value={dialSec} onChange={setDialSec} className="mt-1.5" />}
-      {path ? (
+      {profitOnly ? <ProfitLine seconds={windowSec} height={height} compact={compact} onValue={(v) => onChange?.({ change: v, pct: "closed trades", label: rangeLabel, ready: true })} /> : path ? (
         <div ref={boxRef} className="relative mt-1 cursor-crosshair touch-none select-none" style={{ height }}
           onPointerMove={onMove} onPointerDown={onDown} onPointerUp={() => { drag.current = null; }} onPointerLeave={() => { setHover(null); drag.current = null; }}
           onDoubleClick={(e) => { e.stopPropagation(); setZoom(null); }} onClick={(e) => e.stopPropagation()}
@@ -278,6 +284,22 @@ export function PortfolioSpark({ height = 56, compact = false, className, second
           )}
         </div>
       ) : <div className="mt-1 flex items-center gap-2 text-[10.5px] text-faint" style={{ height }}>{data ? "Not enough history yet" : "Loading…"}{zoom && <button onClick={(e) => { e.stopPropagation(); setZoom(null); }} className="text-accent-2 hover:underline">Reset zoom</button>}</div>}
+    </div>
+  );
+}
+
+/** Profit view of the portfolio chart: closed-trade profit/loss over the window, from every source. */
+function ProfitLine({ seconds, height, compact, onValue }: { seconds: number | null; height: number; compact?: boolean; onValue?: (v: number) => void }) {
+  const { data } = useApi<any>(`/api/pnl/scope?scope=trades${seconds ? `&range=${Math.max(60, Math.round(seconds))}` : ""}`, { refreshMs: 15_000 });
+  const realized = data?.period?.realized;
+  useEffect(() => { if (realized != null) onValue?.(realized); }, [realized]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!data) return <div style={{ height }} className="mt-1 text-[11px] text-faint">Loading…</div>;
+  const v = data.period.realized, up = v >= 0, color = up ? "var(--color-up, #22c55e)" : "var(--color-down, #f0506e)";
+  const pts = [...data.points.slice(0, -1), { ...data.points[data.points.length - 1], value: v }];
+  return (
+    <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+      {!compact && <div className="text-[11px]"><span className={cx("num font-semibold", up ? "text-up" : "text-down")}>{up ? "+" : "−"}{usd(Math.abs(v))}</span> <span className="text-muted">profit from {data.period.closed} closed trade{data.period.closed === 1 ? "" : "s"}{data.previous ? ` · previous period ${data.previous.pnl >= 0 ? "+" : "−"}${usd(Math.abs(data.previous.pnl))}` : ""}</span></div>}
+      <PnlLine pts={pts} color={color} height={height} nowLabel="closed-trade profit so far" />
     </div>
   );
 }

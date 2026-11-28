@@ -8,6 +8,7 @@ import { Badge, Button, Card, Input, PaperBadge, Pills, Select, SourceBadge, Sta
 import { useRealtime } from "@/components/shell/context";
 import { usd, pct, price, qty, ago, tone } from "@/lib/format";
 import { AutoModesBar } from "@/components/AutoModesBar";
+import { ScopePnlCard } from "@/components/ScopePnl";
 
 const LEVEL_TONE: Record<string, string> = { observation: "text-muted", trigger: "text-accent-2", instruction: "text-[#4aa8ff]", order: "text-warn", result: "text-up", warning: "text-warn", error: "text-down", control: "text-text" };
 
@@ -57,6 +58,7 @@ export default function BotDetail({ params }: { params: Promise<{ id: string }> 
           {bot.description && <p className="mt-1 text-sm">{bot.description}</p>}
           {bot.created_from_prompt && <p className="mt-1 text-xs text-faint">Created from prompt: “{bot.created_from_prompt}”</p>}
           <div className="mt-2"><div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-faint">Auto switches for this bot</div><AutoModesBar scope="bot" scopeRef={bot.id} /></div>
+          <ScopePnlCard scope="bot" refId={bot.id} title="This bot" className="mt-3 max-w-[520px] rounded-lg border border-line bg-bg-2/40 p-3" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-2 rounded-xl border border-line bg-bg-2 px-3 py-1.5 text-xs text-muted" title="Auto-training only reduces risk; changes are revertible on the Auto-Training page">

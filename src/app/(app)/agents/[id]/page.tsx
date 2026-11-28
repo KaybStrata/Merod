@@ -13,6 +13,7 @@ import { ActivityFeed } from "@/components/agents/ActivityFeed";
 import { agentAct } from "@/components/agents/AgentCard";
 import { AgentAvatar, AreaChart, KindBadge, StatusDot, GoldButton, GhostButton, fmtPct, fmtSigned, fmtUsd, toneOf, clock } from "@/components/agents/common";
 import { AutoModesBar } from "@/components/AutoModesBar";
+import { ScopePnlCard } from "@/components/ScopePnl";
 
 type Tab = "overview" | "instructions" | "memory" | "executions" | "versions" | "log" | "settings";
 const AUT = ["", "Observe", "Suggest", "Prepare", "Supervised", "Conditional", "Autonomous"];
@@ -39,6 +40,7 @@ export default function AgentPage({ params }: { params: Promise<{ id: string }> 
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2"><h2 className="text-[1.15rem] font-semibold tracking-tight">{a.name}</h2><StatusDot status={a.status} /><span className="rounded-md border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[10px] font-semibold text-warn">PAPER</span><AgreementBadge agentId={id} name={a.name} /></div>
           <div className="mt-1.5"><AutoModesBar scope="agent" scopeRef={id} compact /></div>
+          <ScopePnlCard scope="bot" refId={id} title="This AI bot" className="mt-2 max-w-[520px] rounded-lg border border-line bg-bg-2/40 p-3" />
           <div className="text-[12px] text-muted">{a.roleName} · autonomy {a.autonomy_level} ({AUT[a.autonomy_level]}) · v{a.version} · model {a.routedModel}{a.fleet_id && <> · <Link href={`/agents/fleets/${a.fleet_id}`} className="underline">fleet</Link></>}{a.stop_reason && <span className="text-warn"> · {a.stop_reason}</span>}</div>
         </div>
         <div className="ml-auto flex flex-wrap gap-2">

@@ -10,9 +10,8 @@ import { WhyLine } from "@/components/agents/Why";
 import { useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 import { PortfolioSpark } from "./PortfolioSpark";
-import { TabPnl } from "./TabPnl";
 import { explainActivity } from "@/lib/explainActivity";
-import { AutonPnlCard } from "@/components/auton/AutonPnl";
+import { ScopePnlCard, type PnlScope } from "@/components/ScopePnl";
 import { TimeDial } from "@/components/TimeDial";
 import { secLabel } from "@/lib/timeDial";
 
@@ -27,6 +26,9 @@ const pnlOf = (i: Item) => i.pnl ?? i.pnlPct;
 const hms = (t: string) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
 
 /** "Activity" button in the Talk top bar: opens a live side panel of everything trading for you, without leaving Talk. */
+/** Activity filter → which trades its P&L graph covers. */
+const FILTER_SCOPE: Record<string, PnlScope | undefined> = { order: "trades", buy: "trades", sell: "trades", profit: "trades", loss: "trades", bot: "bot", agent: "bot", auto: "auto", modo: "modo", copy: "copy", auton: "auton" };
+
 export function TalkActivity() {
   const [open, setOpen] = useState(false);
   const [tip, setTip] = useState<{ item: Item; rect: DOMRect } | null>(null);
@@ -110,10 +112,11 @@ export function TalkActivity() {
                 <button onClick={() => setScope("all")} className={cx("rounded-md px-2 py-0.5", scope === "all" ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>Everything</button>
               </div>
             )}
-            {src === "auton"
-              ? <AutonPnlCard className="border-b border-line px-4 py-3" />
+            {/* Each filter has its own P&L graph (only that group's trades; only this tab's when "This tab only"). */}
+            {FILTER_SCOPE[src]
+              ? <ScopePnlCard key={`${src}-${effConv ?? "all"}`} scope={FILTER_SCOPE[src]!} conv={effConv} className="border-b border-line px-4 py-3" />
               : effConv
-              ? <div className="border-b border-line px-4 py-3"><div className="mb-1 text-[11px] font-semibold text-muted">This tab · P&L</div><TabPnl conv={effConv} /></div>
+              ? <ScopePnlCard key={`tab-${effConv}`} scope="trades" conv={effConv} title="This tab" className="border-b border-line px-4 py-3" />
               : <div className="border-b border-line px-4 py-3"><div className="mb-1 text-[11px] font-semibold text-muted">Portfolio · P&L</div><PortfolioSpark height={70} /></div>}
             <div className="flex flex-wrap gap-1 border-b border-line px-3 py-2">
               {SOURCES.map(([k, l]) => (
