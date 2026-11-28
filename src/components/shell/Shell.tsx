@@ -43,7 +43,7 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
   { label: "Insight", items: [
     { href: "/live", label: "Activity", icon: Activity, also: ["/activity", "/world"] },
     { href: "/review", label: "Review", icon: ClipboardCheck },
-    { href: "/advisor", label: "Advisor", icon: Lightbulb },
+    { href: "/advisor", label: "Momo (Advisor)", icon: Lightbulb },
     { href: "/analytics", label: "Analytics", icon: LineChart, also: ["/portfolio", "/progress"] },
     { href: "/research", label: "Research", icon: Search, also: ["/news"] },
     { href: "/learning", label: "AI Learning", icon: Brain, also: ["/training"] },
@@ -162,11 +162,11 @@ function Frame({ children }: { children: React.ReactNode }) {
   );
 
   // Inside Talk's floating window (an iframe): just the page, with a small title, no sidebar / top bar / prompt bar.
-  if (embedded && mode !== "talk") return (
+  if (embedded && mode === "classic") return (
     <div className="min-h-dvh bg-bg px-3 pb-6 pt-3 text-text sm:px-4"><TitleBlock /><div className="mt-3">{children}</div></div>
   );
   // Talk mode (/talk, flag-gated): a separate full-screen frame. Classic sidebar, top bar, PromptBar, RightRail and MobileNav are not mounted.
-  if (mode === "talk") return <TalkFrame>{children}</TalkFrame>;
+  if (mode === "talk" || mode === "auton") return <TalkFrame>{children}</TalkFrame>;
 
   return (
     <div className="app-glow min-h-screen">

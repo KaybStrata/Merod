@@ -148,6 +148,20 @@ async function safeFetch(url: string, accept: string, maxBytes: number): Promise
   }
   throw new HttpError(400, "Too many redirects");
 }
+/** Best effort: the video's captions (the same text as YouTube → ⋯ → Show transcript), when YouTube serves them. */
+async function youtubeTranscript(videoId: string): Promise<string> {
+  const page = await safeFetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, "text/html", 4 * 1024 * 1024);
+  const m = page.body.match(/"captionTracks":(\[.*?\])/);
+  if (!m) return "";
+  let tracks: any[] = [];
+  try { tracks = JSON.parse(m[1]); } catch { return ""; }
+  const t = tracks.find((x) => String(x.languageCode).startsWith("en") && x.kind !== "asr") ?? tracks.find((x) => String(x.languageCode).startsWith("en")) ?? tracks[0];
+  if (!t?.baseUrl || !/^https:\/\/(www\.)?youtube\.com\//.test(t.baseUrl)) return "";
+  const xml = await safeFetch(t.baseUrl, "text/xml,application/xml,*/*", 2 * 1024 * 1024);
+  const text = [...xml.body.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)].map((x) => decodeEntities(decodeEntities(x[1])).replace(/<[^>]+>/g, "")).join(" ").replace(/\s+/g, " ").trim();
+  return text.length > 100 ? text : "";
+}
+
 /** Readable text from an article page (drops scripts, styles, navigation; keeps headings, paragraphs, lists). */
 export function htmlToText(html: string): { title: string; text: string } {
   const title = (html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)/i)?.[1] ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").trim();
@@ -173,8 +187,9 @@ export async function addLink(userId: string, raw: string) {
       const r = await safeFetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${yt[1]}`)}`, "application/json", 100_000);
       const j = JSON.parse(r.body); title = String(j.title ?? title).slice(0, 200); author = String(j.author_name ?? "").slice(0, 100);
     } catch { /* keep generic title */ }
+    const transcript = await youtubeTranscript(yt[1]).catch(() => "");
     const row = await one<{ id: string }>("INSERT INTO training_materials (user_id, kind, title, source_url, mime, text_content) VALUES ($1,'youtube',$2,$3,'video/youtube',$4) RETURNING id",
-      [userId, title, url, `YouTube video: "${title}"${author ? ` by ${author}` : ""}.`]);
+      [userId, title, url, clip(`YouTube video: "${title}"${author ? ` by ${author}` : ""}.${transcript ? `\n\nTranscript:\n${transcript}` : ""}`, LIMITS.textChars)]);
     return row!.id;
   }
   const page = await safeFetch(url, "text/html,text/plain,application/pdf;q=0.9,*/*;q=0.5", LIMITS.pageBytes);
@@ -239,6 +254,12 @@ export async function processMaterial(id: string) {
     const ai = await userAIChoice(m.user_id);
     const label = ai ? `${ai.provider}:${ai.model}` : "merod:rules";
     if (m.kind === "video") return done("saved", "Saved. Claude and ChatGPT can't watch video files yet. Add the video's transcript or your notes as a text file and Merod will learn from them.");
+    if (m.kind === "youtube" && String(m.text_content ?? "").includes("Transcript:")) {
+      // Captions were readable: learn from them like an article.
+      const input2 = { kind: "text" as const, title: m.title, text: clip(m.text_content ?? "", LIMITS.aiTextChars) };
+      const out = ai ? await llmExtractLessons(ai.provider, ai.model, input2, m.user_id) : ruleReader(m.title, input2.text);
+      return done(out.lessons.length ? "learned" : "saved", out.lessons.length ? `Learned ${out.lessons.length} lesson${out.lessons.length > 1 ? "s" : ""} from the video's transcript.` : "Read the transcript, but found no clear trading rules.", { ...out, tags: [...(out.tags ?? []), "youtube"] }, label);
+    }
     if (m.kind === "youtube") {
       const note = "Only the video's title and channel can be read from YouTube. For full learning, paste the transcript or key points (YouTube → ⋯ → Show transcript) as text.";
       if (!ai) return done("saved", note, { summary: m.text_content, lessons: [], symbols: [], tags: ["youtube"] }, label);

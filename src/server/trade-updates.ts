@@ -190,8 +190,8 @@ export async function runDueRecordings() {
       await publishUpdate(r.user_id);
       if (quiet) continue;
       const waiting = a.decisions.length - applied.length;
-      await notify(r.user_id, "update", `Recording: ${a.decisions.length ? `${a.decisions.length} suggestion${a.decisions.length === 1 ? "" : "s"}` : "trading update"}`,
-        `${a.summary}${applied.length ? ` Auto-applied ${applied.length} safe change${applied.length === 1 ? "" : "s"}.` : ""}${waiting ? ` ${waiting} waiting for you in Talk → Update.` : ""}`, "/talk?update=1").catch(() => {});
+      await notify(r.user_id, "update", `Learning: ${a.decisions.length ? `${a.decisions.length} suggestion${a.decisions.length === 1 ? "" : "s"}` : "trading update"}`,
+        `${a.summary}${applied.length ? ` Auto-applied ${applied.length} safe change${applied.length === 1 ? "" : "s"}.` : ""}${waiting ? ` ${waiting} waiting for you in Talk → Learn.` : ""}`, "/talk?update=1").catch(() => {});
     } catch (e: any) { console.error("[recording]", r.user_id, e?.message); }
   }
   return due.length;

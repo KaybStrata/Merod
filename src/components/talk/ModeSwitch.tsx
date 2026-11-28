@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Cpu } from "lucide-react";
 import { useShell, TALK_FLAG, type UiMode } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 
-const OPTIONS: { m: UiMode; label: string }[] = [{ m: "classic", label: "Classic" }, { m: "talk", label: "Talk" }];
+const OPTIONS: { m: UiMode; label: string }[] = [{ m: "classic", label: "Classic" }, { m: "talk", label: "Talk" }, { m: "auton", label: "Auton" }];
 
 /**
  * Classic | Talk segmented control (role="radiogroup", arrow keys). Switching is a human-only UI action:
@@ -37,7 +37,7 @@ export function ModeSwitch({ callout = false, force = false }: { callout?: boole
             <button key={o.m} ref={(el) => { refs.current[i] = el; }} role="radio" aria-checked={on} tabIndex={on ? 0 : -1}
               onClick={() => { setMode(o.m); dismiss(); }} onKeyDown={(e) => onKey(e, i)}
               className={cx("flex h-7 items-center gap-1 rounded-md px-2.5 text-[12px] font-medium transition-colors", on ? "bg-grad text-bg shadow" : "text-muted hover:text-text")}>
-              {o.m === "talk" && <Sparkles className="size-3" />}{o.label}
+              {o.m === "talk" && <Sparkles className="size-3" />}{o.m === "auton" && <Cpu className="size-3" />}{o.label}
             </button>
           );
         })}

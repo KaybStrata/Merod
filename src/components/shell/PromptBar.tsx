@@ -11,6 +11,7 @@ import { cx } from "@/components/ui";
 import { useShell } from "./context";
 import { PlanCard } from "./PlanCard";
 import { AutoModesBar } from "@/components/AutoModesBar";
+import { droppedLinks } from "@/components/shell/AdvisorPanel";
 
 /** Floating natural-language prompt bar, present on every screen. Knows which asset is on screen. */
 export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftCollapsed?: boolean; railOpen?: boolean }) {
@@ -109,8 +110,8 @@ export function PromptBar({ leftCollapsed = false, railOpen = true }: { leftColl
           </>
         )}
         <form onSubmit={(e) => { e.preventDefault(); send(); }}
-          onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
-          onDrop={(e) => { const f = filesFrom(e.dataTransfer); if (f.length) { e.preventDefault(); att.add(f); } }}
+          onDragOver={(e) => { const t = [...e.dataTransfer.types]; if (t.includes("Files") || t.includes("text/uri-list") || t.includes("text/plain")) e.preventDefault(); }}
+          onDrop={(e) => { const f = filesFrom(e.dataTransfer); if (f.length) { e.preventDefault(); att.add(f); return; } const l = droppedLinks(e); if (l) { e.preventDefault(); setText((t) => `${t}${t && !t.endsWith(" ") ? " " : ""}${l} `); } }}
           className="relative z-50 flex items-end gap-2 rounded-2xl border border-line-2 bg-panel/95 p-1.5 shadow-[0_10px_40px_rgba(0,0,0,.45)] backdrop-blur focus-within:border-accent">
           <TypeAheadList list={ahead.list} idx={ahead.idx} onPick={ahead.pick} query={text} />
           <AttachButton onFiles={att.add} label={null} className="mb-0.5 size-9 shrink-0 justify-center rounded-xl border-transparent px-0" />

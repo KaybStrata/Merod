@@ -29,7 +29,7 @@ import { attachWidgets, type WidgetHint } from "../talk/attach";
  *  → 5 engine validation → 6 show price/fees/risks → 7 approval when required → 8 route → 9 confirm → 10 portfolio.
  * The AI never calls the engine directly; this module turns a validated instruction into engine intents.
  */
-export interface PromptInput { text: string; conversationId?: string; screenAssetId?: string | null; provider?: AIProvider; model?: string; /** "2/5" when this is one instruction of a multi-instruction prompt (server-internal) */ part?: string; /** paper or real money for trades/bots from this prompt */ book?: "paper" | "live"; /** files attached in the prompt box */ attachmentIds?: string[]; /** the browser's time zone, for schedules */ tz?: string; /** AI = Auton in the composer: Auton takes the prompt as a goal and acts on its own */ auton?: boolean; /** server-internal: what the AI knows about the attachments */ attached?: { names: string[]; block: string; plain: string } | null }
+export interface PromptInput { text: string; conversationId?: string; screenAssetId?: string | null; provider?: AIProvider; model?: string; /** "2/5" when this is one instruction of a multi-instruction prompt (server-internal) */ part?: string; /** paper or real money for trades/bots from this prompt */ book?: "paper" | "live"; /** files attached in the prompt box */ attachmentIds?: string[]; /** the browser's time zone, for schedules */ tz?: string; /** AI = Auton in the composer: Auton takes the prompt as a goal and acts on its own */ auton?: boolean; /** the prompt came from Momo's box: train Momo on its links */ momo?: boolean; /** server-internal: what the AI knows about the attachments */ attached?: { names: string[]; block: string; plain: string } | null }
 export type PlanCard =
   | { type: "order"; intent: OrderIntent; plan: any }
   | { type: "bot"; config: BotConfig; strategyName: string; assetLabel: string }
@@ -181,6 +181,19 @@ export async function handlePrompt(userId: string, input: PromptInput) {
       [userId, convId, message, card ? JSON.stringify(card) : null, status]);
     return { conversationId: convId!, message: row, userMessageId: um!.id, fallbackReason: null, provider: "merod", model: "deterministic" };
   };
+  // Links (pasted, typed or dropped): learn from them, then train / copy / execute as the words around them ask.
+  if (!input.part) {
+    const { hasLink, linkCommand } = await import("../link-learn");
+    if (hasLink(text)) {
+      const lk = await linkCommand(userId, text, { momo: input.momo }).catch((e: any) => ({ summary: `Couldn't learn from that link: ${e.message}`, followUp: undefined }));
+      if (lk) {
+        const first = await early(lk.summary, { type: "executed", detail: "Learned from link" } as any, "executed", null);
+        if (!lk.followUp) return first;
+        const next: any = await handlePrompt(userId, { ...input, text: lk.followUp, conversationId: convId, attachmentIds: undefined, attached: undefined });
+        return { ...next, messages: [first.message, ...(Array.isArray(next.messages) && next.messages.length ? next.messages : [next.message])] };
+      }
+    }
+  }
   // Auto switches: "turn on auto gainer", "auto scanner off", "turn on all auto switches", "auto gainer 25% for Dip A".
   if (!input.part && !/\bmap\b/i.test(text) && /\bauto[\s-]?(?:train(?:er|ing)?|gain(?:er)?|adjust(?:er|ing)?|scan(?:ner|ning)?|switches|modes|toggles)\b|\ball autos\b/i.test(text)) {
     const { autoModeCommand } = await import("../auto-modes");

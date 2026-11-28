@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 export interface ShellUser { id: string; handle: string; displayName: string; role: string; tradingMode: "paper" | "live"; totpEnabled: boolean }
 export interface ScreenAsset { id: string; symbol: string; name?: string }
 /** Top-bar title: small section crumb, title, and the word drawn in gold serif italic (must appear in the title). */
-export type UiMode = "classic" | "talk";
+export type UiMode = "classic" | "talk" | "auton";
 export interface TalkState { enabled: boolean; uiModeDefault: "classic" | "talk" | "last"; uiLastMode: UiMode; talkPrefs: { showSwitch: boolean; digest: boolean; voice: boolean; widgets: string[] } }
 export const TALK_FLAG = process.env.NEXT_PUBLIC_MEROD_TALK_MODE === "1";
 /** The mode Merod should open in, from Settings › Interface (stored in localStorage["merod-mode"] for the no-flash script). */
@@ -70,7 +70,7 @@ export function ShellProvider({ user, children }: { user: ShellUser; children: R
   // Talk mode (secondary, flag-gated). The mode is derived from the route: /talk = Talk, everything else = Classic.
   const pathname = usePathname();
   const router = useRouter();
-  const mode: UiMode = TALK_FLAG && pathname.startsWith("/talk") ? "talk" : "classic";
+  const mode: UiMode = TALK_FLAG && pathname.startsWith("/talk") ? "talk" : TALK_FLAG && pathname.startsWith("/auton") ? "auton" : "classic";
   const [talk, setTalk] = useState<TalkState | null>(null);
   const refreshTalk = useCallback(() => {
     if (!TALK_FLAG) return;
@@ -80,14 +80,13 @@ export function ShellProvider({ user, children }: { user: ShellUser; children: R
   const setMode = useCallback((m: UiMode) => {
     if (!TALK_FLAG || m === mode) return;
     try {
-      if (m === "talk") localStorage.setItem("merod-last-classic", `${window.location.pathname}${window.location.search}`);
+      if (m !== "classic" && mode === "classic") localStorage.setItem("merod-last-classic", `${window.location.pathname}${window.location.search}`);
       if (talk?.uiModeDefault === "last") localStorage.setItem("merod-mode", m);
     } catch {}
-    api("/api/talk/mode", { method: "POST", json: { mode: m } }).catch(() => {});
-    setTalk((t) => (t ? { ...t, uiLastMode: m } : t));
+    if (m !== "auton") { api("/api/talk/mode", { method: "POST", json: { mode: m } }).catch(() => {}); setTalk((t) => (t ? { ...t, uiLastMode: m } : t)); }
     let back = "/";
     try { back = localStorage.getItem("merod-last-classic") || "/"; } catch {}
-    router.push(m === "talk" ? "/talk" : back.startsWith("/talk") ? "/" : back);
+    router.push(m === "talk" ? "/talk" : m === "auton" ? "/auton" : back.startsWith("/talk") || back.startsWith("/auton") ? "/" : back);
   }, [mode, router, talk?.uiModeDefault]);
   // ⌘. / Ctrl+. toggles Classic ⇄ Talk (ignored while typing). Works even when the switch is hidden.
   useEffect(() => {
@@ -97,7 +96,7 @@ export function ShellProvider({ user, children }: { user: ShellUser; children: R
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName))) return;
       e.preventDefault();
-      setMode(mode === "talk" ? "classic" : "talk");
+      setMode(mode === "classic" ? "talk" : "classic");
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);

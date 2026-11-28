@@ -13,7 +13,7 @@ const TABS: { id: FloatTab; label: string; icon: any; href?: string }[] = [
   { id: "bots", label: "Bots & agents", icon: Bot, href: "/bots" },
   { id: "auton", label: "Auton", icon: Cpu },
   { id: "edit", label: "Edit all", icon: SlidersHorizontal },
-  { id: "advisor", label: "Advisor", icon: Lightbulb, href: "/advisor" },
+  { id: "advisor", label: "Momo", icon: Lightbulb, href: "/advisor" },
   { id: "ewallets", label: "E-wallets", icon: PiggyBank, href: "/e-wallets" },
   { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
 ];

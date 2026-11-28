@@ -10,8 +10,8 @@ const WINDOWS: [string, number][] = [["1H", 1], ["6H", 6], ["24H", 24], ["3D", 7
 const EVERY: [string, number][] = [["15 min", 15], ["30 min", 30], ["1 hour", 60], ["4 hours", 240], ["Daily", 1440]];
 
 /**
- * Talk composer: "Update" analyses recent trading and proposes changes for bots/agents (Apply each, or Apply all);
- * "Record" keeps doing it on a schedule until turned off, optionally auto-applying only the safe (risk-reducing) ones.
+ * Talk composer: "Learn" analyses recent trading and proposes changes for bots/agents (Apply each, or Apply all);
+ * "Learning" keeps doing it on a schedule until turned off, optionally auto-applying only the safe (risk-reducing) ones.
  */
 export function UpdateRecord() {
   const toast = useToast();
@@ -41,20 +41,20 @@ export function UpdateRecord() {
   }
   async function setRec(patch: { active: boolean; everyMin?: number; autoApply?: boolean }) {
     setBusy("rec");
-    try { await api("/api/talk/record", { method: "POST", json: { everyMin: rec?.every_min ?? 60, autoApply: rec?.auto_apply ?? false, ...patch } }); await refresh(); toast(patch.active ? "Recording: Merod will keep analysing your trades" : "Recording stopped", "up"); }
+    try { await api("/api/talk/record", { method: "POST", json: { everyMin: rec?.every_min ?? 60, autoApply: rec?.auto_apply ?? false, ...patch } }); await refresh(); toast(patch.active ? "Learning: Merod will keep learning from your trades" : "Learning stopped", "up"); }
     catch (e: any) { toast(e.message, "down"); } finally { setBusy(null); }
   }
 
   return (
     <div className="relative" ref={pop.ref}>
       <div className="flex items-center">
-        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Update: analyse recent trades and get changes that help your bots and agents"
+        <button onClick={() => setOpen((o) => !o)} aria-expanded={open} title="Learn: analyse recent trades and get changes that help your bots and agents"
           className={cx("flex h-8 items-center gap-1.5 rounded-l-lg border px-2.5 text-[12.5px]", open ? "border-accent/50 text-accent-2" : "border-line text-muted hover:text-text")}>
-          <RefreshCw className="size-3.5" /> Update
+          <RefreshCw className="size-3.5" /> Learn
         </button>
-        <button onClick={() => setRec({ active: !recording })} disabled={busy === "rec"} title={recording ? "Recording: Merod is analysing your trades on a schedule. Click to stop." : "Record: keep analysing trades until you stop it"}
+        <button onClick={() => setRec({ active: !recording })} disabled={busy === "rec"} title={recording ? "Learning: Merod is learning from your trades on a schedule. Click to stop." : "Learning: keep learning from your trades until you stop it"}
           className={cx("-ml-px flex h-8 items-center gap-1.5 rounded-r-lg border px-2.5 text-[12.5px]", recording ? "border-down/50 bg-down-soft text-down" : "border-line text-muted hover:text-text")}>
-          <Circle className={cx("size-3", recording && "fill-current pulse-dot")} /> {recording ? "Recording" : "Record"}
+          <Circle className={cx("size-3", recording && "fill-current pulse-dot")} /> {recording ? "Learning…" : "Learning"}
         </button>
       </div>
       {open && (
@@ -67,7 +67,7 @@ export function UpdateRecord() {
 
           {latest ? (
             <div className="mt-2.5">
-              <div className="text-[10.5px] text-faint">{latest.source === "record" ? "Recorded" : "Analyzed"} {ago(latest.created_at)} · last {Number(latest.hours) >= 48 ? `${Math.round(Number(latest.hours) / 24)} days` : `${Number(latest.hours)}h`}</div>
+              <div className="text-[10.5px] text-faint">{latest.source === "record" ? "Learned" : "Analyzed"} {ago(latest.created_at)} · last {Number(latest.hours) >= 48 ? `${Math.round(Number(latest.hours) / 24)} days` : `${Number(latest.hours)}h`}</div>
               <p className="mt-0.5 text-[12.5px] leading-relaxed">{latest.stats?.summary}</p>
               {latest.stats?.actors?.length > 0 && (
                 <div className="mt-2 max-h-28 overflow-y-auto rounded-lg border border-line text-[11.5px]">
@@ -107,7 +107,7 @@ export function UpdateRecord() {
 
           <div className="mt-3 border-t border-line pt-2.5 text-[12px]">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold">Record</span>
+              <span className="font-semibold">Learning</span>
               <span className="text-muted">{recording ? `on since ${ago(rec.started_at)}${rec.last_run_at ? ` · last ${ago(rec.last_run_at)}` : ""}` : "off"}</span>
               <select value={rec?.every_min ?? 60} onChange={(e) => setRec({ active: recording || true, everyMin: Number(e.target.value) })} className="ml-auto rounded-md border border-line bg-bg-2 px-1.5 py-0.5 text-[11.5px]">
                 {EVERY.map(([l, m]) => <option key={m} value={m}>every {l}</option>)}
@@ -116,7 +116,7 @@ export function UpdateRecord() {
             </div>
             <label className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-muted">
               <input type="checkbox" checked={!!rec?.auto_apply} onChange={(e) => setRec({ active: recording || e.target.checked, autoApply: e.target.checked })} className="mt-0.5" />
-              Auto-apply safe changes while recording (turning off a losing bot, tighter stop-losses, avoiding a losing coin). Bigger trade sizes always wait for you.
+              Auto-apply safe changes while learning (turning off a losing bot, tighter stop-losses, avoiding a losing coin). Bigger trade sizes always wait for you.
             </label>
           </div>
         </div>

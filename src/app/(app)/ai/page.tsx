@@ -9,6 +9,7 @@ import { cx, useToast } from "@/components/ui";
 import { usePageTitle, useShell } from "@/components/shell/context";
 import { MerodReply } from "@/components/ask/PlanFrame";
 import { ago } from "@/lib/format";
+import { droppedLinks } from "@/components/shell/AdvisorPanel";
 
 const EXAMPLES = [
   { group: "Trades", items: ["Buy $100 worth of Solana", "Sell 25% of my NVIDIA position", "Buy $2,500 of SOL if it dips below $130, take profit at 8%, stop at 4%"] },
@@ -185,7 +186,7 @@ function AIPage() {
         <form onSubmit={(e) => { e.preventDefault(); send(); }} className="border-t border-line p-3">
           <div className="gold-ring flex items-end gap-2 rounded-xl border border-line-2 bg-bg-2/70 p-2">
             <Paperclip className="mb-2 ml-1 size-4 shrink-0 text-faint" />
-            <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={1} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            <textarea ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} rows={1} onDragOver={(e) => { if ([...e.dataTransfer.types].some((t) => t === "text/uri-list" || t === "text/plain")) e.preventDefault(); }} onDrop={(e) => { const l = droppedLinks(e); if (l) { e.preventDefault(); setText((t) => `${t}${t && !t.endsWith(" ") ? " " : ""}${l} `); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
               placeholder="Refine the plan, or ask Merod anything…" className="max-h-40 min-h-9 flex-1 resize-none bg-transparent px-1 py-2 text-[13.5px] outline-none placeholder:text-faint" />
             <select value={provider} onChange={(e) => { const p = providers.find((x) => x.id === e.target.value); savePreference(e.target.value, p?.models[0]?.id ?? ""); }}
               className="mb-1 hidden h-8 rounded-lg border border-line bg-panel px-2 text-[11.5px] text-muted md:block" aria-label="AI provider">

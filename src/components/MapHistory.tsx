@@ -67,7 +67,7 @@ export function MapHistory({ onClose }: { onClose: () => void }) {
             <div className="px-1 text-[10.5px] font-semibold uppercase tracking-wide text-faint">Advisor suggestions</div>
             {(tips.data?.tips ?? []).map((t: any) => <TipRow key={t.id} t={t} onDone={tips.refresh} />)}
             {tips.data && !(tips.data.tips ?? []).length && <p className="px-1 text-muted">{tips.data.settings?.active ? "No suggestions right now." : "The Advisor is off: turn it on in the left sidebar for continuous suggestions."}</p>}
-            <div className="px-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wide text-faint">Update & Recording analyses</div>
+            <div className="px-1 pt-2 text-[10.5px] font-semibold uppercase tracking-wide text-faint">Learn & Learning analyses</div>
             {(updates.data?.items ?? []).map((i: any) => <Line key={i.id} i={i} />)}
             {updates.data && !(updates.data.items ?? []).length && <p className="px-1 text-muted">None yet. Use Update / Record in Talk.</p>}
           </>

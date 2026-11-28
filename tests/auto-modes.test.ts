@@ -10,7 +10,7 @@ import { handlePrompt } from "@/server/ai/interpret";
 async function botWithAsset(u: string, params: Record<string, unknown>, change24h = 10) {
   const tag = randomUUID().slice(0, 6).toUpperCase();
   const asset = (await one<any>(`INSERT INTO assets (asset_class, symbol, name, venue, identifier, last_price, price_source, price_updated_at, change_24h, volume_24h)
-     VALUES ('crypto', $1, 'Auto test', 'solana', $2, 1, 'dexscreener', now(), $3, 1000000) RETURNING id`, [`A${tag}`, `test-${tag}`, change24h]))!;
+     VALUES ('crypto', $1, 'Auto test', 'solana', $2, 1, 'dexscreener', now(), $3, 1000000) RETURNING id`, [`ZZA${tag}`, `test-${tag}`, change24h]))!;
   const acct = (await one<any>("SELECT id FROM trading_accounts WHERE user_id=$1 AND kind='paper'", [u]))!;
   const b = (await one<any>(`INSERT INTO trading_bots (user_id, name, strategy_id, account_id, status, asset_ids, params)
      VALUES ($1, $2, 'dip_rebound_loop', $3, 'running', ARRAY[$4::uuid], $5) RETURNING *`, [u, `Bot ${tag}`, acct.id, asset.id, JSON.stringify(params)]))!;

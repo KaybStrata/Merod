@@ -124,7 +124,7 @@ export const GET = route(async (req) => {
     ]);
     const span = (h: number) => (h >= 48 ? `${Math.round(h / 24)} days` : `${h}h`);
     for (const x of ups) {
-      const st = x.stats ?? {}, who = x.source === "record" ? "Recording" : "Update", decisions: any[] = x.decisions ?? [];
+      const st = x.stats ?? {}, who = x.source === "record" ? "Learning" : "Learn", decisions: any[] = x.decisions ?? [];
       const quiet = !st.orders && !decisions.length;
       if (quiet && filter !== "update") continue; // quiet recorder checks only show in the Updates tab
       items.push({ id: `tu${x.id}`, at: x.created_at, source: "update", kind: "analysis", actor: who, link: "/talk?update=1",

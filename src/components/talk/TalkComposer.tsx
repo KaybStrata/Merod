@@ -10,6 +10,7 @@ import { GhostText, TypeAheadList, useTypeAhead } from "@/components/shell/TypeA
 import { SkillsMenu } from "@/components/shell/SkillsMenu";
 import { UpdateRecord } from "./UpdateRecord";
 import { MicButton } from "@/components/shell/MicButton";
+import { droppedLinks } from "@/components/shell/AdvisorPanel";
 
 /** Talk composer: text (and optional browser speech-to-text), Attach, Paper badge, @Agents, suggestion pills. Sends via the existing prompt API. */
 export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, book = "paper", onBook, ai = "merod", onAi, narrate = false, onNarrate }: { onSend: (t: string, attachmentIds?: string[]) => void; busy: boolean; suggestions: string[]; placeholder: string; voice: boolean; book?: "paper" | "live"; onBook?: (b: "paper" | "live") => void; ai?: "merod" | "openai" | "anthropic" | "auton"; onAi?: (a: "merod" | "openai" | "anthropic" | "auton") => void; narrate?: boolean; onNarrate?: (on: boolean) => void }) {
@@ -58,8 +59,8 @@ export function TalkComposer({ onSend, busy, suggestions, placeholder, voice, bo
         </div>
       )}
       <div className="relative rounded-2xl border border-accent/40 bg-panel/80 p-3 shadow-[0_0_40px_-12px_rgba(214,179,122,.35)] focus-within:border-accent/70"
-        onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault(); }}
-        onDrop={(e) => { const f = filesFrom(e.dataTransfer); if (f.length) { e.preventDefault(); att.add(f); } }}>
+        onDragOver={(e) => { const t = [...e.dataTransfer.types]; if (t.includes("Files") || t.includes("text/uri-list") || t.includes("text/plain")) e.preventDefault(); }}
+        onDrop={(e) => { const f = filesFrom(e.dataTransfer); if (f.length) { e.preventDefault(); att.add(f); return; } const l = droppedLinks(e); if (l) { e.preventDefault(); setText((t) => `${t}${t && !t.endsWith(" ") ? " " : ""}${l} `); } }}>
         <TypeAheadList list={ahead.list} idx={ahead.idx} onPick={ahead.pick} query={text} />
         <AttachmentChips items={att.items} onRemove={att.remove} className="mb-2" />
         <div className="relative">

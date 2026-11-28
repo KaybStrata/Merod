@@ -39,7 +39,7 @@ export function TalkFrame({ children }: { children: React.ReactNode }) {
       )}
       <div className="flex min-w-0 flex-1 flex-col">
         <TalkTopBar onMenu={() => setDrawer(true)} />
-        <Suspense fallback={null}><TalkTabs /></Suspense>
+        {!pathname.startsWith("/auton") && <Suspense fallback={null}><TalkTabs /></Suspense>}
         <main className="min-h-0 flex-1">{children}</main>
       </div>
     </div>

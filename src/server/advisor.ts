@@ -131,6 +131,25 @@ async function promptTips(userId: string): Promise<Tip[]> {
   return out;
 }
 
+/** Momo's study notes: tips from links it was trained on (YouTube, news, strategy pages). */
+async function momoTips(userId: string): Promise<Tip[]> {
+  const mats = await q<any>(`SELECT id, title, lessons, symbols FROM training_materials WHERE user_id=$1 AND active AND status='learned' AND 'momo' = ANY(tags)
+                              AND processed_at > now() - interval '14 days' ORDER BY processed_at DESC LIMIT 5`, [userId]).catch(() => []);
+  const { parseEdits, fmtEdit } = await import("./ai/bulk-edit");
+  const out: Tip[] = [];
+  for (const m of mats) {
+    (m.lessons ?? []).slice(0, 4).forEach((l: any, i: number) => {
+      const rule = String(l.rule ?? "").replace(/\s+/g, " ").trim();
+      if (!rule) return;
+      const e = parseEdits(rule);
+      const action: TipAction | undefined = e && Object.keys(e).length ? { type: "prompt", text: `update all bots: ${fmtEdit(e)}` } : undefined;
+      out.push({ topic: "market", priority: l.confidence === "high" ? 1 : 2, key: `momo:${m.id}:${i}`, title: `Momo learned (${String(m.title).slice(0, 60)}): ${String(l.title ?? rule).slice(0, 80)}`,
+        body: `${rule.slice(0, 400)}${(m.symbols ?? []).length ? ` · mentions ${m.symbols.slice(0, 6).join(", ")}` : ""}${action ? " · “Do it” applies these numbers to all your bots." : ""}`, action, link: "/learning" });
+    });
+  }
+  return out;
+}
+
 /** One Advisor pass for a user: generates, de-duplicates and stores new tips. */
 export async function runAdvisor(userId: string) {
   const s = await getAdvisor(userId);
@@ -140,6 +159,7 @@ export async function runAdvisor(userId: string) {
   if (topics.market) await safe(() => marketTips(userId));
   if (topics.trades || topics.bots || topics.agents) await safe(() => tradingTips(userId, topics));
   if (topics.prompts) await safe(() => promptTips(userId));
+  await safe(() => momoTips(userId));
   const fresh: any[] = [];
   for (const t of tips.sort((a, b) => a.priority - b.priority)) {
     if (fresh.length >= 8) break;
