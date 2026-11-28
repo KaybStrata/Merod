@@ -11,6 +11,8 @@ import { useRealtime } from "@/components/shell/context";
 import { cx } from "@/components/ui";
 import { PortfolioSpark } from "./PortfolioSpark";
 import { TabPnl } from "./TabPnl";
+import { TimeDial } from "@/components/TimeDial";
+import { secLabel } from "@/lib/timeDial";
 
 type Item = { id: string; at: string; source: string; kind: string; actor: string; title: string; body?: string; link?: string; side?: "buy" | "sell"; pnl?: number; pnlPct?: number; coin?: FeedCoin; eventId?: number };
 const KIND: Record<string, [any, string]> = {
@@ -53,21 +55,26 @@ export function TalkActivity() {
   // Any filter other than All is fetched from the server (last 30 days), so busy bots can't crowd trades out of the list.
   const [filtered, setFiltered] = useState<{ key: string; items: Item[] } | null>(null);
   const srcRef = useRef(src); srcRef.current = src;
+  // Profit / Loss: a live total for any window picked on the dial (1 minute … 5 years).
+  const [dialSec, setDialSec] = useState(86_400);
+  const dialRef = useRef(dialSec); dialRef.current = dialSec;
+  const [summary, setSummary] = useState<{ gains: number; losses: number; net: number; wins: number; losers: number; best: number; worst: number } | null>(null);
   async function pullFiltered(key = srcRef.current) {
     if (key === "all") return;
     try {
       const c = convRef.current;
-      const r: any = await api(`/api/live-stream?filter=${key}&limit=300${c ? `&conv=${c}` : ""}`);
-      if (srcRef.current === key) setFiltered({ key, items: r.items as Item[] });
+      const win = key === "profit" || key === "loss" ? `&seconds=${dialRef.current}` : "";
+      const r: any = await api(`/api/live-stream?filter=${key}&limit=300${c ? `&conv=${c}` : ""}${win}`);
+      if (srcRef.current === key) { setFiltered({ key, items: r.items as Item[] }); setSummary(r.summary ?? null); }
     } catch { /* keep the last list */ }
   }
   useEffect(() => { pull(true); const t = setInterval(() => pull(), 4000); return () => clearInterval(t); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!open || src === "all") return;
     pullFiltered(src);
-    const t = setInterval(() => pullFiltered(src), 8000);
+    const t = setInterval(() => pullFiltered(src), src === "profit" || src === "loss" ? 4000 : 8000);
     return () => clearInterval(t);
-  }, [open, src, effConv]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, src, effConv, dialSec]); // eslint-disable-line react-hooks/exhaustive-deps
   // Switching tab (or scope): start this tab's own feed fresh.
   useEffect(() => { last.current = 0; setItems([]); setFiltered(null); pull(true); }, [effConv]); // eslint-disable-line react-hooks/exhaustive-deps
   useRealtime((e) => { if (["agent", "bot_log", "fill", "order", "auto", "copy", "trade", "update", "advisor", "auton"].includes(e.type)) { pull(); if (openRef.current) pullFiltered(); } });
@@ -108,6 +115,24 @@ export function TalkActivity() {
                 <button key={k} onClick={() => setSrc(k)} className={cx("rounded-md px-2 py-0.5 text-[11.5px]", src === k ? "bg-accent-soft text-accent-2" : "text-muted hover:text-text")}>{l}</button>
               ))}
             </div>
+            {(src === "profit" || src === "loss") && (
+              <div className="border-b border-line px-4 py-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-[11px] font-semibold text-muted"><span className="size-1.5 rounded-full bg-up pulse-dot" />{src === "profit" ? "Profit" : "Losses"} · last {secLabel(dialSec)}{effConv ? " · this tab" : ""}</span>
+                  {summary && <span className="text-[10.5px] text-faint">{summary.wins} win{summary.wins === 1 ? "" : "s"} · {summary.losers} loss{summary.losers === 1 ? "" : "es"}</span>}
+                </div>
+                {summary ? (() => {
+                  const v = src === "profit" ? summary.gains : summary.losses;
+                  return (
+                    <>
+                      <div className={cx("num mt-0.5 text-[1.7rem] font-semibold leading-tight", v > 0 ? "text-up" : v < 0 ? "text-down" : "text-text")}>{v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div className="num text-[11px] text-muted">Net after losses {summary.net >= 0 ? "+" : "−"}${Math.abs(summary.net).toFixed(2)} · best +${Math.max(0, summary.best).toFixed(2)} · worst −${Math.abs(Math.min(0, summary.worst)).toFixed(2)}</div>
+                    </>
+                  );
+                })() : <div className="mt-1 text-[11px] text-faint">Loading…</div>}
+                <TimeDial value={dialSec} onChange={setDialSec} className="mt-2" />
+              </div>
+            )}
             {(src === "profit" || src === "loss" || src === "sell") && closed.length > 0 && (
               <div className="flex items-center justify-between border-b border-line px-4 py-1.5 text-[11.5px]">
                 <span className="text-muted">{closed.length} closed trade{closed.length === 1 ? "" : "s"} shown</span>
@@ -116,7 +141,7 @@ export function TalkActivity() {
             )}
             <ol className="flex-1 overflow-y-auto">
               {loadingFilter && <li className="p-8 text-center text-[12px] text-faint">Loading…</li>}
-              {!shown.length && !loadingFilter && src !== "all" && <li className="p-8 text-center text-[12px] text-faint">{src === "profit" ? "No profitable closed trades" : src === "loss" ? "No losing closed trades" : "Nothing here"} in the last 30 days.</li>}
+              {!shown.length && !loadingFilter && src !== "all" && <li className="p-8 text-center text-[12px] text-faint">{src === "profit" ? "No profitable closed trades" : src === "loss" ? "No losing closed trades" : "Nothing here"} in the last {src === "profit" || src === "loss" ? secLabel(dialSec) : "30 days"}{src === "profit" || src === "loss" ? ". Drag the dial for a longer window." : "."}</li>}
               {!shown.length && src === "all" && <li className="p-8 text-center text-[12px] text-faint">Waiting for activity… Bots, agents, auto trading, Modo and your orders stream here the moment they think, decide or trade.</li>}
               {shown.map((i) => {
                 const [I, cls] = KIND[i.kind] ?? KIND.state;

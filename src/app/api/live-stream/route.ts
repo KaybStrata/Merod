@@ -1,6 +1,6 @@
 import { requireUser, isAdminRole } from "@/server/auth";
 import { ok, route } from "@/server/http";
-import { q } from "@/server/db";
+import { q, one } from "@/server/db";
 import { getSettings } from "@/server/auto/engine";
 
 /**
@@ -35,7 +35,8 @@ export const GET = route(async (req) => {
   // `filter` narrows the stream on the server, so chatty sources (bot status lines every tick) can't push trades out of
   // the list: all | order | bot | agent | auto | modo | copy | buy | sell | profit | loss. Filtered views look back 30 days.
   const filter = (sp.get("filter") ?? "all") as Filter;
-  const since = sp.get("since") ? new Date(Number(sp.get("since"))) : new Date(Date.now() - (filter === "all" ? 24 : 30 * 24) * 3600_000);
+  const secs = Number(sp.get("seconds"));
+  const since = sp.get("since") ? new Date(Number(sp.get("since"))) : Number.isFinite(secs) && secs >= 60 ? new Date(Date.now() - Math.min(secs, 10 * 365 * 86_400) * 1000) : new Date(Date.now() - (filter === "all" ? 24 : 30 * 24) * 3600_000);
   const lim = Math.min(300, Number(sp.get("limit") ?? 150));
   const owner = u.role === "super_admin";
   const want = (src: Item["source"]) => filter === "all" || filter === src || !!GROUP[filter]?.includes(src) || (TRADE_FILTERS.has(filter) && ["order", "copy", "auto", "modo", "merod"].includes(src));
@@ -144,6 +145,17 @@ export const GET = route(async (req) => {
   for (const it of items) it.at = new Date(it.at as any).toISOString();
   const kept = items.filter((i) => matches(i, filter));
   kept.sort((a, b) => b.at.localeCompare(a.at));
+  if (filter === "profit" || filter === "loss") {
+    // Exact totals for the window (not just the rows shown): every closed trade's realized P&L, in this tab's scope if any.
+    const sum = await one<any>(
+      `SELECT COALESCE(sum(o.realized_pnl) FILTER (WHERE o.realized_pnl > 0),0) AS gains, COALESCE(sum(o.realized_pnl) FILTER (WHERE o.realized_pnl < 0),0) AS losses,
+              count(*) FILTER (WHERE o.realized_pnl > 0)::int AS wins, count(*) FILTER (WHERE o.realized_pnl < 0)::int AS losers,
+              COALESCE(max(o.realized_pnl),0) AS best, COALESCE(min(o.realized_pnl),0) AS worst
+         FROM orders o WHERE o.user_id=$1 AND o.side='sell' AND o.status IN ('filled','partially_filled') AND o.updated_at > $2${tabCond.replace(/\$4/g, "$3").replace(/\$5/g, "$4").replace(/\$6/g, "$5")}`,
+      [u.id, since, ...tabArgs]);
+    const summary = { gains: Number(sum?.gains ?? 0), losses: Number(sum?.losses ?? 0), net: Number(sum?.gains ?? 0) + Number(sum?.losses ?? 0), wins: Number(sum?.wins ?? 0), losers: Number(sum?.losers ?? 0), best: Number(sum?.best ?? 0), worst: Number(sum?.worst ?? 0), since: since.toISOString() };
+    return ok({ items: kept.slice(0, lim), filter, now: Date.now(), summary });
+  }
   if (filter !== "all") return ok({ items: kept.slice(0, lim), filter, now: Date.now() });
   // "All": up to half the list is reserved for trades (orders, fills, Mimic, Auto/Modo buys and closes), so a bot that
   // logs a status line every few seconds can never push your buys and sells out of view.
