@@ -255,6 +255,7 @@ export async function setBotStatus(userId: string, botId: string, action: "start
 export async function pauseAllBots(userId: string, actor: "user" | "ai" = "user") {
   const rows = await q<{ id: string }>("UPDATE trading_bots SET status='paused' WHERE user_id=$1 AND status='running' RETURNING id", [userId]);
   for (const r of rows) await log(r.id, "control", `Paused (pause all by ${actor})`);
+  await stopAutomationsToo(userId, "All bots turned off");
   await audit({ actorType: actor, actorId: userId, userId, action: "bot.pause_all", data: { count: rows.length } });
   return rows.length;
 }
@@ -264,7 +265,15 @@ export async function resumeAllBots(userId: string) {
   return rows.length;
 }
 /** Emergency shutdown: stop all bots and engage the user's trading halt. */
+/** Turning off all bots also pauses every AI bot and switches Auton off, so nothing starts new trades or new bots. */
+export async function stopAutomationsToo(userId: string, why: string) {
+  await q("UPDATE agents SET status='paused', stop_reason=$2 WHERE user_id=$1 AND status IN ('running','queued')", [userId, why]).catch(() => {});
+  const was = await one<any>("UPDATE auton_settings SET active=false WHERE user_id=$1 AND active RETURNING user_id", [userId]).catch(() => null);
+  if (was) await q("INSERT INTO auton_events (user_id, kind, title) VALUES ($1,'thought',$2)", [userId, `Auton is off: ${why.toLowerCase()}`]).catch(() => {});
+}
+
 export async function emergencyStop(userId: string) {
+  await stopAutomationsToo(userId, "Emergency stop");
   await q("UPDATE trading_bots SET status='halted' WHERE user_id=$1 AND status IN ('running','paused')", [userId]);
   await q("UPDATE risk_settings SET trading_halted=true, updated_at=now() WHERE user_id=$1", [userId]);
   const { cancelAll } = await import("../engine/engine");

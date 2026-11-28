@@ -184,8 +184,10 @@ export function parsePrompt(raw: string): Instruction {
 
   // Control commands
   if (/\bcancel\b.*\b(all|every)\b.*\border/.test(t) || /\bcancel (my )?open orders\b/.test(t)) return base("cancel_all_orders", "Cancel all open orders");
-  if (/\b(pause|stop|halt)\b(?![ -]?(loss|losses|limit|price|order))[^.]*\bbots?\b/.test(t) && !/\bstop[ -]?loss/.test(t)) return base("pause_all_bots", "Pause all active bots");
-  if (/\b(resume|restart|unpause)\b.*\bbots?\b/.test(t)) return base("resume_all_bots", "Resume paused bots");
+  // "turn off bots", "switch off all my bots", "disable bots", "stop the bots", "kill all bots"…
+  if (/\b(pause|stop|halt|kill|disable|deactivate|(turn|switch|shut)\s+(them\s+|it\s+)?off)\b(?![ -]?(loss|losses|limit|price|order))[^.]*\b(bots?|agents?|ai bots?)\b/.test(t) && !/\bstop[ -]?loss/.test(t)) return base("pause_all_bots", "Pause all active bots");
+  if (/\b(turn|switch|shut)\s+(all\s+)?(my\s+|the\s+)?(bots?|agents?)\s+off\b/.test(t)) return base("pause_all_bots", "Pause all active bots");
+  if (/\b(resume|restart|unpause|enable|activate|(turn|switch)\s+on)\b.*\b(bots?|agents?)\b/.test(t) || /\b(turn|switch)\s+(all\s+)?(my\s+|the\s+)?(bots?|agents?)\s+(back\s+)?on\b/.test(t)) return base("resume_all_bots", "Resume paused bots");
 
   // Swing loop: "buy at 3% dip and sell at 5% increase, rinse and repeat"
   const dip = t.match(/(\d+(?:\.\d+)?)\s*%\s*(dip|drop|decline|pullback|down)|(dip|drop|falls?|declines?|down)\s*(of|by)?\s*(\d+(?:\.\d+)?)\s*%/);

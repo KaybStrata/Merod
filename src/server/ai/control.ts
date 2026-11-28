@@ -61,5 +61,15 @@ export async function runControl(userId: string, verb: ControlVerb, targets: Con
       }
     } catch (e: any) { lines.push(`• ${x.name}: couldn't ${verb === "pause" ? "turn it off" : "turn it on"} (${e.message}).`); }
   }
+  if (verb === "pause" && targets.some((x) => x.kind === "bot")) {
+    const { one } = await import("../db");
+    const left = await one<{ n: number }>("SELECT count(*)::int AS n FROM trading_bots WHERE user_id=$1 AND status='running'", [userId]);
+    const auton = await one<any>("SELECT active FROM auton_settings WHERE user_id=$1", [userId]).catch(() => null);
+    if (!left?.n && auton?.active) {
+      const { stopAutomationsToo } = await import("../bots/runner");
+      await stopAutomationsToo(userId, "All bots turned off");
+      lines.push("• Auton: turned off too, so it doesn't start new bots (say “start Auton” to turn it back on).");
+    }
+  }
   return lines;
 }

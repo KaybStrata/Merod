@@ -32,3 +32,15 @@ test("delete: a bot is stopped and removed, an agent is archived, and their Auto
   assert.equal(await one("SELECT id FROM trading_bots WHERE id=$1", [b.id]), null);
   assert.equal(await one("SELECT ref_id FROM auton_assets WHERE user_id=$1 AND ref_id=$2", [u, String(b.id)]), null);
 });
+
+test("'turn off bots' pauses every bot and switches Auton off so it can't start new ones", async () => {
+  const { handlePrompt } = await import("@/server/ai/interpret");
+  const u = await newUser();
+  const acct = (await one<any>("SELECT id FROM trading_accounts WHERE user_id=$1 AND kind='paper'", [u]))!;
+  const b = (await one<any>("INSERT INTO trading_bots (user_id, name, strategy_id, account_id, status, params) VALUES ($1,'Runner','dip_rebound_loop',$2,'running','{\"amount_usd\":10}') RETURNING id", [u, acct.id]))!;
+  await one("INSERT INTO auton_settings (user_id, active) VALUES ($1, true) RETURNING user_id", [u]);
+  const r: any = await handlePrompt(u, { text: "turn off bots" });
+  assert.match(String(r.message.content), /Auton/i, String(r.message.content));
+  assert.equal((await one<any>("SELECT status FROM trading_bots WHERE id=$1", [b.id]))!.status, "paused");
+  assert.equal((await one<any>("SELECT active FROM auton_settings WHERE user_id=$1", [u]))!.active, false);
+});

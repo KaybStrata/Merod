@@ -613,7 +613,7 @@ export async function handlePrompt(userId: string, input: PromptInput) {
 
     case "pause_all_bots": {
       const n = await pauseAllBots(userId, "ai");
-      return reply(`Paused ${n} running bot${n === 1 ? "" : "s"}.`, { type: "executed", detail: `Paused ${n} bots` }, "executed");
+      return reply(`Paused ${n} running bot${n === 1 ? "" : "s"}. Your AI bots are paused and Auton is off too, so nothing starts new trades or new bots. Say “turn on bots” or “start Auton” to resume.`, { type: "executed", detail: `Paused ${n} bots` }, "executed");
     }
     case "resume_all_bots":
       return reply("Resume all paused paper bots?", { type: "confirm_action", action: "resume_all_bots", detail: "Paused paper bots will start trading again." }, "needs_approval");
