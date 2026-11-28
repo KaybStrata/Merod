@@ -184,6 +184,12 @@ export async function handlePrompt(userId: string, input: PromptInput) {
   // Skills: "create a skill: always use a 5% stop-loss…", "show my skills", "turn off skill Safe".
   const sk = input.part ? null : await skillCommand(userId, text, input.tz || "UTC").catch((e: any) => `Couldn't save that skill: ${e.message}`);
   if (sk) return early(sk, { type: "executed", detail: "Skills updated" }, "executed", null);
+  // E-wallets: "create an e-wallet called Savings", "send 20% of all my profits to Savings", "move $100 from Savings to trading".
+  if (!input.part) {
+    const { ewalletCommand } = await import("../ewallet-prompt");
+    const ew = await ewalletCommand(userId, text).catch((e: any) => `Couldn't do that with your e-wallets: ${e.message}`);
+    if (ew) return early(ew, { type: "executed", detail: "E-wallets" }, "executed", null);
+  }
   // Map setups from the prompt box: "create a map method called Safe with stop loss 5% for all bots (and run it)".
   if (!input.part) {
     const { mapCommand } = await import("../map-prompt");

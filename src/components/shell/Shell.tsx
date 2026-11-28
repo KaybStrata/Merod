@@ -7,7 +7,7 @@ import { Fragment, Suspense, useEffect, useRef, useState } from "react";
 import { ClipboardCheck,
   Home, Wallet, Activity, BarChart3, ArrowLeftRight, Zap, Layers, Search, Bot, Sparkles, Library, LineChart, Settings, Shield, Bell, Menu, LogOut, Sun, Moon, PanelLeftClose, PanelLeftOpen, Plug,
   Radio, Percent, KeyRound, Plus, PieChart, Users, Brain, Copy, Repeat, Cpu, Bitcoin, Newspaper, Crown, ChevronDown, ArrowUpRight, Compass, GitBranch, MessagesSquare, Swords, TrendingUp, Radar,
-  Webhook, Lightbulb,
+  Webhook, Lightbulb, PiggyBank,
 } from "lucide-react";
 import { ShellProvider, useRealtime, useShell, type ShellUser } from "./context";
 import { RightRail } from "./RightRail";
@@ -30,6 +30,7 @@ const GROUPS: { label: string | null; items: NavItem[] }[] = [
     { href: "/discover", label: "Markets", icon: BarChart3 },
     { href: "/trade", label: "Trade", icon: ArrowLeftRight, also: ["/terminal"] },
     { href: "/wallet", label: "Wallet & Funds", icon: Wallet },
+    { href: "/e-wallets", label: "E-wallets", icon: PiggyBank },
     { href: "/radar", label: "Meme Radar", icon: Radar },
   ] },
   { label: "Automate", items: [

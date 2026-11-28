@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CandlestickChart, PieChart, Sparkles, Bot, Settings, SlidersHorizontal, Lightbulb, Map as MapIcon, X, Minus, ExternalLink, Maximize2, Loader2 } from "lucide-react";
+import { CandlestickChart, PieChart, Sparkles, Bot, Settings, SlidersHorizontal, Lightbulb, Map as MapIcon, PiggyBank, X, Minus, ExternalLink, Maximize2, Loader2 } from "lucide-react";
 import { api, useApi } from "@/lib/api";
 import { cx, useToast } from "@/components/ui";
 
-export type FloatTab = "map" | "trade" | "portfolio" | "agents" | "bots" | "edit" | "advisor" | "settings";
+export type FloatTab = "map" | "ewallets" | "trade" | "portfolio" | "agents" | "bots" | "edit" | "advisor" | "settings";
 const TABS: { id: FloatTab; label: string; icon: any; href?: string }[] = [
   { id: "map", label: "Map", icon: MapIcon, href: "/map" },
   { id: "trade", label: "Trade", icon: CandlestickChart, href: "/trade" },
@@ -13,6 +13,7 @@ const TABS: { id: FloatTab; label: string; icon: any; href?: string }[] = [
   { id: "bots", label: "Bots", icon: Bot, href: "/bots" },
   { id: "edit", label: "Edit all", icon: SlidersHorizontal },
   { id: "advisor", label: "Advisor", icon: Lightbulb, href: "/advisor" },
+  { id: "ewallets", label: "E-wallets", icon: PiggyBank, href: "/e-wallets" },
   { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
 ];
 /** Open the floating window on a tab from anywhere in Talk. */
