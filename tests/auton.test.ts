@@ -40,3 +40,36 @@ test("Auton: one cycle reads history, opens paper bots within budget, makes its 
   assert.match(s.message.content, /Auton is off/);
   assert.equal((await one<any>("SELECT active FROM auton_settings WHERE user_id=$1", [u]))!.active, false);
 });
+
+test("Auton: 'turn off budget limit, no limit on amount of bots, check every 5 seconds' sets no limits (and doesn't stop Auton); trade size by %", async () => {
+  const u = await newUser();
+  const { autonCommand, getAuton } = await import("@/server/auton/engine");
+  const r = await autonCommand(u, "turn off budget limit, no limit on amount of bots, and have a check every 5 seconds", null);
+  assert.match(r, /no budget limit, no bot limit, checks every 5 sec/, r);
+  const s = await getAuton(u);
+  assert.equal(s.active, true); assert.equal(s.max_capital_usd, 0); assert.equal(s.max_bots, 0); assert.equal(s.every_sec, 5);
+  assert.equal(s.goals, "", "settings aren't saved as a goal");
+  const r2 = await autonCommand(u, "increase the purchase amount of autons trading by 20%", null);
+  assert.match(r2, /trade size is now \$120 per trade/, r2);
+  assert.match(await autonCommand(u, "stop auton", null), /Auton is off/);
+});
+
+test("Auton's bots buy right away (momentum entry) so trades show up without waiting for a dip", async () => {
+  await freshPrices();
+  const u = await newUser();
+  await q("UPDATE trading_permissions SET allow_bots=true WHERE user_id=$1", [u]).catch(() => {});
+  await q("UPDATE risk_settings SET block_risky_tokens=false, min_liquidity_usd=0 WHERE user_id=$1", [u]);
+  const p = (await one<any>("SELECT id FROM assets WHERE last_price IS NOT NULL AND asset_class='crypto' AND NOT ('demo_data' = ANY(risk_flags)) ORDER BY market_cap DESC NULLS LAST LIMIT 1"))!;
+  await q("UPDATE assets SET change_24h=8, market_cap=GREATEST(COALESCE(market_cap,0), 2e9), price_updated_at=now() WHERE id=$1", [p.id]);
+  const { autonCommand } = await import("@/server/auton/engine");
+  await autonCommand(u, "start auton budget $200 max 1 bots", null);
+  const bot = (await one<any>("SELECT b.id, b.params FROM auton_assets a JOIN trading_bots b ON b.id::text=a.ref_id WHERE a.user_id=$1 AND a.kind='bot' LIMIT 1", [u]))!;
+  assert.ok(bot, "a bot was opened");
+  assert.equal(Number(bot.params.dip_pct), 0, "buys now");
+  const { tickDueBots } = await import("@/server/bots/runner");
+  await q("UPDATE trading_bots SET last_tick_at=NULL WHERE id=$1", [bot.id]);
+  await tickDueBots("test-worker");
+  const o = await one<any>("SELECT side, status FROM orders WHERE user_id=$1 AND source='bot' AND source_ref=$2 LIMIT 1", [u, bot.id]);
+  assert.ok(o, "the bot placed an order on its first check");
+  assert.equal(o.side, "buy");
+});

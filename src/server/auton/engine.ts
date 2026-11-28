@@ -32,11 +32,20 @@ export async function setAuton(userId: string, p: Partial<{ active: boolean; eve
      ON CONFLICT (user_id) DO UPDATE SET active=$2, every_sec=$3, max_capital_usd=$4, max_bots=$5, real_money=$6, goals=$7, conversation_id=$8,
        next_run_at = CASE WHEN $2 AND NOT auton_settings.active THEN now() ELSE auton_settings.next_run_at END
      RETURNING *`,
-    [userId, p.active ?? c.active, Math.max(60, Math.min(86_400, Math.round(p.everySec ?? c.every_sec))), Math.max(0, p.maxCapitalUsd ?? c.max_capital_usd), Math.max(0, Math.min(50, Math.round(p.maxBots ?? c.max_bots))),
+    [userId, p.active ?? c.active, Math.max(5, Math.min(86_400, Math.round(p.everySec ?? c.every_sec))), Math.max(0, p.maxCapitalUsd ?? c.max_capital_usd), Math.max(0, Math.min(50, Math.round(p.maxBots ?? c.max_bots))),
      p.realMoney ?? c.real_money, (p.goals ?? c.goals).slice(0, 1000), p.conversationId !== undefined ? p.conversationId : c.conversation_id]);
-  await log(userId, row.conversation_id, "thought", row.active ? `Auton is ${c.active ? "running" : "on"}: budget $${Number(row.max_capital_usd)}, up to ${row.max_bots} bots, every ${Math.round(row.every_sec / 60)} min${row.real_money ? ", REAL money allowed" : ", paper money"}` : "Auton is off", row.goals ? `Goals: ${row.goals}` : undefined);
+  await log(userId, row.conversation_id, "thought", row.active ? `Auton is ${c.active ? "running" : "on"}: ${limitsText(row)}${row.real_money ? ", REAL money allowed" : ", paper money"}` : "Auton is off", row.goals ? `Goals: ${row.goals}` : undefined);
   return row;
 }
+
+/** "no budget limit, no bot limit, checks every 5 sec" */
+export function limitsText(r: any) {
+  const cap = Number(r.max_capital_usd), bots = Number(r.max_bots), ev = Number(r.every_sec);
+  return `${cap > 0 ? `budget $${cap}` : "no budget limit"}, ${bots > 0 ? `up to ${bots} bots` : "no bot limit"}, checks every ${ev < 60 ? `${ev} sec` : `${Math.round(ev / 60)} min`}`;
+}
+const every = (sec: number) => (sec < 60 ? `${sec} sec` : `${Math.round(sec / 60)} min`);
+// Heavy reads are cached between fast cycles (every 5 s would otherwise re-read 30 days of history each time).
+const histCache = new Map<string, { at: number; v: any }>();
 
 export async function log(userId: string, conversationId: string | null, kind: "thought" | "analysis" | "decision" | "execution" | "warning", title: string, body?: string, data?: unknown) {
   await q("INSERT INTO auton_events (user_id, conversation_id, kind, title, body, data) VALUES ($1,$2,$3,$4,$5,$6)", [userId, conversationId, kind, title.slice(0, 300), body?.slice(0, 2000) ?? null, data ? JSON.stringify(data) : null]);
@@ -65,12 +74,20 @@ export async function runAuton(userId: string, opts: { goal?: string; conversati
   const conv = opts.conversationId ?? s.conversation_id;
   const goals = [s.goals, opts.goal, ...(opts.instructions ?? [])].filter(Boolean).join(". ");
   const out: string[] = [];
-  const L = async (kind: Parameters<typeof log>[2], title: string, body?: string, data?: unknown) => { await log(userId, conv, kind, title, body, data); if (kind === "execution" || kind === "decision" || kind === "warning") out.push(`• ${title}`); };
+  const mem = s.memory ?? {};
+  const chatty = !mem.last_log_at || Date.now() - new Date(mem.last_log_at).getTime() >= 60_000 || s.every_sec >= 60;
+  const L = async (kind: Parameters<typeof log>[2], title: string, body?: string, data?: unknown) => {
+    const action = kind === "execution" || kind === "decision" || kind === "warning";
+    if (action || chatty) await log(userId, conv, kind, title, body, data);
+    if (action) out.push(`• ${title}`);
+  };
   await L("thought", "Starting a cycle: reading all your trades, bots, agents, skills, prompts and the market", goals ? `Goals: ${goals}` : undefined);
 
   // 1) History: everything you've traded (30 days), and what the user's skills/points/prompts say.
   const { analyze } = await import("../trade-updates");
-  const hist = await analyze(userId, 24 * 30).catch(() => null);
+  const hc = histCache.get(userId);
+  const hist = hc && Date.now() - hc.at < 60_000 ? hc.v : await analyze(userId, 24 * 30).catch(() => null);
+  if (!hc || Date.now() - hc.at >= 60_000) histCache.set(userId, { at: Date.now(), v: hist });
   const st: any = hist?.stats ?? { closed: 0, coins: [], actors: [] };
   const lostOn = new Set<string>((st.coins ?? []).filter((c: any) => c.losses >= 3 && c.net < 0).map((c: any) => c.symbol));
   const wonOn = new Map<string, number>((st.coins ?? []).filter((c: any) => c.net > 0).map((c: any) => [c.symbol, c.net]));
@@ -95,7 +112,8 @@ export async function runAuton(userId: string, opts: { goal?: string; conversati
        FROM trading_bots b WHERE b.user_id=$1 AND b.id = ANY($2::uuid[]) AND b.status <> 'archived'`, [userId, ids]) : [];
   const { runControl } = await import("../ai/control");
   const { applyEdits } = await import("../ai/bulk-edit");
-  const perBot = Math.max(5, Math.floor(s.max_capital_usd / Math.max(1, s.max_bots)));
+  // $ per trade: its budget split across its bots; with no budget, its own trade size ($100 unless you changed it).
+  const perBot = s.max_capital_usd > 0 ? Math.max(5, Math.floor(s.max_capital_usd / Math.max(1, s.max_bots || 5))) : Math.max(1, Number(mem.trade_usd ?? 100));
   for (const b of bots) {
     const closed = Number(b.closed), wins = Number(b.wins), net = Number(b.net), wr = closed ? wins / closed : 0;
     if (b.status === "running" && closed >= 3 && net < 0 && wr < 0.4) {
@@ -112,55 +130,76 @@ export async function runAuton(userId: string, opts: { goal?: string; conversati
   const running = bots.filter((b) => b.status === "running" && mine.some((m) => m.ref_id === b.id));
   const traded = new Set<string>(running.flatMap((b) => b.asset_ids ?? []));
   const f = goalFilter(goals);
-  const slots = Math.max(0, s.max_bots - running.length);
+  const slots = s.max_bots > 0 ? Math.max(0, s.max_bots - running.length) : Infinity;
   const budgetUsed = running.reduce((a, b) => a + Number(b.params?.amount_usd ?? 0), 0);
-  if (slots > 0 && budgetUsed + perBot <= s.max_capital_usd + 0.01) {
-    const where = [
-      "a.last_price IS NOT NULL", "a.change_24h IS NOT NULL", "a.price_updated_at > now() - interval '6 hours'",
-      "NOT ('demo_data' = ANY(a.risk_flags))", f.aggressive ? "TRUE" : "NOT ('low_liquidity' = ANY(a.risk_flags))",
-      f.safe ? "COALESCE(a.market_cap,0) >= 1000000000" : f.aggressive ? "(COALESCE(a.liquidity_usd,0) >= 100000 OR COALESCE(a.market_cap,0) >= 10000000)" : "(COALESCE(a.liquidity_usd,0) >= 1000000 OR COALESCE(a.market_cap,0) >= 100000000)",
+  const budgetOk = s.max_capital_usd <= 0 || budgetUsed + perBot <= s.max_capital_usd + 0.01;
+  // Pace: at most one new bot a minute, however fast it checks (fast checks still manage existing bots every cycle).
+  const paced = !mem.last_open_at || Date.now() - new Date(mem.last_open_at).getTime() >= 60_000;
+  if (slots > 0 && budgetOk && paced) {
+    // Candidates: strict first (fresh price, real 24h move, good liquidity), then relaxed step by step if nothing passes.
+    const scopeSql = [
+      "a.last_price IS NOT NULL", "NOT ('demo_data' = ANY(a.risk_flags))",
       f.stocks ? "a.asset_class IN ('stock','etf')" : f.crypto ? "a.asset_class = 'crypto'" : "TRUE",
       f.solana ? "a.venue = 'solana'" : "TRUE", f.meme ? "'meme' = ANY(a.categories)" : "TRUE",
     ];
+    const tiers: { label: string; sql: string[] }[] = [
+      { label: "strict", sql: ["a.change_24h IS NOT NULL", "a.price_updated_at > now() - interval '6 hours'", f.aggressive ? "TRUE" : "NOT ('low_liquidity' = ANY(a.risk_flags))",
+        f.safe ? "COALESCE(a.market_cap,0) >= 1000000000" : f.aggressive ? "(COALESCE(a.liquidity_usd,0) >= 100000 OR COALESCE(a.market_cap,0) >= 10000000)" : "(COALESCE(a.liquidity_usd,0) >= 1000000 OR COALESCE(a.market_cap,0) >= 100000000)"] },
+      { label: "relaxed liquidity", sql: ["a.change_24h IS NOT NULL", "a.price_updated_at > now() - interval '24 hours'", "(COALESCE(a.liquidity_usd,0) >= 100000 OR COALESCE(a.market_cap,0) >= 10000000)"] },
+      { label: "any real price", sql: ["a.price_updated_at > now() - interval '48 hours'", "(COALESCE(a.liquidity_usd,0) >= 25000 OR COALESCE(a.market_cap,0) >= 1000000 OR a.asset_class IN ('stock','etf'))"] },
+    ];
     const symFilter = f.syms.length ? `AND upper(a.symbol) = ANY($1)` : "";
-    const cands = await q<any>(`SELECT a.id, a.symbol, a.asset_class, a.venue, a.change_24h, a.liquidity_usd, a.market_cap FROM assets a WHERE ${where.join(" AND ")} ${symFilter}
-                                ORDER BY a.change_24h DESC NULLS LAST LIMIT 80`, f.syms.length ? [f.syms.map((x) => x.toUpperCase())] : []).catch(() => []);
+    let cands: any[] = [], tierUsed = "";
+    const why: string[] = [];
+    for (const tier of tiers) {
+      const rows = await q<any>(`SELECT a.id, a.symbol, a.asset_class, a.venue, a.change_24h, a.liquidity_usd, a.market_cap FROM assets a WHERE ${[...scopeSql, ...tier.sql].join(" AND ")} ${symFilter}
+                                 ORDER BY a.change_24h DESC NULLS LAST LIMIT 120`, f.syms.length ? [f.syms.map((x) => x.toUpperCase())] : []).catch(() => []);
+      const usable = rows.filter((c) => !traded.has(c.id) && !never.has(String(c.symbol).toUpperCase()) && !lostOn.has(c.symbol));
+      why.push(`${tier.label}: ${rows.length} found, ${rows.length - usable.length} skipped (already trading / never-buy / kept losing)`);
+      if (usable.length) { cands = usable; tierUsed = tier.label; break; }
+    }
     const scored = cands
-      .filter((c) => !traded.has(c.id) && !never.has(String(c.symbol).toUpperCase()) && !lostOn.has(c.symbol))
       .map((c) => {
-        const ch = Number(c.change_24h);
+        const ch = Number(c.change_24h ?? 0);
         // Momentum that isn't already a blow-off top, plus a bonus where you've made money before.
         const mom = ch >= 2 && ch <= (f.aggressive ? 80 : 30) ? ch : ch > 30 ? 30 - (ch - 30) / 2 : ch / 2;
         return { ...c, score: mom + (wonOn.has(c.symbol) ? 5 : 0) + (f.syms.includes(String(c.symbol).toUpperCase()) ? 20 : 0) };
       })
       .sort((a, b) => b.score - a.score);
-    const pick = scored.slice(0, Math.min(slots, 2, Math.floor((s.max_capital_usd - budgetUsed) / perBot)));
-    if (!pick.length) await L("thought", "No new setups worth opening right now", cands.length ? "The movers are either stretched, illiquid, on your never-buy list, or coins that kept losing." : "No liquid coins/stocks with fresh real prices matched your goals.");
+    const room = s.max_capital_usd > 0 ? Math.floor((s.max_capital_usd - budgetUsed) / perBot) : Infinity;
+    const pick = scored.slice(0, Math.min(slots, room, s.every_sec < 60 ? 1 : 2));
+    if (pick.length) { mem.last_open_at = new Date().toISOString(); }
+    if (!pick.length) await L("thought", "No new setups worth opening right now", why.join(" · "));
+    else if (tierUsed !== "strict") await L("thought", `Nothing passed the strict filters, so Auton used ${tierUsed} filters`, why.join(" · "));
     const { BotConfigSchema, createBot } = await import("../bots/service");
     for (const c of pick) {
       const vol = Math.abs(Number(c.change_24h));
-      const dip = f.safe ? 1.5 : vol > 15 ? 3 : 2, tp = f.safe ? 2.5 : vol > 15 ? 5 : 3, sl = f.safe ? 3 : vol > 15 ? 6 : 4;
-      const name = `Auton · ${c.symbol} dip ${dip}% → +${tp}%`;
-      await L("decision", `Opening ${name}`, `${c.symbol} is ${Number(c.change_24h) >= 0 ? "+" : ""}${Number(c.change_24h).toFixed(1)}% in 24h with ${c.liquidity_usd ? `$${Math.round(Number(c.liquidity_usd)).toLocaleString()} liquidity` : `$${Math.round(Number(c.market_cap)).toLocaleString()} market cap`}${wonOn.has(c.symbol) ? `; you've made +${money(wonOn.get(c.symbol)!)} on it before` : ""}. Buys ${dip}% dips, sells at +${tp}%, stop-loss -${sl}%, ${money(perBot)} per trade.`);
+      // Momentum entry: buy now, sell at the target, then re-buy (stop-loss protects the downside). Safe goals wait for a small dip.
+      const dip = f.safe ? 1.5 : 0, tp = f.safe ? 2.5 : vol > 15 ? 5 : 3, sl = f.safe ? 3 : vol > 15 ? 6 : 4;
+      const name = dip ? `Auton · ${c.symbol} dip ${dip}% → +${tp}%` : `Auton · ${c.symbol} buy → +${tp}% loop`;
+      await L("decision", `Opening ${name}`, `${c.symbol} is ${Number(c.change_24h ?? 0) >= 0 ? "+" : ""}${Number(c.change_24h ?? 0).toFixed(1)}% in 24h with ${c.liquidity_usd ? `$${Math.round(Number(c.liquidity_usd)).toLocaleString()} liquidity` : `$${Math.round(Number(c.market_cap)).toLocaleString()} market cap`}${wonOn.has(c.symbol) ? `; you've made +${money(wonOn.get(c.symbol)!)} on it before` : ""}. ${dip ? `Buys ${dip}% dips` : "Buys now"}, sells at +${tp}%, stop-loss -${sl}%, ${money(perBot)} per trade, repeats.`);
       try {
-        const cfg = BotConfigSchema.parse({ name, description: "Created and managed by Auton", strategyId: "dip_rebound_loop", assetIds: [c.id], isPaper: !s.real_money, start: true, schedule: "every_1m",
+        const cfg = BotConfigSchema.parse({ name, description: "Created and managed by Auton", strategyId: "dip_rebound_loop", assetIds: [c.id], isPaper: !s.real_money, start: true, schedule: "every_15s",
           minLiquidityUsd: 0, maxSlippageBps: 300, maxPositionUsd: perBot * 2, createdFromPrompt: `Auton: ${goals || "find profitable setups"}`.slice(0, 2000),
           params: { amount_usd: perBot, dip_pct: dip, take_profit_pct: tp, stop_loss_pct: sl, repeat: true } });
         const bot: any = await createBot(userId, cfg, "ai");
         const id = bot?.id ?? bot?.bot?.id;
-        if (id) { await (await import("../talk/tab-scope")).linkToConversation(userId, conv, "bot", id); await remember(userId, "bot", id, name); await remember(userId, "prompt", `${id}:p`, `buy ${c.symbol} on a ${dip}% dip, take profit ${tp}%, stop loss ${sl}%, $${perBot} per trade`); }
+        if (id) { await (await import("../talk/tab-scope")).linkToConversation(userId, conv, "bot", id); await remember(userId, "bot", id, name); await remember(userId, "prompt", `${id}:p`, `${dip ? `buy ${c.symbol} on a ${dip}% dip` : `buy ${c.symbol} now`}, take profit ${tp}%, stop loss ${sl}%, $${perBot} per trade, repeat`); }
         await L("execution", `Created and started ${name} (${s.real_money ? "real money" : "paper"})`);
       } catch (e: any) { await L("warning", `Couldn't open ${name}`, String(e?.message ?? e).slice(0, 300)); }
     }
-  } else if (slots === 0) await L("thought", `All ${s.max_bots} Auton bot slots are in use`, "Raise its bot limit (“auton max 8 bots”) for more.");
-  else await L("thought", `Budget fully used (${money(budgetUsed)} of ${money(s.max_capital_usd)})`, "Raise it with “auton budget $2000”.");
+  } else if (slots === 0) await L("thought", `All ${s.max_bots} Auton bot slots are in use`, "Raise its bot limit (“auton max 8 bots”) or remove it (“no bot limit”).");
+  else if (!budgetOk) await L("thought", `Budget fully used (${money(budgetUsed)} of ${money(s.max_capital_usd)})`, "Raise it with “auton budget $2000”, or “no budget limit”.");
 
-  // 4) Its own e-wallet, skill, scout agent and map.
-  await ensureExtras(userId, s, conv, L).catch(async (e) => L("warning", "Couldn't update Auton's extras", String(e?.message ?? e)));
-
-  await q("UPDATE auton_settings SET last_run_at=now() WHERE user_id=$1", [userId]);
+  // 4) Its own e-wallet, skill, scout agent and map (refreshed when something changed, or every 5 minutes).
+  if (out.length || !mem.extras_at || Date.now() - new Date(mem.extras_at).getTime() >= 300_000) {
+    await ensureExtras(userId, s, conv, L).catch(async (e) => L("warning", "Couldn't update Auton's extras", String(e?.message ?? e)));
+    mem.extras_at = new Date().toISOString();
+  }
+  if (chatty) mem.last_log_at = new Date().toISOString();
+  await q("UPDATE auton_settings SET last_run_at=now(), memory=$2 WHERE user_id=$1", [userId, JSON.stringify(mem)]);
   const summary = out.length ? `Auton cycle done:\n${out.join("\n")}` : "Auton cycle done: nothing needed changing.";
-  await log(userId, conv, "thought", out.length ? `Cycle done: ${out.length} action${out.length === 1 ? "" : "s"}` : "Cycle done: nothing needed changing");
+  if (out.length || chatty) await log(userId, conv, "thought", out.length ? `Cycle done: ${out.length} action${out.length === 1 ? "" : "s"}` : "Cycle done: nothing needed changing");
   if (conv && out.length) await q("INSERT INTO trading_prompts (user_id, conversation_id, role, content, ai_provider, ai_model, status) VALUES ($1,$2,'assistant',$3,'auton','auton','info')", [userId, conv, summary]).catch(() => {});
   return { summary, actions: out };
 }
@@ -205,7 +244,7 @@ async function ensureExtras(userId: string, s: AutonSettings, conv: string | nul
   const E = (a: string, b: string) => edges.push({ id: `auton-e-${a}-${b}`, source: `auton-${a}`, target: `auton-${b}` });
   N("brain", "auton", 0, 0, { label: "Auton" });
   N("plan", "method", 340, 0, { label: "Auton plan" });
-  N("prompt", "prompt", 340, -210, { label: "Auton prompt", text: `${s.goals ? `${s.goals}. ` : ""}buy on a 2% dip, take profit 3%, stop loss 4%, $${Math.max(5, Math.floor(s.max_capital_usd / Math.max(1, s.max_bots)))} per trade` });
+  N("prompt", "prompt", 340, -210, { label: "Auton prompt", text: `${s.goals ? `${s.goals}. ` : ""}buy on a 2% dip, take profit 3%, stop loss 4%, $${s.max_capital_usd > 0 ? Math.max(5, Math.floor(s.max_capital_usd / Math.max(1, s.max_bots || 5))) : Number(s.memory?.trade_usd ?? 100)} per trade` });
   N("skill", "skill", 340, 210, { refId: sid, label: "Auton rules" });
   E("brain", "plan"); E("prompt", "plan"); E("skill", "plan");
   live.forEach((b, i) => { N(`b${i}`, "bot", 700, (i - (live.length - 1) / 2) * 150, { refId: b.id, label: b.name }); E("plan", `b${i}`); });
@@ -222,21 +261,40 @@ export async function runDueAutons() {
 /** Prompt box with AI = Auton (or "auton …" anywhere): settings, goals and an immediate cycle. */
 export async function autonCommand(userId: string, text: string, conversationId: string | null): Promise<string> {
   const t = text.trim(), tl = t.toLowerCase();
-  if (/\b(stop|turn off|pause|disable|halt)\b/.test(tl) && !/\b(stop.?loss)\b/.test(tl)) { await setAuton(userId, { active: false }); return "Auton is off. Its bots keep running as they are (turn them off from Edit all, or say “turn off all bots”). Say “start Auton” to turn it back on."; }
+  // "stop Auton" — but not "turn off the budget limit", "no limit", "stop loss".
+  if (/\b(stop|turn off|pause|disable|halt)\b/.test(tl) && !/\b(stop.?loss|limits?|budget|cap|caps)\b/.test(tl)) { await setAuton(userId, { active: false }); return "Auton is off. Its bots keep running as they are (turn them off from Edit all, or say “turn off all bots”). Say “start Auton” to turn it back on."; }
   const patch: any = { conversationId };
   const budget = t.match(/\b(?:budget|capital|spend|use|with)\b[^$\d]{0,12}\$?\s*([\d,]+(?:\.\d+)?k?)/i);
   if (budget) { const r = budget[1].replace(/,/g, ""); patch.maxCapitalUsd = r.endsWith("k") ? Number(r.slice(0, -1)) * 1000 : Number(r); }
   const mb = t.match(/\b(?:max(?:imum)?|up to|at most)\s*(\d{1,2})\s*bots?\b|\b(\d{1,2})\s*bots?\s*max\b/i);
   if (mb) patch.maxBots = Number(mb[1] ?? mb[2]);
-  const ev = t.match(/\bevery\s*(\d+)\s*(min|minute|hour|hr)s?\b/i);
-  if (ev) patch.everySec = Number(ev[1]) * (/h/i.test(ev[2]) ? 3600 : 60);
+  const ev = t.match(/\bevery\s*(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours)\b/i);
+  if (ev) patch.everySec = Number(ev[1]) * (/^h/i.test(ev[2]) ? 3600 : /^m/i.test(ev[2]) ? 60 : 1);
+  // No limits: "turn off budget limit", "no budget", "unlimited budget"; "no limit on (the amount of) bots", "unlimited bots".
+  if (/\b(no|turn off|remove|without|unlimited|disable)\b[^.,]{0,20}\b(budget|capital|spending)\b|\b(budget|capital)\b[^.,]{0,12}\b(off|unlimited|none|no limit)\b/i.test(t)) patch.maxCapitalUsd = 0;
+  if (/\b(no|turn off|remove|without|unlimited|disable)\b[^.,]{0,30}\b(bots?|bot limit)\b|\bunlimited (number of |amount of )?bots\b|\bbots?\b[^.,]{0,12}\b(unlimited|no limit)\b/i.test(t)) patch.maxBots = 0;
+  // "up / increase Auton's purchase amount by 20%" → its trade size (and its bots) grow by that much.
+  const sz = t.match(/\b(up|increase|raise|boost|grow|lower|decrease|reduce|cut)\b[^.]{0,40}\b(purchase|amount|size|trade|trades|trading|buy|buys|spend)\b[^.]{0,30}?\bby\s*(\d+(?:\.\d+)?)\s*%/i);
+  if (sz) {
+    const f = 1 + (/^(lower|decrease|reduce|cut)$/i.test(sz[1]) ? -1 : 1) * Number(sz[3]) / 100;
+    const cur = await getAuton(userId);
+    const mem = cur.memory ?? {};
+    mem.trade_usd = Math.max(1, Math.round(Number(mem.trade_usd ?? 100) * f * 100) / 100);
+    await q("UPDATE auton_settings SET memory=$2 WHERE user_id=$1", [userId, JSON.stringify(mem)]).catch(() => {});
+    const ids = (await own(userId, "bot")).map((r) => r.ref_id);
+    if (ids.length) { const { applyEdits } = await import("../ai/bulk-edit"); const bots = await q<any>("SELECT id, name FROM trading_bots WHERE user_id=$1 AND id = ANY($2::uuid[])", [userId, ids]); await applyEdits(userId, bots.map((b) => ({ kind: "bot" as const, id: b.id, name: b.name })), { amountMult: f }); }
+    await log(userId, conversationId, "execution", `Trade size ${f >= 1 ? "up" : "down"} ${sz[3]}%: new bots use $${mem.trade_usd} per trade${ids.length ? `, and its ${ids.length} bot${ids.length === 1 ? "" : "s"} were resized` : ""}`);
+    patch.__sized = `Auton's trade size is now $${mem.trade_usd} per trade (${f >= 1 ? "+" : "−"}${sz[3]}%)${ids.length ? ` and its ${ids.length} bot${ids.length === 1 ? " was" : "s were"} resized` : ""}. `;
+  }
   if (/\breal money\b/i.test(t)) patch.realMoney = !/\b(no|not|without|off|paper only)\b.{0,12}real money|\breal money\b.{0,8}\b(off|no)\b/i.test(t);
   if (/\bpaper( only)?\b/i.test(t) && !/real money/i.test(t)) patch.realMoney = false;
   // Anything else is a goal ("focus on solana meme coins", "safe large caps", "make steady small profits on NVDA and TSLA").
-  const goal = t.replace(/\b(auton|start|turn on|run|go|now|please|budget|capital)\b/gi, " ").replace(/\$?\s*[\d,]+(\.\d+)?k?\s*(usd|dollars)?/gi, " ").replace(/\b(max(imum)?|up to|at most|every)\b.*?\b(bots?|min(ute)?s?|hours?)\b/gi, " ").replace(/\b(real money|paper( only)?)\b/gi, " ").replace(/\s+/g, " ").trim();
+  const settingsOnly = patch.maxCapitalUsd !== undefined || patch.maxBots !== undefined || patch.everySec !== undefined || patch.__sized || /\b(limits?|budget)\b/i.test(t);
+  const goal = settingsOnly ? "" : t.replace(/\b(auton|start|turn on|run|go|now|please|budget|capital)\b/gi, " ").replace(/\$?\s*[\d,]+(\.\d+)?k?\s*(usd|dollars)?/gi, " ").replace(/\b(max(imum)?|up to|at most|every)\b.*?\b(bots?|min(ute)?s?|hours?)\b/gi, " ").replace(/\b(real money|paper( only)?)\b/gi, " ").replace(/\s+/g, " ").trim();
   if (goal.length >= 4) patch.goals = goal;
   patch.active = true;
+  const sized = patch.__sized ?? ""; delete patch.__sized;
   const s = await setAuton(userId, patch);
   const r = await runAuton(userId, { conversationId });
-  return `Auton is on (${s.real_money ? "real money allowed" : "paper money"}, budget $${Number(s.max_capital_usd)}, up to ${s.max_bots} bots, checks every ${Math.round(Number(s.every_sec) / 60)} min${s.goals ? `, goals: “${s.goals}”` : ""}).\n${r.summary}\n\nEverything it thinks and does is in Activity → Auton. Its setup is on the “Auton” map. Say “stop Auton” to turn it off, or “auton budget $2000” / “auton max 8 bots” to change its limits.`;
+  return `${sized}Auton is on (${s.real_money ? "real money allowed" : "paper money"}, ${limitsText(s)}${s.goals ? `, goals: “${s.goals}”` : ""}).${Number(s.every_sec) < 60 ? " With fast checks it still opens at most one new bot a minute and logs quiet checks once a minute." : ""}${Number(s.max_capital_usd) <= 0 ? ` With no budget, each new bot trades $${Number(s.memory?.trade_usd ?? 100)} per trade (say “increase Auton's purchase amount by 20%” to change it).` : ""}\n${r.summary}\n\nEverything it thinks and does is in Activity → Auton. Its setup is on the “Auton” map. Say “stop Auton” to turn it off, or “auton budget $2000” / “auton max 8 bots” to change its limits.`;
 }
